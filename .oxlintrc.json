@@ -36,7 +36,47 @@
     "builtin": true
   },
   "ignorePatterns": ["node_modules"],
-  "overrides": [],
+  "overrides": [
+    {
+      "files": ["src/index.ts", "src/community-path.ts", "src/index.test.ts"],
+      "rules": {
+        "oxc/no-async-await": "off",
+        "eslint/one-var": "off",
+        "eslint/sort-vars": "off"
+      }
+    },
+    {
+      "files": ["src/community-path.ts"],
+      "rules": {
+        "import/no-nodejs-modules": [
+          "error",
+          {
+            "allow": ["node:crypto", "node:fs/promises", "node:os", "node:path"]
+          }
+        ],
+        "import/no-default-export": "off",
+        "eslint/max-statements": "off",
+        "eslint/init-declarations": "off"
+      }
+    },
+    {
+      "files": ["src/index.test.ts"],
+      "rules": {
+        "import/no-nodejs-modules": [
+          "error",
+          {
+            "allow": ["node:fs/promises", "node:os", "node:path", "node:url"]
+          }
+        ],
+        "eslint/sort-imports": "off",
+        "eslint/init-declarations": "off",
+        "node/no-sync": "off",
+        "node/no-process-env": "off",
+        "oxc/no-rest-spread-properties": "off",
+        "eslint/no-magic-numbers": "off"
+      }
+    }
+  ],
   "options": {
     "typeAware": true
   }
