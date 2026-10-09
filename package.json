@@ -10,10 +10,13 @@
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
     "lint": "oxlint",
-    "lint:fix": "oxlint --fix"
+    "lint:fix": "oxlint --fix",
+    "pre-commit:run": "prek run",
+    "pre-commit:install": "prek install"
   },
   "devDependencies": {
     "@e18e/eslint-plugin": "^0.8.1",
+    "@j178/prek": "^0.5.5",
     "@types/bun": "latest",
     "oxfmt": "^0.72.0",
     "oxlint": "^1.87.0",
