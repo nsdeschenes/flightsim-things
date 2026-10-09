@@ -6,12 +6,18 @@
   "module": "index.ts",
   "scripts": {
     "start": "bun src/index.ts",
+    "fix": "bun run lint:fix && bun run fmt",
     "fmt": "oxfmt",
-    "fmt:check": "oxfmt --check"
+    "fmt:check": "oxfmt --check",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix"
   },
   "devDependencies": {
+    "@e18e/eslint-plugin": "^0.8.1",
     "@types/bun": "latest",
-    "oxfmt": "^0.72.0"
+    "oxfmt": "^0.72.0",
+    "oxlint": "^1.87.0",
+    "oxlint-tsgolint": "^7.0.2003"
   },
   "peerDependencies": {
     "typescript": "^7"
