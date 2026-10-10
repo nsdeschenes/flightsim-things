@@ -11,7 +11,6 @@
   },
   "rules": {
     "curly": "error",
-    "import/no-named-export": "error",
     "e18e/prefer-array-at": "error",
     "e18e/prefer-array-fill": "error",
     "e18e/prefer-includes": "error",
@@ -38,7 +37,8 @@
     "sort-imports": "off",
     "init-declarations": "off",
     "sort-vars": "off",
-    "node/no-process-env": "off"
+    "node/no-process-env": "off",
+    "import/no-default-export": "allow"
   },
   "env": {
     "builtin": true
