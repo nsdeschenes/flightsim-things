@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - run: bun install --frozen-lockfile
+      - run: tar -cf "${{ runner.temp }}/node_modules.tar" node_modules
+      - uses: actions/upload-artifact@v7
+        with:
+          name: node-modules
+          path: ${{ runner.temp }}/node_modules.tar
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
+
+  typecheck:
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - uses: actions/download-artifact@v8
+        with:
+          name: node-modules
+          path: ${{ runner.temp }}
+      - run: tar -xf "${{ runner.temp }}/node_modules.tar"
+      - run: bun run typecheck
+
+  lint:
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - uses: actions/download-artifact@v8
+        with:
+          name: node-modules
+          path: ${{ runner.temp }}
+      - run: tar -xf "${{ runner.temp }}/node_modules.tar"
+      - run: bun run lint
+
+  format:
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - uses: actions/download-artifact@v8
+        with:
+          name: node-modules
+          path: ${{ runner.temp }}
+      - run: tar -xf "${{ runner.temp }}/node_modules.tar"
+      - run: bun run fmt:check
+
+  test:
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - uses: actions/download-artifact@v8
+        with:
+          name: node-modules
+          path: ${{ runner.temp }}
+      - run: tar -xf "${{ runner.temp }}/node_modules.tar"
+      - run: bun run test
