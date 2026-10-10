@@ -17,7 +17,8 @@
     "pre-commit:install": "prek install"
   },
   "dependencies": {
-    "@stricli/core": "^1.3.0"
+    "@stricli/core": "^1.3.0",
+    "effect": "^4.0.2"
   },
   "devDependencies": {
     "@e18e/eslint-plugin": "^0.8.1",
