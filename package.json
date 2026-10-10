@@ -11,8 +11,8 @@
     "fix": "bun run lint:fix && bun run fmt",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
-    "lint": "oxlint",
-    "lint:fix": "oxlint --fix",
+    "lint": "oxlint -c .oxlintrc.json",
+    "lint:fix": "oxlint -c .oxlintrc.json --fix",
     "pre-commit:run": "prek run",
     "pre-commit:install": "prek install"
   },

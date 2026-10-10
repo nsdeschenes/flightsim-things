@@ -30,50 +30,26 @@
     "e18e/prefer-array-some": "error",
     "e18e/prefer-static-regex": "error",
     "e18e/prefer-string-fromcharcode": "error",
-    "typescript/no-misused-spread": "off"
+    "typescript/no-misused-spread": "off",
+    "oxc/no-async-await": "off",
+    "import/no-nodejs-modules": "off",
+    "oxc/no-rest-spread-properties": "off",
+    "one-var": "off",
+    "sort-imports": "off",
+    "init-declarations": "off",
+    "sort-vars": "off",
+    "node/no-process-env": "off"
   },
   "env": {
     "builtin": true
   },
-  "ignorePatterns": ["node_modules"],
+  "ignorePatterns": ["node_modules", "repos"],
   "overrides": [
     {
-      "files": ["src/index.ts", "src/community-path.ts", "src/index.test.ts"],
+      "files": ["src/**/*.test.ts"],
       "rules": {
-        "oxc/no-async-await": "off",
-        "eslint/one-var": "off",
-        "eslint/sort-vars": "off"
-      }
-    },
-    {
-      "files": ["src/community-path.ts"],
-      "rules": {
-        "import/no-nodejs-modules": [
-          "error",
-          {
-            "allow": ["node:crypto", "node:fs/promises", "node:os", "node:path"]
-          }
-        ],
-        "import/no-default-export": "off",
-        "eslint/max-statements": "off",
-        "eslint/init-declarations": "off"
-      }
-    },
-    {
-      "files": ["src/index.test.ts"],
-      "rules": {
-        "import/no-nodejs-modules": [
-          "error",
-          {
-            "allow": ["node:fs/promises", "node:os", "node:path", "node:url"]
-          }
-        ],
-        "eslint/sort-imports": "off",
-        "eslint/init-declarations": "off",
-        "node/no-sync": "off",
-        "node/no-process-env": "off",
-        "oxc/no-rest-spread-properties": "off",
-        "eslint/no-magic-numbers": "off"
+        "no-magic-numbers": "off",
+        "node/no-sync": "off"
       }
     }
   ],
