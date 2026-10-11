@@ -1,72 +1,64 @@
-import {buildApplication, buildCommand, buildRouteMap, run} from '@stricli/core';
+import {BunRuntime, BunServices} from '@effect/platform-bun';
+import {Console, Effect} from 'effect';
+import {CliConfig, CliError, Command, GlobalFlag} from 'effect/cli';
 
-import communityPath from './community-path.ts';
+import communityPathCommand from './commands/community-path.ts';
 
-const argvOffset = 2,
-  hello = buildCommand({
-    docs: {
-      brief: 'Print a greeting',
-    },
-    func() {
-      this.process.stdout.write('Hello via Bun!\n');
-    },
-    parameters: {
-      flags: {},
-    },
-  }),
-  saveCommunityPath = buildCommand<Readonly<Record<string, never>>, [string]>({
-    docs: {
-      brief: 'Save or replace the MSFS 2024 Community directory',
-    },
-    async func(_flags: Readonly<Record<string, never>>, path: string) {
-      this.process.stdout.write(`${await communityPath.set(path)}\n`);
-    },
-    parameters: {
-      flags: {},
-      positional: {
-        kind: 'tuple',
-        parameters: [
-          {
-            brief: 'An existing Community directory',
-            parse: String,
-            placeholder: 'path',
-          },
-        ],
-      },
-    },
-  }),
-  communityPathRoutes = buildRouteMap({
-    docs: {
-      brief: 'Manage the saved MSFS 2024 Community directory',
-    },
-    routes: {
-      get: buildCommand({
-        docs: {
-          brief: 'Print the saved Community directory',
-        },
-        async func() {
-          this.process.stdout.write(`${await communityPath.get()}\n`);
-        },
-        parameters: {
-          flags: {},
-        },
-      }),
-      set: saveCommunityPath,
-      update: saveCommunityPath,
-    },
-  }),
-  routes = buildRouteMap({
-    docs: {
-      brief: 'Flight simulator tools',
-    },
-    routes: {'community-path': communityPathRoutes, hello},
-  });
+const argvOffset = 2;
+const successExitCode = 0;
+const commandFailureExitCode = 1;
+const unknownCommandExitCode = 251;
+const invalidArgumentsExitCode = 252;
+const noErrors = 0;
 
-// eslint-disable-next-line node/no-top-level-await -- This CLI entrypoint is not loaded with require.
-await run(
-  buildApplication(routes, {name: 'flightsim-things'}),
-  process.argv.slice(argvOffset),
-  {
-    process,
-  }
+const hello = Command.make('hello', {}, () => Console.log('Hello via Bun!')).pipe(
+  Command.withDescription('Print a greeting')
 );
+const command = Command.make('flightsim-things').pipe(
+  Command.withDescription('Flight simulator tools'),
+  Command.withSubcommands([communityPathCommand, hello])
+);
+
+function exitCodeFor(error: unknown): number {
+  if (!(error instanceof CliError.ShowHelp)) {
+    return commandFailureExitCode;
+  }
+  if (error.errors.length === noErrors) {
+    return successExitCode;
+  }
+  if (
+    error.errors.some(
+      (parseError: Readonly<Error>) => parseError instanceof CliError.UnknownSubcommand
+    )
+  ) {
+    return unknownCommandExitCode;
+  }
+  return invalidArgumentsExitCode;
+}
+
+function failureMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.stack ?? String(error);
+  }
+  return String(error);
+}
+
+const main = Command.runWith(command, {version: '0.0.0'})(
+  process.argv.slice(argvOffset)
+).pipe(
+  Effect.provide(BunServices.layer),
+  Effect.provide(CliConfig.layer({builtIns: [GlobalFlag.Help]})),
+  Effect.match({
+    onFailure(error: unknown) {
+      process.exitCode = exitCodeFor(error);
+      if (!(error instanceof CliError.ShowHelp)) {
+        process.stderr.write(`Command failed, ${failureMessage(error)}\n`);
+      }
+    },
+    onSuccess() {
+      process.exitCode = successExitCode;
+    },
+  })
+);
+
+BunRuntime.runMain(main);
