@@ -11,13 +11,14 @@
     "fix": "bun run lint:fix && bun run fmt",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
-    "lint": "oxlint",
-    "lint:fix": "oxlint --fix",
+    "lint": "oxlint -c .oxlintrc.json",
+    "lint:fix": "oxlint -c .oxlintrc.json --fix",
     "pre-commit:run": "prek run",
     "pre-commit:install": "prek install"
   },
   "dependencies": {
-    "@stricli/core": "^1.3.0"
+    "@stricli/core": "^1.3.0",
+    "effect": "^4.0.2"
   },
   "devDependencies": {
     "@e18e/eslint-plugin": "^0.8.1",
