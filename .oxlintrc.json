@@ -33,12 +33,13 @@
     "oxc/no-async-await": "off",
     "import/no-nodejs-modules": "off",
     "oxc/no-rest-spread-properties": "off",
-    "one-var": "off",
     "sort-imports": "off",
     "init-declarations": "off",
     "sort-vars": "off",
     "node/no-process-env": "off",
-    "import/no-default-export": "allow"
+    "import/no-default-export": "allow",
+    "one-var": ["error", "never"],
+    "func-style": ["error", "declaration", {"allowArrowFunctions": false}]
   },
   "env": {
     "builtin": true
