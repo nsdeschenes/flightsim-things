@@ -227,3 +227,18 @@ The committed `js/ts.experimental.useTsgo` and `js/ts.tsdk` settings point the n
 Confirm that the native TypeScript server is active so that it loads `@effect/language-service`.
 
 This project was created using `bun init` in bun v1.4.2. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+
+## Addon database
+
+The addon database foundation stores general package, aircraft, airport, airline, and
+livery metadata in `~/.flightsim-things/addons.sqlite` using Bun SQLite and Drizzle ORM.
+Its scoped Effect interface initializes embedded migrations when used and closes the
+connection after each operation. Insert, select, and update validation comes from
+`drizzle-orm/effect-schema`. Drizzle's RC `defineRelations` graph supports typed nested
+reads through `db.query`. Finish those reads with `.sync()` inside the database callback.
+
+See [the schema, import mapping, and usage examples](docs/addon-database.md).
+Community scanning and metadata import commands are the next layer to build.
+
+After changing database tables, run `bun run db:generate` and review the generated SQL.
+Run `bun run db:check` to verify the embedded migration journal.

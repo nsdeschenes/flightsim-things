@@ -43,6 +43,7 @@ jobs:
           path: ${{ runner.temp }}
       - run: tar -xf "${{ runner.temp }}/node_modules.tar"
       - run: bun run typecheck
+      - run: bun run db:check
 
   lint:
     needs: install
