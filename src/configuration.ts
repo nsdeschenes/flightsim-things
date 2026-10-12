@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import {setTimeout as delay} from 'node:timers/promises';
 
 import {Effect, Option, Schema} from 'effect';
 import {TaggedError as taggedError} from 'effect/Data';
@@ -22,7 +23,9 @@ const privateFileMode = 0o600;
 const lockRetries = 40;
 const retryDelayMilliseconds = 50;
 const retryFactor = 1;
-const legacyFiles: Readonly<Record<string, string>> = {sentry: 'sentry.json'};
+const renameRetries = 4;
+const renameRetryFactor = 2;
+const renameAttemptIncrement = 1;
 
 class ConfigurationError extends taggedError('ConfigurationError')<{
   readonly message: string;
@@ -43,70 +46,81 @@ function toError(cause: unknown): ConfigurationError {
   });
 }
 
-function parseDocument(contents: string, file: string): ConfigurationDocument {
+function parseDocument(contents: string): ConfigurationDocument {
   let document: unknown;
   try {
     document = JSON.parse(contents);
   } catch (error) {
     throw new ConfigurationError({
       cause: error,
-      message: `Invalid JSON in ${file}. Repair the file before saving configuration; existing settings have been preserved.`,
+      message: `Invalid JSON in ${configurationFile}. Repair the file before saving configuration; existing settings have been preserved.`,
     });
   }
   const parsed = Schema.decodeUnknownOption(Schema.JsonObject)(document);
   if (Option.isNone(parsed) || Array.isArray(document)) {
     throw new ConfigurationError({
-      message: `Configuration in ${file} must be a JSON object. Repair the file before saving configuration; existing settings have been preserved.`,
+      message: `Configuration in ${configurationFile} must be a JSON object. Repair the file before saving configuration; existing settings have been preserved.`,
     });
   }
   return parsed.value;
 }
 
-function readDocument(
-  file: string
-): Effect.Effect<Option.Option<ConfigurationDocument>, ConfigurationError> {
+function readDocument(): Effect.Effect<
+  Option.Option<ConfigurationDocument>,
+  ConfigurationError
+> {
   return Effect.tryPromise({
     catch: toError,
     try: async () => {
       let contents: string;
       try {
-        contents = await fs.readFile(file, 'utf8');
+        contents = await fs.readFile(configurationFile, 'utf8');
       } catch (error) {
         if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
           return Option.none();
         }
         throw error;
       }
-      return Option.some(parseDocument(contents, file));
+      return Option.some(parseDocument(contents));
     },
   });
 }
 
-function getValue(
-  document: ConfigurationDocument,
-  key: string
-): Effect.Effect<Option.Option<unknown>, ConfigurationError> {
+function getValue(document: ConfigurationDocument, key: string): Option.Option<unknown> {
   if (Object.hasOwn(document, key)) {
-    return Effect.succeedSome(document[key]);
+    return Option.some(document[key]);
   }
-  if (!Object.hasOwn(legacyFiles, key)) {
-    return Effect.succeedNone;
-  }
-  const legacyFile = Option.fromNullishOr(legacyFiles[key]);
-  if (Option.isNone(legacyFile)) {
-    return Effect.succeedNone;
-  }
-  return readDocument(path.join(configurationDirectory, legacyFile.value));
+  return Option.none();
 }
 
 function get(key: string): Effect.Effect<Option.Option<unknown>, ConfigurationError> {
   return Effect.gen(function* getConfigurationValue() {
-    const document = yield* readDocument(configurationFile);
-    return yield* getValue(
+    const document = yield* readDocument();
+    return getValue(
       Option.getOrElse(document, () => ({})),
       key
     );
   });
+}
+
+async function replaceConfiguration(temporaryFile: string): Promise<void> {
+  for (let attempt = 0; attempt <= renameRetries; attempt += renameAttemptIncrement) {
+    try {
+      await fs.rename(temporaryFile, configurationFile);
+      return;
+    } catch (error) {
+      if (
+        process.platform !== 'win32' ||
+        attempt === renameRetries ||
+        !(error instanceof Error) ||
+        !('code' in error) ||
+        !['EPERM', 'EACCES', 'EBUSY'].includes(String(error.code))
+      ) {
+        throw error;
+      }
+      await delay(retryDelayMilliseconds * renameRetryFactor ** attempt);
+    }
+  }
 }
 
 function persist(
@@ -124,7 +138,7 @@ function persist(
       try {
         await file.writeFile(contents, 'utf8');
         await file.close();
-        await fs.rename(temporaryFile, configurationFile);
+        await replaceConfiguration(temporaryFile);
       } finally {
         await file.close().catch(() => false);
         await fs.rm(temporaryFile, {force: true});
@@ -174,7 +188,7 @@ function modify<Failure, Requirements>(
     }),
     () =>
       Effect.gen(function* modifyConfigurationValue() {
-        const saved = yield* readDocument(configurationFile);
+        const saved = yield* readDocument();
         const document = Option.getOrElse(saved, () => ({}));
         const next = yield* change(document);
         const value = yield* validateValue(next);
@@ -205,7 +219,7 @@ function update<Failure, Requirements>(
 ): Effect.Effect<void, ConfigurationError | Failure, Requirements> {
   return modify(key, document =>
     Effect.gen(function* updateConfigurationValue() {
-      const current = yield* getValue(document, key);
+      const current = getValue(document, key);
       const next = change(current);
       if (Effect.isEffect(next)) {
         return yield* next;

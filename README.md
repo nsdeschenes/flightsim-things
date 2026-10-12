@@ -71,10 +71,6 @@ bun run start sentry get
 The CLI saves all settings in `~/.flightsim-things/config.json` with private file permissions.
 Community and Sentry settings share this file, and saving one preserves all other settings.
 `set` replaces the Sentry section and repairs an invalid DSN or sample rates.
-Older `sentry.json` settings remain readable when the shared file has no Sentry section.
-`sentry update` imports the older settings into the shared file; `sentry set` saves the supplied values.
-The older file remains unchanged.
-The shared Sentry section takes precedence over the older file.
 If the shared file contains malformed JSON or its root is not an object, reads and saves fail
 without changing its bytes. Repair the file first so existing settings can be preserved.
 `update` requires a saved configuration and at least one option.
@@ -95,7 +91,7 @@ Import the shared default export from `#configuration` when a command needs pers
 `update(key, callback)` reads the current optional value and runs a pure or Effect callback under
 an interprocess lock before saving. Validate and merge partial domain changes inside that callback
 so simultaneous commands cannot lose each other's changes. Values must be JSON-compatible.
-The shared module owns filesystem access, locking, private atomic writes, and legacy-file lookup.
+The shared module owns filesystem access, locking, and private atomic writes.
 
 ## Run a release executable
 
