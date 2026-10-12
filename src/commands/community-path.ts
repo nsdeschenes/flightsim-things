@@ -1,25 +1,17 @@
-import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-import {Console, Effect} from 'effect';
+import {Console, Effect, Option} from 'effect';
 import {Argument, Command} from 'effect/cli';
 import {TaggedError as taggedError} from 'effect/Data';
 
-type Configuration = Readonly<{communityPath: string}>;
-type TemporaryFile = Readonly<
-  Pick<Awaited<ReturnType<typeof fs.open>>, 'close' | 'writeFile'>
->;
+import configuration from '#configuration';
 
 class CommunityPathError extends taggedError('CommunityPathError')<{
   readonly message: string;
   readonly cause?: unknown;
 }> {}
-
-const configurationDirectory = path.join(os.homedir(), '.flightsim-things');
-const configurationFile = path.join(configurationDirectory, 'config.json');
-const privateFileMode = 0o600;
 
 function toError(error: unknown): CommunityPathError {
   if (error instanceof CommunityPathError) {
@@ -34,52 +26,13 @@ function toError(error: unknown): CommunityPathError {
   });
 }
 
-function readConfiguration(): Effect.Effect<string, CommunityPathError> {
-  return Effect.tryPromise({
-    catch: error => {
-      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-        return new CommunityPathError({
-          cause: error,
-          message: 'No Community directory is saved. Run community-path set <path>.',
-        });
-      }
-      return toError(error);
-    },
-    try: async () => {
-      const contents = await fs.readFile(configurationFile, 'utf8');
-      return contents;
-    },
-  });
-}
-
-function parseConfiguration(contents: string): string {
-  let configuration: unknown;
-  try {
-    configuration = JSON.parse(contents);
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      throw new SyntaxError(
-        `Invalid JSON in ${configurationFile}. Run community-path set <path> to replace it.`,
-        {cause: error}
-      );
-    }
-    throw error;
-  }
-
-  if (
-    typeof configuration !== 'object' ||
-    configuration === null ||
-    !('communityPath' in configuration) ||
-    typeof configuration.communityPath !== 'string' ||
-    configuration.communityPath.includes('\0') ||
-    !path.isAbsolute(configuration.communityPath)
-  ) {
+function parseCommunityPath(value: unknown): string {
+  if (typeof value !== 'string' || value.includes('\0') || !path.isAbsolute(value)) {
     throw new Error(
-      `Invalid Community directory in ${configurationFile}. Run community-path set <path> to replace it.`
+      'Invalid Community directory. Run community-path set <path> to replace it.'
     );
   }
-
-  return configuration.communityPath;
+  return value;
 }
 
 function resolveCommunityPath(input: string): string {
@@ -126,87 +79,19 @@ function validateCommunityDirectory(
   });
 }
 
-function cleanupTemporaryFile(
-  file: TemporaryFile,
-  temporaryFile: string
-): Effect.Effect<void> {
-  return Effect.gen(function* removeTemporaryFile() {
-    yield* Effect.ignore(
-      Effect.tryPromise({
-        catch: toError,
-        try: async () => {
-          await file.close();
-        },
-      })
-    );
-    yield* Effect.ignore(
-      Effect.tryPromise({
-        catch: toError,
-        try: async () => {
-          await fs.rm(temporaryFile, {force: true});
-        },
-      })
-    );
-  });
-}
-
-function writeConfig(config: Configuration): Effect.Effect<void, CommunityPathError> {
-  return Effect.gen(function* saveConfiguration() {
-    yield* Effect.tryPromise({
-      catch: toError,
-      try: async () => {
-        await fs.mkdir(configurationDirectory, {recursive: true});
-      },
-    });
-    const temporaryFile = yield* Effect.try({
-      catch: toError,
-      try: () => path.join(configurationDirectory, `config.${crypto.randomUUID()}.tmp`),
-    });
-    yield* Effect.acquireUseRelease(
-      Effect.tryPromise({
-        catch: toError,
-        try: async () => {
-          const file = await fs.open(temporaryFile, 'wx', privateFileMode);
-          return file;
-        },
-      }),
-      (file: TemporaryFile) =>
-        Effect.gen(function* persistConfiguration() {
-          yield* Effect.tryPromise({
-            catch: toError,
-            try: async () => {
-              await file.writeFile(`${JSON.stringify(config)}\n`, 'utf8');
-            },
-          });
-          yield* Effect.tryPromise({
-            catch: toError,
-            try: async () => {
-              await file.close();
-            },
-          });
-          yield* Effect.tryPromise({
-            catch: toError,
-            try: async () => {
-              await fs.rename(temporaryFile, configurationFile);
-            },
-          });
-        }),
-      (file: TemporaryFile, {_tag: exitTag}: Readonly<{_tag: string}>) => {
-        if (exitTag === 'Failure') {
-          return cleanupTemporaryFile(file, temporaryFile);
-        }
-        return Effect.void;
-      }
-    ).pipe(Effect.uninterruptible);
-  });
-}
-
 function get(): Effect.Effect<string, CommunityPathError> {
   return Effect.gen(function* getCommunityPath() {
-    const contents = yield* readConfiguration();
+    const saved = yield* configuration
+      .get('communityPath')
+      .pipe(Effect.mapError(toError));
+    if (Option.isNone(saved)) {
+      return yield* new CommunityPathError({
+        message: 'No Community directory is saved. Run community-path set <path>.',
+      });
+    }
     return yield* Effect.try({
       catch: toError,
-      try: () => parseConfiguration(contents),
+      try: () => parseCommunityPath(saved.value),
     });
   });
 }
@@ -218,7 +103,9 @@ function set(input: string): Effect.Effect<string, CommunityPathError> {
       try: () => resolveCommunityPath(input),
     });
     yield* validateCommunityDirectory(communityPath);
-    yield* writeConfig({communityPath});
+    yield* configuration
+      .set('communityPath', communityPath)
+      .pipe(Effect.mapError(toError));
     return communityPath;
   });
 }

@@ -5,6 +5,8 @@ import {CliConfig, CliError, Command, GlobalFlag} from 'effect/cli';
 import {version} from '#package';
 
 import communityPathCommand from './commands/community-path.ts';
+import sentryCommand from './commands/sentry.ts';
+import withSentry from './sentry.ts';
 
 const argvOffset = 2;
 const successExitCode = 0;
@@ -18,7 +20,7 @@ const hello = Command.make('hello', {}, () => Console.log('Hello via Bun!')).pip
 );
 const command = Command.make('flightsim-things').pipe(
   Command.withDescription('Flight simulator tools'),
-  Command.withSubcommands([communityPathCommand, hello])
+  Command.withSubcommands([communityPathCommand, hello, sentryCommand])
 );
 
 function exitCodeFor(error: unknown): number {
@@ -45,7 +47,8 @@ function failureMessage(error: unknown): string {
   return String(error);
 }
 
-const main = Command.runWith(command, {version})(process.argv.slice(argvOffset)).pipe(
+const args = process.argv.slice(argvOffset);
+const main = withSentry(() => Command.runWith(command, {version})(args), args).pipe(
   Effect.provide([
     BunServices.layer,
     CliConfig.layer({builtIns: [GlobalFlag.Help, GlobalFlag.Version]}),
