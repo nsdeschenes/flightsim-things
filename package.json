@@ -7,6 +7,7 @@
   "scripts": {
     "start": "bun src/index.ts",
     "typecheck": "tsc --noEmit",
+    "effect:diagnostics": "effect-tsgo diagnostics --project tsconfig.json",
     "test": "bun test",
     "fix": "bun run lint:fix && bun run fmt",
     "fmt": "oxfmt",
@@ -14,7 +15,8 @@
     "lint": "oxlint -c .oxlintrc.json",
     "lint:fix": "oxlint -c .oxlintrc.json --fix",
     "pre-commit:run": "prek run",
-    "pre-commit:install": "prek install"
+    "pre-commit:install": "prek install",
+    "prepare": "effect-tsgo patch --typescript --no-oxlint"
   },
   "dependencies": {
     "@effect/platform-bun": "4.0.2",
@@ -22,14 +24,13 @@
   },
   "devDependencies": {
     "@e18e/eslint-plugin": "^0.8.1",
+    "@effect/tsgo": "0.51.1",
     "@j178/prek": "^0.5.5",
     "@types/bun": "latest",
     "oxfmt": "^0.72.0",
     "oxlint": "^1.87.0",
-    "oxlint-tsgolint": "^7.0.2003"
-  },
-  "peerDependencies": {
-    "typescript": "^7"
+    "oxlint-tsgolint": "^7.0.2003",
+    "typescript": "7.0.2"
   },
   "overrides": {
     "@effect/platform-node-shared": "4.0.2"
