@@ -5,33 +5,43 @@ import path from 'node:path';
 
 import {Console, Effect} from 'effect';
 import {Argument, Command} from 'effect/cli';
+import {TaggedError as taggedError} from 'effect/Data';
 
 type Configuration = Readonly<{communityPath: string}>;
 type TemporaryFile = Readonly<
   Pick<Awaited<ReturnType<typeof fs.open>>, 'close' | 'writeFile'>
 >;
 
+class CommunityPathError extends taggedError('CommunityPathError')<{
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
+
 const configurationDirectory = path.join(os.homedir(), '.flightsim-things');
 const configurationFile = path.join(configurationDirectory, 'config.json');
 const privateFileMode = 0o600;
 
-function toError(error: unknown): Error {
-  if (error instanceof Error) {
+function toError(error: unknown): CommunityPathError {
+  if (error instanceof CommunityPathError) {
     return error;
   }
-  return new Error(String(error));
+  if (error instanceof Error) {
+    return new CommunityPathError({cause: error, message: error.message});
+  }
+  return new CommunityPathError({
+    cause: error,
+    message: String(error),
+  });
 }
 
-function readConfiguration(): Effect.Effect<string, Error> {
+function readConfiguration(): Effect.Effect<string, CommunityPathError> {
   return Effect.tryPromise({
     catch: error => {
       if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-        return new Error(
-          'No Community directory is saved. Run community-path set <path>.',
-          {
-            cause: error,
-          }
-        );
+        return new CommunityPathError({
+          cause: error,
+          message: 'No Community directory is saved. Run community-path set <path>.',
+        });
       }
       return toError(error);
     },
@@ -88,13 +98,16 @@ function resolveCommunityPath(input: string): string {
   return path.resolve(expandedPath);
 }
 
-function validateCommunityDirectory(communityPath: string): Effect.Effect<void, Error> {
+function validateCommunityDirectory(
+  communityPath: string
+): Effect.Effect<void, CommunityPathError> {
   return Effect.gen(function* checkCommunityDirectory() {
     const directory = yield* Effect.tryPromise({
       catch: error => {
         if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-          return new Error(`Community directory does not exist: ${communityPath}`, {
+          return new CommunityPathError({
             cause: error,
+            message: `Community directory does not exist: ${communityPath}`,
           });
         }
         return toError(error);
@@ -105,10 +118,11 @@ function validateCommunityDirectory(communityPath: string): Effect.Effect<void, 
       },
     });
     if (!directory.isDirectory()) {
-      yield* Effect.fail(
-        new Error(`Community path is not a directory: ${communityPath}`)
-      );
+      return yield* new CommunityPathError({
+        message: `Community path is not a directory: ${communityPath}`,
+      });
     }
+    return yield* Effect.void;
   });
 }
 
@@ -136,7 +150,7 @@ function cleanupTemporaryFile(
   });
 }
 
-function writeConfiguration(configuration: Configuration): Effect.Effect<void, Error> {
+function writeConfig(config: Configuration): Effect.Effect<void, CommunityPathError> {
   return Effect.gen(function* saveConfiguration() {
     yield* Effect.tryPromise({
       catch: toError,
@@ -161,7 +175,7 @@ function writeConfiguration(configuration: Configuration): Effect.Effect<void, E
           yield* Effect.tryPromise({
             catch: toError,
             try: async () => {
-              await file.writeFile(`${JSON.stringify(configuration)}\n`, 'utf8');
+              await file.writeFile(`${JSON.stringify(config)}\n`, 'utf8');
             },
           });
           yield* Effect.tryPromise({
@@ -187,7 +201,7 @@ function writeConfiguration(configuration: Configuration): Effect.Effect<void, E
   });
 }
 
-function get(): Effect.Effect<string, Error> {
+function get(): Effect.Effect<string, CommunityPathError> {
   return Effect.gen(function* getCommunityPath() {
     const contents = yield* readConfiguration();
     return yield* Effect.try({
@@ -197,19 +211,21 @@ function get(): Effect.Effect<string, Error> {
   });
 }
 
-function set(input: string): Effect.Effect<string, Error> {
+function set(input: string): Effect.Effect<string, CommunityPathError> {
   return Effect.gen(function* setCommunityPath() {
     const communityPath = yield* Effect.try({
       catch: toError,
       try: () => resolveCommunityPath(input),
     });
     yield* validateCommunityDirectory(communityPath);
-    yield* writeConfiguration({communityPath});
+    yield* writeConfig({communityPath});
     return communityPath;
   });
 }
 
-function save({path: input}: Readonly<{path: string}>): Effect.Effect<void, Error> {
+function save({
+  path: input,
+}: Readonly<{path: string}>): Effect.Effect<void, CommunityPathError> {
   return set(input).pipe(Effect.flatMap(Console.log));
 }
 

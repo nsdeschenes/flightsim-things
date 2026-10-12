@@ -46,8 +46,7 @@ function failureMessage(error: unknown): string {
 const main = Command.runWith(command, {version: '0.0.0'})(
   process.argv.slice(argvOffset)
 ).pipe(
-  Effect.provide(BunServices.layer),
-  Effect.provide(CliConfig.layer({builtIns: [GlobalFlag.Help]})),
+  Effect.provide([BunServices.layer, CliConfig.layer({builtIns: [GlobalFlag.Help]})]),
   Effect.match({
     onFailure(error: unknown) {
       process.exitCode = exitCodeFor(error);
