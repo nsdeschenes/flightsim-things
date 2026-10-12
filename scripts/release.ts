@@ -6,6 +6,10 @@ import path from 'node:path';
 
 import {version} from '#package';
 
+import releaseVersions from './release-version.ts';
+
+const {parseReleaseIdentity, parseReleaseVersion, validateBranch} = releaseVersions;
+
 const targets = [
   {
     arch: 'x64',
@@ -42,19 +46,11 @@ const targets = [
 ] as const;
 
 const argvOffset = 2;
-const stableVersion = /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/u;
 const successExitCode = 0;
 const unknownCommandExitCode = 251;
 
-function validateVersion(input: string): void {
-  assert.ok(
-    stableVersion.test(input),
-    `Expected a stable version without v, received ${input}`
-  );
-}
-
 function assetNames(releaseVersion: string): string[] {
-  validateVersion(releaseVersion);
+  parseReleaseVersion(releaseVersion);
   return targets.map(
     target => `flightsim-things-${releaseVersion}-${target.id}${target.extension}`
   );
@@ -225,7 +221,7 @@ async function bumpVersion(): Promise<void> {
     typeof newVersion === 'string' && newVersion !== '',
     'Craft must provide CRAFT_NEW_VERSION'
   );
-  validateVersion(newVersion);
+  parseReleaseVersion(newVersion);
   const manifest = await readFile('package.json', 'utf8');
   assert.ok(versionField.test(manifest), 'package.json must contain its release version');
   await writeFile(
@@ -240,11 +236,25 @@ const commands = {
   matrix(): void {
     process.stdout.write(`${JSON.stringify({include: targets})}\n`);
   },
+  async 'prepare-request'(input: string, targetBranch: string): Promise<void> {
+    if (['auto', 'major', 'minor', 'patch'].includes(input)) {
+      await validateBranch(targetBranch);
+      assert.equal(targetBranch, 'main', 'Automatic releases require target branch main');
+      process.stdout.write(`${JSON.stringify({kind: 'automatic', targetBranch})}\n`);
+    } else {
+      const release = await parseReleaseIdentity(input, targetBranch);
+      process.stdout.write(`${JSON.stringify({kind: 'explicit', release})}\n`);
+    }
+  },
+  async 'release-info'(input: string, targetBranch: string): Promise<void> {
+    const release = await parseReleaseIdentity(input, targetBranch);
+    process.stdout.write(`${JSON.stringify(release)}\n`);
+  },
   smoke,
   async stage(directory: string, releaseVersion: string): Promise<void> {
     await validateAssets(directory, releaseVersion, false);
   },
-  'validate-version': validateVersion,
+  'validate-version': parseReleaseVersion,
   async 'verify-assets'(directory: string, releaseVersion: string): Promise<void> {
     await validateAssets(directory, releaseVersion, true);
   },
@@ -258,7 +268,7 @@ const [command = '', argument = '', releaseVersion = version] =
   process.argv.slice(argvOffset);
 assert.ok(
   isCommand(command),
-  'Expected matrix, build, smoke, stage, verify-assets, validate-version, or bump-version'
+  'Expected matrix, build, smoke, stage, verify-assets, validate-version, prepare-request, release-info, or bump-version'
 );
 const execution = commands[command](argument, releaseVersion);
 export default execution;
