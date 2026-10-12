@@ -6,6 +6,14 @@ hooks = [{ id = "trailing-whitespace" }]
 [[repos]]
 repo = "local"
 hooks = [
+  { id = "typecheck", name = "typecheck", language = "system", entry = "bun run typecheck", pass_filenames = false, files = { glob = [
+    "**/*.tsx",
+    "**/*.ts",
+    "**/tsconfig*.json",
+    "**/package.json",
+    "bun.lock",
+    "bun.lockb",
+  ] } },
   { id = "js-lint", name = "js lint", language = "system", entry = "bun run lint", pass_filenames = false, files = { glob = [
     "**/*.tsx",
     "**/*.ts",
