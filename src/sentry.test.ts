@@ -19,7 +19,7 @@ let dsn: string;
 beforeEach(async () => {
   await mkdir(testDirectory, {recursive: true});
   homeDirectory = await mkdtemp(path.join(testDirectory, 'cli-test-'));
-  configurationFile = path.join(homeDirectory, '.flightsim-things/sentry.json');
+  configurationFile = path.join(homeDirectory, '.flightsim-things/config.json');
   envelopes.length = 0;
   server = Bun.serve({
     async fetch(request: Readonly<{text: () => Promise<string>}>): Promise<Response> {
@@ -77,6 +77,11 @@ async function set(input = dsn, rate = '0'): Promise<CommandResult> {
   return result;
 }
 
+async function seedConfiguration(contents: string): Promise<void> {
+  await mkdir(path.dirname(configurationFile), {recursive: true});
+  await writeFile(configurationFile, contents);
+}
+
 function envelopeTypes(): string[] {
   return envelopes
     .flatMap(envelope =>
@@ -100,7 +105,10 @@ function envelopeTypes(): string[] {
     .filter(type => signalTypes.includes(type));
 }
 
-test('Sentry set, partial update, and JSON get persist independently of Community configuration', async () => {
+test('Sentry set, partial update, and JSON get preserve Community configuration and unknown settings', async () => {
+  await seedConfiguration(
+    JSON.stringify({communityPath: homeDirectory, future: {enabled: true}})
+  );
   expect(await set()).toEqual({
     exitCode: 0,
     stderr: '',
@@ -115,7 +123,11 @@ test('Sentry set, partial update, and JSON get persist independently of Communit
     stderr: '',
     stdout: `${JSON.stringify(expected)}\n`,
   });
-  expect(JSON.parse(await readFile(configurationFile, 'utf8'))).toEqual(expected);
+  expect(JSON.parse(await readFile(configurationFile, 'utf8'))).toEqual({
+    communityPath: homeDirectory,
+    future: {enabled: true},
+    sentry: expected,
+  });
   const stats = await stat(configurationFile);
   expect(stats.mode % 0o1000).toBe(0o600);
   expect(await run('community-path', 'set', homeDirectory)).toMatchObject({
@@ -193,23 +205,23 @@ test('set requires all four sampling rates and help lists commands', async () =>
   }
 });
 
-test('malformed configuration skips telemetry and set repairs it', async () => {
-  await mkdir(path.dirname(configurationFile));
-  await writeFile(configurationFile, '{broken');
+test('malformed configuration skips telemetry and preserves bytes on set and update', async () => {
+  await seedConfiguration('{broken');
   const greeting = await run('hello');
-  expect(greeting.exitCode).toBe(0);
-  expect(greeting.stdout).toBe('Hello via Bun!\n');
+  expect(greeting).toMatchObject({exitCode: 0, stdout: 'Hello via Bun!\n'});
   expect(greeting.stderr).toContain('Sentry telemetry skipped.');
   const get = await run('sentry', 'get');
   expect(get.exitCode).toBe(1);
-  expect(get.stderr).toContain('sentry set');
-  expect(await set()).toMatchObject({exitCode: 0});
+  expect(get.stderr).toContain('Repair the file');
+  expect(await set()).toMatchObject({exitCode: 1});
+  expect(await run('sentry', 'update', '--logs', '1')).toMatchObject({exitCode: 1});
+  expect(await readFile(configurationFile, 'utf8')).toBe('{broken');
 });
 
 test('failed atomic replacement removes temporary files', async () => {
   await mkdir(configurationFile, {recursive: true});
   expect(await set()).toMatchObject({exitCode: 1});
-  expect(await readdir(path.dirname(configurationFile))).toEqual(['sentry.json']);
+  expect(await readdir(path.dirname(configurationFile))).toEqual(['config.json']);
 });
 
 test('official SDK delivers logs, metrics, and traces before a successful command exits', async () => {

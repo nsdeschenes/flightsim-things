@@ -41,7 +41,7 @@ Relative paths resolve against your current directory. Quote paths that contain 
 Both commands expand `~` and `~/` to your home directory, including inside quotes.
 The CLI saves the path in `~/.flightsim-things/config.json`.
 `get` prints the saved path even if you later remove that directory.
-If no path is saved or the configuration is invalid, run `community-path set <path>`.
+If no path is saved or the saved path is invalid, run `community-path set <path>`.
 
 ## Configure Sentry telemetry
 
@@ -68,8 +68,15 @@ To print the saved DSN and sample rates as JSON:
 bun run start sentry get
 ```
 
-The CLI saves this configuration in `~/.flightsim-things/sentry.json` with private file permissions.
-`set` replaces the complete record and repairs malformed configuration.
+The CLI saves all settings in `~/.flightsim-things/config.json` with private file permissions.
+Community and Sentry settings share this file, and saving one preserves all other settings.
+`set` replaces the Sentry section and repairs an invalid DSN or sample rates.
+Older `sentry.json` settings remain readable when the shared file has no Sentry section.
+`sentry update` imports the older settings into the shared file; `sentry set` saves the supplied values.
+The older file remains unchanged.
+The shared Sentry section takes precedence over the older file.
+If the shared file contains malformed JSON or its root is not an object, reads and saves fail
+without changing its bytes. Repair the file first so existing settings can be preserved.
 `update` requires a saved configuration and at least one option.
 Invalid input leaves the saved file unchanged.
 
@@ -78,7 +85,17 @@ Logs and traces use generic command names. Error reports include the failure and
 The CLI records a completion metric and flushes telemetry before exit, with a bounded wait.
 Help, version, argument errors, and `sentry` configuration commands do not send telemetry.
 Without a saved configuration, telemetry is disabled.
-If configuration is malformed, commands still run and print instructions to repair it.
+If configuration is malformed, telemetry is skipped and commands print instructions to repair it.
+
+## Add CLI configuration settings
+
+Import the shared default export from `#configuration` when a command needs persistent settings.
+`get(key)` returns an Effect containing `Option<unknown>`; validate that value in the command's domain module.
+`set(key, value)` replaces only the selected top-level value and preserves every other setting.
+`update(key, callback)` reads the current optional value and runs a pure or Effect callback under
+an interprocess lock before saving. Validate and merge partial domain changes inside that callback
+so simultaneous commands cannot lose each other's changes. Values must be JSON-compatible.
+The shared module owns filesystem access, locking, private atomic writes, and legacy-file lookup.
 
 ## Run a release executable
 

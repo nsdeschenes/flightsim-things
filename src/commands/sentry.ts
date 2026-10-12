@@ -83,29 +83,29 @@ const updateCommand = Command.make(
           message: 'Provide at least one option to update.',
         });
       }
-      const previous = yield* get();
-      const configuration = yield* configurationStore.validate({
-        dsn: Option.getOrElse(dsn, () => previous.dsn),
-        sampleRates: {
-          errors: Option.match(errors, {
-            onNone: () => previous.sampleRates.errors,
-            onSome: parseSampleRate,
-          }),
-          logs: Option.match(logs, {
-            onNone: () => previous.sampleRates.logs,
-            onSome: parseSampleRate,
-          }),
-          metrics: Option.match(metrics, {
-            onNone: () => previous.sampleRates.metrics,
-            onSome: parseSampleRate,
-          }),
-          traces: Option.match(traces, {
-            onNone: () => previous.sampleRates.traces,
-            onSome: parseSampleRate,
-          }),
-        },
-      });
-      yield* configurationStore.write(configuration);
+      yield* configurationStore.update(previous =>
+        configurationStore.validate({
+          dsn: Option.getOrElse(dsn, () => previous.dsn),
+          sampleRates: {
+            errors: Option.match(errors, {
+              onNone: () => previous.sampleRates.errors,
+              onSome: parseSampleRate,
+            }),
+            logs: Option.match(logs, {
+              onNone: () => previous.sampleRates.logs,
+              onSome: parseSampleRate,
+            }),
+            metrics: Option.match(metrics, {
+              onNone: () => previous.sampleRates.metrics,
+              onSome: parseSampleRate,
+            }),
+            traces: Option.match(traces, {
+              onNone: () => previous.sampleRates.traces,
+              onSome: parseSampleRate,
+            }),
+          },
+        })
+      );
       return yield* Console.log('Sentry configuration saved.');
     })
 ).pipe(Command.withDescription('Update selected options in the saved configuration'));

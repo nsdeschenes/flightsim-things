@@ -124,30 +124,29 @@ test('unset get fails with instructions to save a directory', () => {
   expect(result.stderr).toContain('community-path set <path>');
 });
 
-test('get rejects malformed JSON with instructions to save a directory', async () => {
+test('get rejects malformed JSON with instructions to repair the file', async () => {
   const configurationDirectory = path.join(homeDirectory, '.flightsim-things');
   await mkdir(configurationDirectory);
   await writeFile(path.join(configurationDirectory, 'config.json'), '{broken');
   const result = run('community-path', 'get');
   expect(result.exitCode).toBe(1);
   expect(result.stderr).toContain('Invalid JSON');
-  expect(result.stderr).toContain('community-path set <path>');
+  expect(result.stderr).toContain('Repair the file');
 });
 
-test('set repairs malformed JSON', async () => {
+test('set preserves malformed JSON', async () => {
   const configurationDirectory = path.join(homeDirectory, '.flightsim-things');
   const directory = path.join(homeDirectory, 'Community');
   await mkdir(configurationDirectory);
   await mkdir(directory);
   await writeFile(path.join(configurationDirectory, 'config.json'), '{broken');
-  expect(run('community-path', 'set', directory).exitCode).toBe(0);
-  expect(run('community-path', 'get').stdout).toBe(`${directory}\n`);
+  expect(run('community-path', 'set', directory).exitCode).toBe(1);
+  expect(await readFile(path.join(configurationDirectory, 'config.json'), 'utf8')).toBe(
+    '{broken'
+  );
 });
 
 test.each([
-  'null',
-  '[]',
-  '{}',
   '{"communityPath":0}',
   '{"communityPath":""}',
   '{"communityPath":"relative"}',
@@ -185,7 +184,7 @@ test('a failed replacement reports the filesystem error and removes its temporar
   await mkdir(path.join(configurationDirectory, 'config.json'), {recursive: true});
   const result = run('community-path', 'set', homeDirectory);
   expect(result.exitCode).toBe(1);
-  expect(result.stderr).toContain('rename');
+  expect(result.stderr).toContain('read');
   expect(await readdir(configurationDirectory)).toEqual(['config.json']);
 });
 

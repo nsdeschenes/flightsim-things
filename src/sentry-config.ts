@@ -1,17 +1,15 @@
-import crypto from 'node:crypto';
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-
 import {Effect, Option, Schema} from 'effect';
 import {TaggedError as taggedError} from 'effect/Data';
-import {Struct as struct} from 'effect/Schema';
+import {
+  Record as record,
+  Struct as struct,
+  StructWithRest as structWithRest,
+} from 'effect/Schema';
+
+import configuration from '#configuration';
 
 const minimumSampleRate = 0;
 const maximumSampleRate = 1;
-const privateFileMode = 0o600;
-const configurationDirectory = path.join(os.homedir(), '.flightsim-things');
-const configurationFile = path.join(configurationDirectory, 'sentry.json');
 const lastPathSegment = -1;
 const projectId = /^[0-9]+$/u;
 const rawDsn =
@@ -52,7 +50,22 @@ const configurationSchema = struct({
   }),
 });
 
+const additionalProperties = [record(Schema.String, Schema.Json)];
+const storedSampleRatesSchema = structWithRest(
+  configurationSchema.fields.sampleRates,
+  additionalProperties
+);
+const storedConfigurationSchema = structWithRest(
+  struct({...configurationSchema.fields, sampleRates: storedSampleRatesSchema}),
+  additionalProperties
+);
+
 type SentryConfiguration = typeof configurationSchema.Type;
+type DeepReadonly<Value> = Value extends object
+  ? Value extends (...args: readonly never[]) => unknown
+    ? Value
+    : {readonly [Key in keyof Value]: DeepReadonly<Value[Key]>}
+  : Value;
 
 class SentryConfigurationError extends taggedError('SentryConfigurationError')<{
   readonly message: string;
@@ -60,6 +73,9 @@ class SentryConfigurationError extends taggedError('SentryConfigurationError')<{
 }> {}
 
 function toError(cause: unknown): SentryConfigurationError {
+  if (cause instanceof configuration.Error) {
+    return new SentryConfigurationError({cause, message: cause.message});
+  }
   if (cause instanceof SentryConfigurationError) {
     return cause;
   }
@@ -89,31 +105,11 @@ function readConfiguration(): Effect.Effect<
   SentryConfigurationError
 > {
   return Effect.gen(function* readSentryConfiguration() {
-    const contents = yield* Effect.tryPromise({
-      catch: toError,
-      try: async () => {
-        try {
-          return Option.some(await fs.readFile(configurationFile, 'utf8'));
-        } catch (error) {
-          if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
-            return Option.none();
-          }
-          throw error;
-        }
-      },
-    });
-    if (Option.isNone(contents)) {
+    const saved = yield* configuration.get('sentry').pipe(Effect.mapError(toError));
+    if (!Option.isSome(saved)) {
       return Option.none();
     }
-    const input = yield* Effect.try({
-      catch: () =>
-        new SentryConfigurationError({
-          message:
-            'Sentry configuration contains malformed JSON. Run sentry set with all options to replace it.',
-        }),
-      try: (): unknown => JSON.parse(contents.value),
-    });
-    return yield* validateConfiguration(input).pipe(
+    return yield* validateConfiguration(saved.value).pipe(
       Effect.asSome,
       Effect.mapError(
         () =>
@@ -127,33 +123,44 @@ function readConfiguration(): Effect.Effect<
 }
 
 function writeConfiguration(
-  configuration: SentryConfiguration
+  value: SentryConfiguration
 ): Effect.Effect<void, SentryConfigurationError> {
-  return Effect.tryPromise({
-    catch: toError,
-    try: async () => {
-      await fs.mkdir(configurationDirectory, {recursive: true});
-      const temporaryFile = path.join(
-        configurationDirectory,
-        `sentry.${crypto.randomUUID()}.tmp`
-      );
-      const file = await fs.open(temporaryFile, 'wx', privateFileMode);
-      try {
-        await file.writeFile(`${JSON.stringify(configuration)}\n`, 'utf8');
-        await file.close();
-        await fs.rename(temporaryFile, configurationFile);
-      } finally {
-        await file.close().catch(() => false);
-        await fs.rm(temporaryFile, {force: true});
-      }
-    },
-  }).pipe(Effect.uninterruptible);
+  return configuration.set('sentry', value).pipe(Effect.mapError(toError));
+}
+
+function updateConfiguration(
+  change: (
+    previous: Readonly<SentryConfiguration>
+  ) => Effect.Effect<SentryConfiguration, SentryConfigurationError>
+): Effect.Effect<void, SentryConfigurationError> {
+  return configuration
+    .update('sentry', (saved: DeepReadonly<Option.Option<unknown>>) =>
+      Effect.gen(function* updateSentryConfiguration() {
+        if (!Option.isSome(saved)) {
+          return yield* new SentryConfigurationError({
+            message: 'No Sentry configuration is saved. Run sentry set with all options.',
+          });
+        }
+        yield* validateConfiguration(saved.value);
+        const previous = yield* Schema.decodeUnknownEffect(storedConfigurationSchema)(
+          saved.value
+        ).pipe(Effect.mapError(toError));
+        const next = yield* change(previous);
+        return {
+          ...previous,
+          ...next,
+          sampleRates: {...previous.sampleRates, ...next.sampleRates},
+        };
+      })
+    )
+    .pipe(Effect.mapError(toError));
 }
 
 const configurationStore = {
   Error: SentryConfigurationError,
   read: readConfiguration,
   schema: configurationSchema,
+  update: updateConfiguration,
   validate: validateConfiguration,
   write: writeConfiguration,
 };
