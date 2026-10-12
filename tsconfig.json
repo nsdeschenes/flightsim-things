@@ -35,7 +35,11 @@
         "ignoreEffectSuggestionsInTscExitCode": true,
         "ignoreEffectWarningsInTscExitCode": false,
         "ignoreEffectErrorsInTscExitCode": false,
-        "allowedUnstableApis": ["effect/cli", "@effect/platform-bun"],
+        "allowedUnstableApis": [
+          "effect/cli",
+          "effect/ErrorReporter",
+          "@effect/platform-bun"
+        ],
         "diagnosticSeverity": {
           "anyUnknownInErrorContext": "error",
           "unsafeEffectTypeAssertion": "error"

@@ -6,7 +6,8 @@
   "type": "module",
   "module": "index.ts",
   "imports": {
-    "#package": "./package.json"
+    "#package": "./package.json",
+    "#sentry-config": "./src/sentry-config.ts"
   },
   "scripts": {
     "start": "bun src/index.ts",
@@ -27,6 +28,7 @@
   },
   "dependencies": {
     "@effect/platform-bun": "4.0.2",
+    "@sentry/effect": "11.7.0",
     "effect": "^4.0.2"
   },
   "devDependencies": {

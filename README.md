@@ -43,6 +43,43 @@ The CLI saves the path in `~/.flightsim-things/config.json`.
 `get` prints the saved path even if you later remove that directory.
 If no path is saved or the configuration is invalid, run `community-path set <path>`.
 
+## Configure Sentry telemetry
+
+To create or replace your Sentry configuration, provide a DSN and all four sample rates:
+
+```bash
+bun run start sentry set --dsn 'https://publickey@o0.ingest.sentry.io/123456' \
+  --errors 1 --logs 0 --metrics 0 --traces 0
+```
+
+Each rate must be a finite number from `0` to `1`.
+`0` drops every item for that signal. `1` keeps every item.
+Intermediate rates sample each signal independently.
+
+To update selected values in an existing configuration:
+
+```bash
+bun run start sentry update --logs 0.1 --metrics 0.1 --traces 0.05
+```
+
+To print the saved DSN and sample rates as JSON:
+
+```bash
+bun run start sentry get
+```
+
+The CLI saves this configuration in `~/.flightsim-things/sentry.json` with private file permissions.
+`set` replaces the complete record and repairs malformed configuration.
+`update` requires a saved configuration and at least one option.
+Invalid input leaves the saved file unchanged.
+
+Configured commands use the official `@sentry/effect` SDK for errors, logs, metrics, and traces.
+Logs and traces use generic command names. Error reports include the failure and stack.
+The CLI records a completion metric and flushes telemetry before exit, with a bounded wait.
+Help, version, argument errors, and `sentry` configuration commands do not send telemetry.
+Without a saved configuration, telemetry is disabled.
+If configuration is malformed, commands still run and print instructions to repair it.
+
 ## Run a release executable
 
 Download the executable for your operating system and architecture from GitHub Releases.
@@ -152,7 +189,7 @@ bun run stage:release dist
 The project pins `@effect/tsgo` to `0.51.1` and TypeScript to `7.0.2`, a supported compiler version for that release.
 The patch adds Effect diagnostics to `bun run typecheck`, which runs `tsc --noEmit` in CI and the pre-commit hook.
 Effect warnings and errors fail typecheck. Suggestions remain nonfatal.
-Only `effect/cli` and `@effect/platform-bun` have an allowance for unstable APIs.
+`effect/cli`, `effect/ErrorReporter`, and `@effect/platform-bun` have an allowance for unstable APIs.
 
 To run standalone Effect diagnostics:
 
