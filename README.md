@@ -119,16 +119,19 @@ Craft comments on PRs with a changelog preview and semantic version impact, refr
 Enable **Allow GitHub Actions to create and approve pull requests** in the repository's **Settings > Actions > General**.
 The workflows use `GITHUB_TOKEN` and require no additional release secret.
 
-1. Run **Prepare release** on `main`. Choose `auto`, `major`, `minor`, `patch`, or a stable version such as `0.1.0`.
-2. Review the generated `release/<version>` PR. Craft updates `package.json` and `CHANGELOG.md`.
-3. Wait for **CI** and **Binaries** on the release branch, then merge the PR.
-4. Wait for both workflows on the merged `main` commit. Copy the full merged commit SHA.
-5. Run **Publish release** on `main` with the version without `v` and that SHA.
+In GitHub Actions, leave **Use workflow from** set to `main` for both release workflows.
+Set `target_branch` to the existing branch that receives the release PR. The default is `main`.
 
-For example, to prepare a release through the GitHub CLI:
+1. Run **Prepare release**. For a stable release, use `target_branch=main` and choose `auto`, `major`, `minor`, `patch`, or a version such as `0.1.0`.
+2. Review the generated `release/<version>` PR into the target branch. Craft updates `package.json` and `CHANGELOG.md`.
+3. Wait for **CI** and **Binaries** on the release branch, then merge the PR.
+4. Wait for both workflows on the merged target branch commit. Copy the full merged commit SHA.
+5. Run **Publish release** with the same `target_branch`, the resolved version without `v`, and that SHA.
+
+To prepare a stable release through the GitHub CLI:
 
 ```bash
-gh workflow run prepare-release.yml --ref main -f version=minor
+gh workflow run prepare-release.yml --ref main -f version=minor -f target_branch=main
 ```
 
 To publish the reviewed release, replace the example SHA with the merged PR commit:
@@ -136,41 +139,78 @@ To publish the reviewed release, replace the example SHA with the merged PR comm
 ```bash
 gh workflow run publish-release.yml --ref main \
   -f version=0.1.0 \
+  -f target_branch=main \
   -f release_sha=0123456789abcdef0123456789abcdef01234567
 ```
 
-Publication requires a merged release PR, the matching manifest version, and successful checks for that exact commit.
+For a prerelease from `main`, enter an explicit version such as `1.2.3-alpha.1`, `1.2.3-beta.1`, or `1.2.3-rc.1`.
+Prereleases appear as GitHub prereleases and do not become the latest release.
+
+For divergent development, create a branch such as `map-ui` from `main` in GitHub.
+Create the branch after this release workflow update reaches `main`, or merge the update into an existing branch before its first release.
+Prepare `1.2.3-alpha.map-ui.1` with `target_branch=map-ui`.
+Review and merge the release PR into `map-ui`, then publish with the same target and its merged SHA.
+A pending release PR into `map-ui` permits a separate stable release PR into `main`.
+
+```bash
+gh workflow run prepare-release.yml --ref main \
+  -f version=1.2.3-alpha.map-ui.1 -f target_branch=map-ui
+gh workflow run publish-release.yml --ref main \
+  -f version=1.2.3-alpha.map-ui.1 \
+  -f target_branch=map-ui \
+  -f release_sha=0123456789abcdef0123456789abcdef01234567
+```
+
+As development advances, repeat the process with versions such as `1.2.3-beta.map-ui.1` and `1.2.3-rc.map-ui.1`.
+The optional track identifier distinguishes independent releases of the same base version and stage.
+It is one lowercase identifier starting with a letter and containing letters, digits, or hyphens.
+The track identifier need not match the target branch name.
+Versions and iteration numbers have no leading zeros except `0`. Build metadata and other prerelease suffixes are rejected.
+Choose each prerelease version explicitly. Craft does not increment its iteration number automatically.
+After integrating the development branch into `main`, prepare an explicit stable version such as `1.2.3` on `main`.
+Craft generates each changelog from the nearest reachable tag, so merging newer mainline tags into a development branch changes that baseline.
+
+Publication requires a merged release PR into the selected target, the matching manifest version, and successful checks for that exact branch and commit.
 The Binaries workflow builds and runs each executable on its native operating system and architecture.
 Publication downloads those tested bytes from the verified workflow run.
 The release contains four versioned executables and `SHA256SUMS`.
 Publication uploads and verifies the assets in a draft before making the release public.
 
-If publication fails after creating a draft, rerun it with the same version and SHA.
-The workflow replaces the draft assets with the verified files.
-A retry of an already public release verifies its assets without changing them.
+If publication fails after creating a draft, rerun it with the same version, target, and SHA.
+The workflow replaces the draft assets with the verified files and reconciles its prerelease flag.
+A retry of an already public release verifies its tag, prerelease flag, and assets without changing them.
+A public prerelease marked as the latest release fails verification.
 A tag that points to a different commit fails publication.
 
 Artifacts expire after 14 days.
 GitHub permits workflow reruns only within 30 days of the original run.
 Publish before artifacts expire, or restore them within that window.
 After that window, prepare a new release.
-To restore artifacts for an older release commit, find its main push Binaries run and rerun that run:
+To restore artifacts, find the target branch's push Binaries run for the merged commit and rerun it:
 
 ```bash
-gh run list --workflow binaries.yml --branch main --event push --commit <merged-sha>
+gh run list --workflow binaries.yml --branch map-ui --event push --commit <merged-sha>
 gh run rerun <run-id>
 ```
 
 Wait for that run to succeed before publishing again.
-To rebuild the current `main` commit, you can also run **Binaries** manually on `main`.
+If the target branch still points at the merged release SHA, you can run **CI** and **Binaries** manually on that branch.
+This also starts checks when a token-created merge does not trigger push workflows:
+
+```bash
+gh workflow run ci.yml --ref map-ui
+gh workflow run binaries.yml --ref map-ui
+```
 
 If preparation pushes a branch but fails to open its PR, inspect the version and changelog on that branch.
-Open its PR manually and run both checks on the branch:
+Open its PR into the intended target and run both checks on the release branch:
 
 ```bash
 gh workflow run ci.yml --ref release/<version>
 gh workflow run binaries.yml --ref release/<version>
 ```
+
+The release workflow tests in `bun test` require Bash and `jq`. The CI Ubuntu runner provides both.
 
 ## Build and verify executables locally
 

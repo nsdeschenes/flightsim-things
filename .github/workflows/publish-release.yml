@@ -4,11 +4,16 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Stable version without v from the merged release PR
+        description: Version without v from the merged release PR
         required: true
         type: string
+      target_branch:
+        description: Branch that received the release PR. Stable releases require main.
+        required: true
+        default: main
+        type: string
       release_sha:
-        description: Full merged release PR commit SHA on main
+        description: Full merged release PR commit SHA on the target branch
         required: true
         type: string
 
@@ -30,12 +35,12 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       VERSION: ${{ inputs.version }}
       RELEASE_SHA: ${{ inputs.release_sha }}
+      TARGET_BRANCH: ${{ inputs.target_branch }}
       GH_REPO: ${{ github.repository }}
     steps:
       - name: Validate release inputs
         run: |
           set -euo pipefail
-          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
           [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
       - uses: actions/checkout@v7
         with:
@@ -44,19 +49,27 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.2
+      - name: Validate release identity
+        id: identity
+        run: |
+          set -euo pipefail
+          mkdir "$RUNNER_TEMP/release-helper"
+          cp scripts/release.ts scripts/release-version.ts package.json "$RUNNER_TEMP/release-helper/"
+          IDENTITY=$(bun "$RUNNER_TEMP/release-helper/release.ts" release-info "$VERSION" "$TARGET_BRANCH")
+          echo "prerelease=$(jq -r '.version.kind == "prerelease"' <<< "$IDENTITY")" >> "$GITHUB_OUTPUT"
+          git ls-remote --exit-code --heads origin "refs/heads/$TARGET_BRANCH"
       - name: Verify reviewed release commit
         run: |
           set -euo pipefail
-          git fetch origin main
+          git fetch origin "refs/heads/$TARGET_BRANCH:refs/remotes/origin/$TARGET_BRANCH"
           git cat-file -e "$RELEASE_SHA^{commit}"
-          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
+          git merge-base --is-ancestor "$RELEASE_SHA" "refs/remotes/origin/$TARGET_BRANCH"
           gh api "repos/$GH_REPO/commits/$RELEASE_SHA/pulls" --paginate --slurp |
-            jq -e --arg branch "release/$VERSION" --arg sha "$RELEASE_SHA" \
-            'flatten | any(.[]; .base.ref == "main" and .head.ref == $branch and .merged_at != null and .merge_commit_sha == $sha)'
+            jq -e --arg branch "release/$VERSION" --arg target "$TARGET_BRANCH" --arg sha "$RELEASE_SHA" \
+            'flatten | any(.[]; .base.ref == $target and .head.ref == $branch and .merged_at != null and .merge_commit_sha == $sha)'
           git checkout --detach "$RELEASE_SHA"
           [[ "$(git rev-parse HEAD)" == "$RELEASE_SHA" ]]
           [[ "$(jq -r .version package.json)" == "$VERSION" ]]
-          bun scripts/release.ts validate-version "$VERSION"
           awk -v version="$VERSION" '
             /^## / {
               if (found) exit
@@ -73,11 +86,12 @@ jobs:
         id: checks
         run: |
           set -euo pipefail
+          ENCODED_BRANCH=$(jq -rn --arg branch "$TARGET_BRANCH" '$branch | @uri')
           for workflow in ci.yml binaries.yml; do
-            gh api "repos/$GH_REPO/actions/workflows/$workflow/runs?branch=main&head_sha=$RELEASE_SHA&per_page=100" > "$RUNNER_TEMP/runs.json"
-            RUN=$(jq -c --arg workflow "$workflow" --arg sha "$RELEASE_SHA" '
-              [.workflow_runs[] | select(.head_branch == "main" and .head_sha == $sha) |
-                select(.event == "push" or ($workflow == "binaries.yml" and .event == "workflow_dispatch"))]
+            gh api "repos/$GH_REPO/actions/workflows/$workflow/runs?branch=$ENCODED_BRANCH&head_sha=$RELEASE_SHA&per_page=100" > "$RUNNER_TEMP/runs.json"
+            RUN=$(jq -c --arg branch "$TARGET_BRANCH" --arg sha "$RELEASE_SHA" '
+              [.workflow_runs[] | select(.head_branch == $branch and .head_sha == $sha) |
+                select(.event == "push" or .event == "workflow_dispatch")]
               | sort_by(.created_at) | last
             ' "$RUNNER_TEMP/runs.json")
             jq -e '.status == "completed" and .conclusion == "success"' <<< "$RUN"
@@ -91,11 +105,17 @@ jobs:
         run: |
           set -euo pipefail
           gh run download "$BINARY_RUN" --name "$RELEASE_SHA" --dir dist
-          bun scripts/release.ts verify-assets dist "$VERSION"
+          bun "$RUNNER_TEMP/release-helper/release.ts" verify-assets dist "$VERSION"
       - name: Create or reconcile a draft and publish complete assets
+        env:
+          PRERELEASE: ${{ steps.identity.outputs.prerelease }}
         run: |
           set -euo pipefail
           TAG="v$VERSION"
+          RELEASE_FLAGS=(--prerelease="$PRERELEASE")
+          if [[ "$PRERELEASE" == true ]]; then
+            RELEASE_FLAGS+=(--latest=false)
+          fi
           if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > "$RUNNER_TEMP/tag-ref"; then
             git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
             [[ "$(git rev-parse "$TAG^{commit}")" == "$RELEASE_SHA" ]]
@@ -104,10 +124,21 @@ jobs:
           RELEASE=$(jq -c --arg tag "$TAG" 'flatten | map(select(.tag_name == $tag)) | first' "$RUNNER_TEMP/releases.json")
           if [[ "$RELEASE" != null ]]; then
             if [[ "$(jq -r .draft <<< "$RELEASE")" == false ]]; then
+              [[ "$(jq -r .prerelease <<< "$RELEASE")" == "$PRERELEASE" ]]
+              if [[ "$PRERELEASE" == true ]]; then
+                LATEST_TAG=$(gh api "repos/$GH_REPO/releases/latest" --jq .tag_name 2> "$RUNNER_TEMP/latest-error") || {
+                  if ! grep -q 'HTTP 404' "$RUNNER_TEMP/latest-error"; then
+                    cat "$RUNNER_TEMP/latest-error"
+                    exit 1
+                  fi
+                  LATEST_TAG=''
+                }
+                [[ "$LATEST_TAG" != "$TAG" ]]
+              fi
               git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
               [[ "$(git rev-parse "$TAG^{commit}")" == "$RELEASE_SHA" ]]
               gh release download "$TAG" --dir "$RUNNER_TEMP/published-assets"
-              bun scripts/release.ts verify-assets "$RUNNER_TEMP/published-assets" "$VERSION"
+              bun "$RUNNER_TEMP/release-helper/release.ts" verify-assets "$RUNNER_TEMP/published-assets" "$VERSION"
               diff dist/SHA256SUMS "$RUNNER_TEMP/published-assets/SHA256SUMS"
               echo "Release is already public with the verified assets."
               exit 0
@@ -118,11 +149,11 @@ jobs:
               gh api --method DELETE "repos/$GH_REPO/releases/assets/$ASSET_ID"
             done < <(gh api "repos/$GH_REPO/releases/$RELEASE_ID/assets" --paginate --jq '.[].id')
           else
-            gh release create "$TAG" --target "$RELEASE_SHA" --draft --title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
+            gh release create "$TAG" --target "$RELEASE_SHA" --draft "${RELEASE_FLAGS[@]}" --title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
           fi
-          gh release edit "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
+          gh release edit "$TAG" "${RELEASE_FLAGS[@]}" --notes-file "$RUNNER_TEMP/release-notes.md"
           gh release upload "$TAG" dist/*
           gh release download "$TAG" --dir "$RUNNER_TEMP/draft-assets"
-          bun scripts/release.ts verify-assets "$RUNNER_TEMP/draft-assets" "$VERSION"
+          bun "$RUNNER_TEMP/release-helper/release.ts" verify-assets "$RUNNER_TEMP/draft-assets" "$VERSION"
           diff dist/SHA256SUMS "$RUNNER_TEMP/draft-assets/SHA256SUMS"
-          gh release edit "$TAG" --draft=false
+          gh release edit "$TAG" "${RELEASE_FLAGS[@]}" --draft=false
