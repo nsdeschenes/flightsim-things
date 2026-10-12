@@ -1,0 +1,128 @@
+name: Publish release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Stable version without v from the merged release PR
+        required: true
+        type: string
+      release_sha:
+        description: Full merged release PR commit SHA on main
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: craft-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VERSION: ${{ inputs.version }}
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Validate release inputs
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Verify reviewed release commit
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git cat-file -e "$RELEASE_SHA^{commit}"
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
+          gh api "repos/$GH_REPO/commits/$RELEASE_SHA/pulls" --paginate --slurp |
+            jq -e --arg branch "release/$VERSION" --arg sha "$RELEASE_SHA" \
+            'flatten | any(.[]; .base.ref == "main" and .head.ref == $branch and .merged_at != null and .merge_commit_sha == $sha)'
+          git checkout --detach "$RELEASE_SHA"
+          [[ "$(git rev-parse HEAD)" == "$RELEASE_SHA" ]]
+          [[ "$(jq -r .version package.json)" == "$VERSION" ]]
+          bun scripts/release.ts validate-version "$VERSION"
+          awk -v version="$VERSION" '
+            /^## / {
+              if (found) exit
+              heading=$2
+              sub(/^\[/, "", heading)
+              sub(/\]$/, "", heading)
+              if (heading == version) {found=1; next}
+            }
+            found {print}
+            END {if (!found) exit 1}
+          ' CHANGELOG.md > "$RUNNER_TEMP/release-notes.md"
+          [[ -s "$RUNNER_TEMP/release-notes.md" ]]
+      - name: Require latest successful checks for this commit
+        id: checks
+        run: |
+          set -euo pipefail
+          for workflow in ci.yml binaries.yml; do
+            gh api "repos/$GH_REPO/actions/workflows/$workflow/runs?branch=main&head_sha=$RELEASE_SHA&per_page=100" > "$RUNNER_TEMP/runs.json"
+            RUN=$(jq -c --arg workflow "$workflow" --arg sha "$RELEASE_SHA" '
+              [.workflow_runs[] | select(.head_branch == "main" and .head_sha == $sha) |
+                select(.event == "push" or ($workflow == "binaries.yml" and .event == "workflow_dispatch"))]
+              | sort_by(.created_at) | last
+            ' "$RUNNER_TEMP/runs.json")
+            jq -e '.status == "completed" and .conclusion == "success"' <<< "$RUN"
+            if [[ "$workflow" == binaries.yml ]]; then
+              echo "binary_run=$(jq -r .id <<< "$RUN")" >> "$GITHUB_OUTPUT"
+            fi
+          done
+      - name: Download the tested assets from the verified run
+        env:
+          BINARY_RUN: ${{ steps.checks.outputs.binary_run }}
+        run: |
+          set -euo pipefail
+          gh run download "$BINARY_RUN" --name "$RELEASE_SHA" --dir dist
+          bun scripts/release.ts verify-assets dist "$VERSION"
+      - name: Create or reconcile a draft and publish complete assets
+        run: |
+          set -euo pipefail
+          TAG="v$VERSION"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > "$RUNNER_TEMP/tag-ref"; then
+            git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
+            [[ "$(git rev-parse "$TAG^{commit}")" == "$RELEASE_SHA" ]]
+          fi
+          gh api "repos/$GH_REPO/releases" --paginate --slurp > "$RUNNER_TEMP/releases.json"
+          RELEASE=$(jq -c --arg tag "$TAG" 'flatten | map(select(.tag_name == $tag)) | first' "$RUNNER_TEMP/releases.json")
+          if [[ "$RELEASE" != null ]]; then
+            if [[ "$(jq -r .draft <<< "$RELEASE")" == false ]]; then
+              git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
+              [[ "$(git rev-parse "$TAG^{commit}")" == "$RELEASE_SHA" ]]
+              gh release download "$TAG" --dir "$RUNNER_TEMP/published-assets"
+              bun scripts/release.ts verify-assets "$RUNNER_TEMP/published-assets" "$VERSION"
+              diff dist/SHA256SUMS "$RUNNER_TEMP/published-assets/SHA256SUMS"
+              echo "Release is already public with the verified assets."
+              exit 0
+            fi
+            [[ "$(jq -r .target_commitish <<< "$RELEASE")" == "$RELEASE_SHA" ]]
+            RELEASE_ID=$(jq -r .id <<< "$RELEASE")
+            while read -r ASSET_ID; do
+              gh api --method DELETE "repos/$GH_REPO/releases/assets/$ASSET_ID"
+            done < <(gh api "repos/$GH_REPO/releases/$RELEASE_ID/assets" --paginate --jq '.[].id')
+          else
+            gh release create "$TAG" --target "$RELEASE_SHA" --draft --title "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
+          fi
+          gh release edit "$TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
+          gh release upload "$TAG" dist/*
+          gh release download "$TAG" --dir "$RUNNER_TEMP/draft-assets"
+          bun scripts/release.ts verify-assets "$RUNNER_TEMP/draft-assets" "$VERSION"
+          diff dist/SHA256SUMS "$RUNNER_TEMP/draft-assets/SHA256SUMS"
+          gh release edit "$TAG" --draft=false

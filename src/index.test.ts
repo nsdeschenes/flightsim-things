@@ -4,6 +4,8 @@ import {homedir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
+import {version} from '#package';
+
 const cli = fileURLToPath(new URL('index.ts', import.meta.url));
 const testDirectory = path.join(
   homedir(),
@@ -51,6 +53,14 @@ test('hello still prints the greeting', () => {
     exitCode: 0,
     stderr: '',
     stdout: 'Hello via Bun!\n',
+  });
+});
+
+test('version reports the manifest version', () => {
+  expect(run('--version')).toEqual({
+    exitCode: 0,
+    stderr: '',
+    stdout: `flightsim-things v${version}\n`,
   });
 });
 

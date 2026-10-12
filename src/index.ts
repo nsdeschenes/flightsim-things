@@ -2,6 +2,8 @@ import {BunRuntime, BunServices} from '@effect/platform-bun';
 import {Console, Effect} from 'effect';
 import {CliConfig, CliError, Command, GlobalFlag} from 'effect/cli';
 
+import {version} from '#package';
+
 import communityPathCommand from './commands/community-path.ts';
 
 const argvOffset = 2;
@@ -43,10 +45,11 @@ function failureMessage(error: unknown): string {
   return String(error);
 }
 
-const main = Command.runWith(command, {version: '0.0.0'})(
-  process.argv.slice(argvOffset)
-).pipe(
-  Effect.provide([BunServices.layer, CliConfig.layer({builtIns: [GlobalFlag.Help]})]),
+const main = Command.runWith(command, {version})(process.argv.slice(argvOffset)).pipe(
+  Effect.provide([
+    BunServices.layer,
+    CliConfig.layer({builtIns: [GlobalFlag.Help, GlobalFlag.Version]}),
+  ]),
   Effect.match({
     onFailure(error: unknown) {
       process.exitCode = exitCodeFor(error);
