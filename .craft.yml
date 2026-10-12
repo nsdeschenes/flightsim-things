@@ -1,0 +1,7 @@
+minVersion: '2.33.1'
+versioning:
+  policy: auto
+changelog:
+  policy: auto
+preReleaseCommand: bun scripts/release.ts bump-version
+postReleaseCommand: ''
