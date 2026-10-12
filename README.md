@@ -64,6 +64,8 @@ Use the executable in place of `bun run start` for the commands above.
 
 ## Prepare and publish a release
 
+Craft comments on PRs with a changelog preview and semantic version impact, refreshed when the PR changes.
+
 Enable **Allow GitHub Actions to create and approve pull requests** in the repository's **Settings > Actions > General**.
 The workflows use `GITHUB_TOKEN` and require no additional release secret.
 
