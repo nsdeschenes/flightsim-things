@@ -67,6 +67,32 @@ Airport records require explicit `FSData` airport XML or an
 are not decoded. Scenery packages are saved with a warning, so their airport records
 can be incomplete. Unknown names and codes remain null.
 
+## Save an OpenAIP API key
+
+Sign in at [OpenAIP](https://www.openaip.net/), open **API clients**, create a client,
+and copy its API key.
+To save the key for the first time or replace a saved key:
+
+```bash
+bun run start openaip-key set 'your-api-key'
+```
+
+`set` prints `OpenAIP API key saved.` and saves the key as `openaipApiKey` in
+`~/.flightsim-things/config.json` with private file permissions.
+It preserves Community, Sentry, and other settings.
+Provide the key exactly as copied, without whitespace or control characters.
+Invalid input leaves the saved file unchanged.
+
+To print the saved key in a later session:
+
+```bash
+bun run start openaip-key get
+```
+
+`get` prints only the key. OpenAIP key commands do not send Sentry telemetry.
+If the configuration file contains malformed JSON or its root is not an object,
+repair the file before saving. The CLI preserves its existing bytes.
+
 ## Configure Sentry telemetry
 
 To create or replace your Sentry configuration, provide a DSN and all four sample rates:
@@ -103,7 +129,8 @@ Invalid input leaves the saved file unchanged.
 Configured commands use the official `@sentry/effect` SDK for errors, logs, metrics, and traces.
 Logs and traces use generic command names. Error reports include the failure and stack.
 The CLI records a completion metric and flushes telemetry before exit, with a bounded wait.
-Help, version, argument errors, and `sentry` configuration commands do not send telemetry.
+Help, version, argument errors, `sentry` configuration commands, and `openaip-key`
+commands do not send telemetry.
 Without a saved configuration, telemetry is disabled.
 If configuration is malformed, telemetry is skipped and commands print instructions to repair it.
 

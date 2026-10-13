@@ -10,6 +10,7 @@
     "#sentry-config": "./src/sentry-config.ts",
     "#configuration": "./src/configuration.ts",
     "#community-path": "./src/community-path.ts",
+    "#openaip-key": "./src/openaip-key.ts",
     "#database": "./src/database/index.ts",
     "#database-schema": "./src/database/schema.ts",
     "#scanner": "./src/scanner/index.ts"
