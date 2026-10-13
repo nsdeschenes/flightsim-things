@@ -241,4 +241,4 @@ See [the schema, import mapping, and usage examples](docs/addon-database.md).
 Community scanning and metadata import commands are the next layer to build.
 
 After changing database tables, run `bun run db:generate` and review the generated SQL.
-Run `bun run db:check` to verify the embedded migration journal.
+Release builds embed the complete `drizzle/` directory in each executable.

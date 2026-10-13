@@ -129,8 +129,8 @@ Drizzle Kit can discover them while honoring the repository's default-export rul
 graph. Required child package links use `optional: false`. Livery aircraft and airline
 links remain nullable. Inverse collection links use Drizzle's relation inference.
 `index.ts` owns the resource scope, connection settings, migration lock,
-and error mapping. `migrations.ts` is generated from the committed Drizzle history.
-`location.ts` computes the home directory and database file path.
+and error mapping. `drizzle/` contains the canonical migration history.
+`location.ts` computes the database file and migration directory paths.
 
 The client receives `drizzle({client, relations: schema.relations})`. Its type retains
 the concrete relation graph, so `with` fields and nested result types follow that graph.
@@ -185,19 +185,25 @@ After changing a table:
 
 ```sh
 bun run db:generate
-bun run db:check
 ```
 
-Review the generated SQL and snapshot under `drizzle/`, then commit them with the
-generated embedded journal. Applied migration files are immutable. The embedding
-script derives the complete journal from Drizzle's history, so there is no manual
-migration list to synchronize. CI checks that the embedded journal matches that history.
+Review and commit the generated SQL and snapshot under `drizzle/`.
+Applied migration files are immutable. Release builds embed the complete directory
+with Bun's `compile.assets` option. There is no generated TypeScript journal to maintain.
 
-Drizzle's Bun migrator applies embedded SQL and records it in `__drizzle_migrations`.
-A separate `proper-lockfile` lock serializes migration startup because the pinned
-migrator reads history before opening its SQL transaction. Ordinary queries and writes
-use SQLite's coordination. Unknown migration names cause an older executable to fail
-before running caller queries. No runtime migration folder or release sidecar is needed.
+During development, Drizzle reads the repository's migration directory relative to
+the database module. Standalone executables read the embedded directory under
+`import.meta.dir`, including when launched from an empty working directory.
+Drizzle's Bun migrator applies the SQL and records it in `__drizzle_migrations`.
+
+A `proper-lockfile` lock covers migration history validation, migrations, and the
+synchronous callback. The pinned migrator reads history before opening its SQL
+transaction, so SQLite's busy timeout alone cannot protect concurrent initialization.
+Holding the lock through the callback also prevents a newer executable from migrating
+between an older executable's compatibility check and its queries. This serializes
+`database.use` callbacks across processes. Keep callbacks short and do not nest them.
+Unknown migration names cause an older executable to fail before running caller queries.
+Releases still require only the executable, with no migration sidecar.
 
 ## Synthesis decision
 

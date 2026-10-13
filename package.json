@@ -11,8 +11,7 @@
     "#configuration": "./src/configuration.ts"
   },
   "scripts": {
-    "db:generate": "drizzle-kit generate && bun scripts/embed-migrations.ts",
-    "db:check": "bun scripts/embed-migrations.ts --check",
+    "db:generate": "drizzle-kit generate",
     "start": "bun src/index.ts",
     "typecheck": "tsc --noEmit",
     "effect:diagnostics": "effect-tsgo diagnostics --project tsconfig.json",

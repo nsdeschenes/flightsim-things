@@ -4,11 +4,11 @@ import {chmod, mkdir} from 'node:fs/promises';
 import {sql} from 'drizzle-orm';
 import {drizzle} from 'drizzle-orm/bun-sqlite';
 import {migrate} from 'drizzle-orm/bun-sqlite/migrator';
+import {readMigrationFiles} from 'drizzle-orm/migrator';
 import {Data, Effect} from 'effect';
 import {lock} from 'proper-lockfile';
 
 import location from './location.ts';
-import migrations from './migrations.ts';
 import schema from './schema.ts';
 
 type DeepReadonly<Value> = Value extends object
@@ -33,7 +33,7 @@ type QueryDatabase = Methods<AddonDatabase> & {
   };
 };
 
-const {databaseFile, directory} = location;
+const {databaseFile, directory, migrationsFolder} = location;
 const privateDirectoryMode = 0o700;
 const privateFileMode = 0o600;
 const busyTimeoutMilliseconds = 5000;
@@ -62,9 +62,9 @@ function toError(cause: unknown): DatabaseError {
   });
 }
 
-function initialize(runMigrations: () => void): Effect.Effect<void, DatabaseError> {
+function withDatabaseLock<Value>(run: () => Value): Effect.Effect<Value, DatabaseError> {
   return Effect.scoped(
-    Effect.gen(function* migrateDatabase() {
+    Effect.gen(function* useLockedDatabase() {
       yield* Effect.acquireRelease(
         Effect.tryPromise({
           catch: toError,
@@ -85,9 +85,9 @@ function initialize(runMigrations: () => void): Effect.Effect<void, DatabaseErro
             await release();
           })
       );
-      yield* Effect.try({
+      return yield* Effect.try({
         catch: toError,
-        try: runMigrations,
+        try: run,
       });
     })
   );
@@ -98,7 +98,7 @@ function verifyMigrationHistory(db: QueryDatabase): void {
     sql`SELECT name FROM sqlite_master WHERE type = 'table' AND name = '__drizzle_migrations'`
   ).length;
   if (historyExists) {
-    const knownNames = migrations.map(
+    const knownNames = readMigrationFiles({migrationsFolder}).map(
       (migration: Readonly<{name: string}>) => migration.name
     );
     const applied = db.all<{name: string}>(sql`SELECT name FROM __drizzle_migrations`);
@@ -168,14 +168,11 @@ function use<Value>(
           client.run('PRAGMA foreign_keys = ON');
         },
       });
-      yield* initialize(() => {
+      return yield* withDatabaseLock(() => {
         verifyMigrationHistory(db);
-        migrate(db, migrations);
+        migrate(db, {migrationsFolder});
         db.run(sql`PRAGMA journal_mode = WAL`);
-      });
-      return yield* Effect.try({
-        catch: toError,
-        try: () => synchronousResult(query(db)),
+        return synchronousResult(query(db));
       });
     })
   );

@@ -1,6 +1,6 @@
 import {afterEach, beforeEach, expect, expectTypeOf, test} from 'bun:test';
 import {mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile} from 'node:fs/promises';
-import {homedir} from 'node:os';
+import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -8,15 +8,13 @@ import {Effect, Schema} from 'effect';
 
 import database from './index.ts';
 import schema from './schema.ts';
+import processFixture from './test-fixtures/process.ts';
 import relationsFixture from './test-fixtures/relations.ts';
 
 const repository = fileURLToPath(new URL('../..', import.meta.url));
 const databaseModule = fileURLToPath(new URL('index.ts', import.meta.url));
 const schemaModule = fileURLToPath(new URL('schema.ts', import.meta.url));
-const testDirectory = path.join(
-  homedir(),
-  '.cache/agent-work/flightsim-things/addon-database/context'
-);
+const testDirectory = path.join(tmpdir(), 'flightsim-things-addon-database');
 let homeDirectory: string;
 
 beforeEach(async () => {
@@ -254,37 +252,17 @@ test('callbacks reject asynchronous and unexecuted queries and preserve usable s
   });
 });
 
-async function compileProbe(): Promise<string> {
-  const entrypoint = path.join(homeDirectory, 'probe.ts');
-  let filename = 'probe';
-  if (process.platform === 'win32') {
-    filename = 'probe.exe';
-  }
-  const executable = path.join(homeDirectory, filename);
-  await writeFile(
-    entrypoint,
-    `
-    import database from ${JSON.stringify(databaseModule)};
-    import schema from ${JSON.stringify(schemaModule)};
-    import {Effect} from ${JSON.stringify(Bun.resolveSync('effect', repository))};
-    await Effect.runPromise(database.use(db => db.insert(schema.packages).values({sourcePath: '/Community/bundled'}).onConflictDoNothing().run()));
-    console.log(JSON.stringify(await Effect.runPromise(database.use(db => db.query.packages.findMany({
-      columns: {sourcePath: true}, with: {aircraft: true, airports: true, liveries: true},
-    }).sync()))));
-  `
-  );
-  const build = await Bun.build({
-    compile: {outfile: executable},
-    entrypoints: [entrypoint],
-    target: 'bun',
+test('database lock covers callbacks and releases after successful or failed queries', async () => {
+  expect(await run(processFixture.lockProgram)).toMatchObject({
+    exitCode: 0,
+    stderr: '',
+    stdout:
+      'ELOCKED\nSuccess\nacquired after callback\nELOCKED\nFailure\nacquired after callback\n',
   });
-  expect(build.success).toBe(true);
-  await rm(entrypoint);
-  return executable;
-}
+});
 
 test('compiled database probe includes migrations and persists from an empty cwd', async () => {
-  const executable = await compileProbe();
+  const executable = await processFixture.compileProbe(homeDirectory);
   const emptyDirectory = path.join(homeDirectory, 'empty');
   await mkdir(emptyDirectory);
   for (let attempt = 0; attempt < 2; attempt += 1) {
