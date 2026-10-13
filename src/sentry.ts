@@ -117,9 +117,7 @@ function withSentry<Result, Failure, Requirements>(
   if (
     args.length === noArguments ||
     args.some(argument => ['--help', '-h', '--version'].includes(argument)) ||
-    ['sentry', 'openaip-key'].includes(
-      args.find(argument => !argument.startsWith('-')) ?? ''
-    )
+    args.some(argument => ['sentry', 'openaip-key'].includes(argument))
   ) {
     return command();
   }

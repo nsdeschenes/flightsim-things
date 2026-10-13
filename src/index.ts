@@ -56,7 +56,11 @@ function failureMessage(error: unknown): string {
 }
 
 const args = process.argv.slice(argvOffset);
-const main = withSentry(() => Command.runWith(command, {version})(args), args).pipe(
+const sensitiveInvocation = args.includes('openaip-key');
+const main = withSentry(
+  () => Command.runWith(command, {renderErrors: !sensitiveInvocation, version})(args),
+  args
+).pipe(
   Effect.provide([
     BunServices.layer,
     CliConfig.layer({builtIns: [GlobalFlag.Help, GlobalFlag.Version]}),
@@ -64,7 +68,13 @@ const main = withSentry(() => Command.runWith(command, {version})(args), args).p
   Effect.match({
     onFailure(error: unknown) {
       process.exitCode = exitCodeFor(error);
-      if (!(error instanceof CliError.ShowHelp)) {
+      if (error instanceof CliError.ShowHelp) {
+        if (sensitiveInvocation && error.errors.length !== noErrors) {
+          process.stderr.write(
+            'Invalid OpenAIP key command arguments. Run flightsim-things openaip-key --help for usage.\n'
+          );
+        }
+      } else {
         process.stderr.write(`Command failed, ${failureMessage(error)}\n`);
       }
     },
