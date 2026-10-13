@@ -6,6 +6,7 @@
   "type": "module",
   "module": "index.ts",
   "imports": {
+    "#airport-enrichment": "./src/airport-enrichment.ts",
     "#package": "./package.json",
     "#sentry-config": "./src/sentry-config.ts",
     "#configuration": "./src/configuration.ts",
@@ -38,7 +39,8 @@
     "@sentry/effect": "11.7.0",
     "drizzle-orm": "1.0.0-rc.4",
     "effect": "^4.0.2",
-    "proper-lockfile": "^4.1.2"
+    "proper-lockfile": "^4.1.2",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@e18e/eslint-plugin": "^0.8.1",

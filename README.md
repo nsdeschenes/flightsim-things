@@ -93,6 +93,39 @@ bun run start openaip-key get
 If the configuration file contains malformed JSON or its root is not an object,
 repair the file before saving. The CLI preserves its existing bytes.
 
+## Enrich installed airports
+
+Run `scan` to populate the addon database and save an OpenAIP API key with
+`openaip-key set <key>`. Then enrich the installed airport records:
+
+```bash
+bun run start airports enrich
+```
+
+The command prints the number of airport rows enriched, unmatched, ambiguous, and skipped.
+An empty airport table fails with instructions to run `scan`.
+Rows with no usable code are skipped and do not require an API key.
+
+Each lookup uses an exact four-letter ICAO code.
+An airport without an ICAO code can use its three-letter IATA code instead.
+Codes are trimmed and compared in uppercase. A malformed existing ICAO code is skipped.
+Duplicate installed codes share one lookup. Fuzzy search results do not count as matches.
+The command reads every result page and updates an airport only when its code has one unique match.
+Multiple matches remain ambiguous, including repeated results without a provider ID.
+
+Enrichment updates names, related airport codes, latitude, longitude, and elevation in meters.
+Missing provider values and blank names preserve existing values. Zero and negative elevations are valid.
+The command updates existing rows and preserves their IDs, package links, and source keys.
+Rows whose identity changes during the lookup are skipped.
+Repeated enrichment keeps the same rows and IDs.
+
+Requests use the saved key and the GET `/airports` endpoint in the
+[official OpenAIP API specification](https://api.core.openaip.net/api/system/specs/v1/schema.json).
+Responses are validated with Zod. Requests run sequentially, with a 30-second timeout per page.
+Network, response validation, and pagination failures leave all airport rows unchanged.
+Database updates commit together in one transaction after all lookups succeed.
+Enrichment covers only the explicit airport records produced by `scan`.
+
 ## Configure Sentry telemetry
 
 To create or replace your Sentry configuration, provide a DSN and all four sample rates:

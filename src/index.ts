@@ -4,6 +4,7 @@ import {CliConfig, CliError, Command, GlobalFlag} from 'effect/cli';
 
 import {version} from '#package';
 
+import airportsCommand from './commands/airports.ts';
 import communityPathCommand from './commands/community-path.ts';
 import openaipKeyCommand from './commands/openaip-key.ts';
 import scanCommand from './commands/scan.ts';
@@ -23,6 +24,7 @@ const hello = Command.make('hello', {}, () => Console.log('Hello via Bun!')).pip
 const command = Command.make('flightsim-things').pipe(
   Command.withDescription('Flight simulator tools'),
   Command.withSubcommands([
+    airportsCommand,
     communityPathCommand,
     hello,
     openaipKeyCommand,
