@@ -1,6 +1,6 @@
 import {Database} from 'bun:sqlite';
 import {mkdir, mkdtemp, rm, writeFile} from 'node:fs/promises';
-import {homedir} from 'node:os';
+import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -18,7 +18,6 @@ type Fixture = Readonly<{
   run: (...args: readonly string[]) => Promise<CommandResult>;
 }>;
 const cli = fileURLToPath(new URL('../index.ts', import.meta.url));
-const context = path.join(homedir(), '.cache/agent-work/flightsim-things/scan/context');
 
 async function run(home: string, args: readonly string[]): Promise<CommandResult> {
   const result = Bun.spawn([process.execPath, cli, ...args], {
@@ -72,8 +71,7 @@ function query(home: string, sql: string): unknown[] {
 }
 
 async function createFixture(): Promise<Fixture> {
-  await mkdir(context, {recursive: true});
-  const home = await mkdtemp(path.join(context, 'scan-test-'));
+  const home = await mkdtemp(path.join(tmpdir(), 'flightsim-scan-test-'));
   const community = path.join(home, 'Community');
   await mkdir(community);
   return {

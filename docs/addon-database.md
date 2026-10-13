@@ -187,6 +187,8 @@ are read in full, so this bounds package concurrency rather than total bytes.
 One synchronous immediate transaction upserts each batch. Child inserts use chunks
 of 100 rows to stay below SQLite parameter limits. IDs and unique source keys survive
 repeated scans, and records are not deleted when sources disappear.
+An interrupted scan preserves existing livery links when their observed targets
+are unchanged. Changed or removed targets clear their links during the batch update.
 
 After all batches, the scanner resolves observed livery targets against observed
 aircraft using an indexed temporary table. An exact match in the livery's package
@@ -196,6 +198,11 @@ participate. Missing or ambiguous targets remain null.
 
 Layout paths must remain within their package. Internal metadata symlinks cannot
 escape the package, although the package directory itself can be a symlink.
+These checks cover static paths. They do not guarantee containment during
+concurrent replacement of source files or directories.
+Malformed XML with a recognizable unrelated root produces a warning without
+rejecting other package metadata. Airport XML, airport-specific Services XML,
+and XML with an uncertain root remain strict.
 Each malformed package produces a contextual stderr message and is skipped.
 The command continues valid packages and returns a nonzero status when any package
 fails. Database and Community directory errors stop the scan.

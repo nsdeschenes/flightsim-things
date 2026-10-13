@@ -5,6 +5,7 @@ import {Option} from 'effect';
 
 import configurations from './aircraft.ts';
 import type PackageSnapshot from './model.ts';
+import readScenery from './scenery.ts';
 
 type PackageMetadata = PackageSnapshot['metadata'];
 type AircraftObservation = PackageSnapshot['aircraft'][number];
@@ -13,20 +14,15 @@ type LiveryObservation = PackageSnapshot['liveries'][number];
 type PackageRead =
   | Readonly<{status: 'success'; snapshot: PackageSnapshot}>
   | Readonly<{status: 'failure'; sourcePath: string; message: string}>;
-type Contents = Pick<PackageSnapshot, 'aircraft' | 'airports' | 'liveries'>;
+type Contents = Pick<PackageSnapshot, 'aircraft' | 'airports' | 'liveries' | 'warnings'>;
 type FileLocator = Readonly<{key: string; relative: string}>;
 type Inventory = Readonly<{files: readonly FileLocator[]; warnings: readonly string[]}>;
 const firstIndex = 0;
 const missing = Option.getOrNull(Option.none());
 const metadataFiles =
   /(?:^|\/)(?:aircraft|livery)\.cfg$|\.xml$|(?:^|\/)airportservices\/[^/]+\/services\.spb$/iu;
-const airportServicePath =
-  /(?:^|\/)airportservices\/(?<code>[a-z\d]{3,8})\/services\.(?:xml|spb)$/iu;
-const airportCode = /^[a-z\d]{3,8}$/iu;
-const iataCode = /^[a-z]{3}$/iu;
 const drivePrefix = /^[a-z]:/iu;
 const bom = /^\uFEFF/u;
-const emptyContents: Contents = {aircraft: [], airports: [], liveries: []};
 
 function text(value: unknown): string | null {
   if (typeof value !== 'string' || value.trim() === '') {
@@ -84,54 +80,6 @@ async function json(
   return object(parsed);
 }
 
-function airportObservation(
-  relative: string,
-  airport: Readonly<{attributes: Readonly<Record<string, string>>}>
-): AirportObservation {
-  const ident = text(airport.attributes.ident);
-  const iata = text(airport.attributes.iata);
-  if (ident === missing || !airportCode.test(ident)) {
-    throw new Error(`Airport in ${relative} requires an explicit valid ident`);
-  }
-  if (iata !== missing && !iataCode.test(iata)) {
-    throw new Error(`Invalid explicit airport IATA code in ${relative}: ${iata}`);
-  }
-  let normalizedIata = iata;
-  if (iata !== missing) {
-    normalizedIata = iata.toUpperCase();
-  }
-  return {
-    iataCode: normalizedIata,
-    icaoCode: ident.toUpperCase(),
-    name: text(airport.attributes.name),
-    sourceKey: `${vfsKey(relative)}#airport:${ident.toUpperCase()}`,
-  };
-}
-
-function readAirports(
-  relative: string,
-  contents: Readonly<Pick<Blob, keyof Blob>>
-): readonly AirportObservation[] {
-  const document = Bun.XML.parse(contents, {compact: false});
-  const observations: AirportObservation[] = [];
-  for (const child of document.children) {
-    if (
-      document.name === 'FSData' &&
-      typeof child === 'object' &&
-      'name' in child &&
-      child.name === 'Airport'
-    ) {
-      observations.push(airportObservation(relative, child));
-    }
-  }
-  if (
-    new Set(observations.map(airport => airport.sourceKey)).size !== observations.length
-  ) {
-    throw new Error(`Duplicate airport ident in ${relative}`);
-  }
-  return observations;
-}
-
 function addMetadataFile(
   files: Readonly<Pick<Map<string, string>, 'has' | 'set'>>,
   key: string,
@@ -168,41 +116,22 @@ function inventory(layout: Readonly<Record<string, unknown>>): Inventory {
   };
 }
 
-function readScenery(key: string, contents: Readonly<Pick<Blob, keyof Blob>>): Contents {
-  const service = airportServicePath.exec(key);
-  const groups = service && service.groups;
-  if (groups && typeof groups.code === 'string' && groups.code !== 'shared') {
-    if (key.endsWith('.xml')) {
-      Bun.XML.parse(contents);
-    }
-    return {
-      aircraft: [],
-      airports: [
-        {
-          iataCode: missing,
-          icaoCode: groups.code.toUpperCase(),
-          name: missing,
-          sourceKey: key,
-        },
-      ],
-      liveries: [],
-    };
-  }
-  if (key.endsWith('.xml')) {
-    return {aircraft: [], airports: readAirports(key, contents), liveries: []};
-  }
-  return emptyContents;
-}
-
 async function readMetadata(root: string, locator: FileLocator): Promise<Contents> {
   const bytes = await readFile(root, locator.relative);
   if (locator.key.endsWith('aircraft.cfg')) {
-    return configurations.aircraft(locator.relative, bytes.toString('utf8'));
+    return {
+      ...configurations.aircraft(locator.relative, bytes.toString('utf8')),
+      warnings: [],
+    };
   }
   if (locator.key.endsWith('livery.cfg')) {
-    return configurations.livery(locator.relative, bytes.toString('utf8'));
+    return {
+      ...configurations.livery(locator.relative, bytes.toString('utf8')),
+      warnings: [],
+    };
   }
-  return readScenery(locator.key, new Blob([bytes]));
+  const scenery = await readScenery(locator.key, new Blob([bytes]));
+  return {aircraft: [], liveries: [], ...scenery};
 }
 
 async function readContents(
@@ -213,12 +142,12 @@ async function readContents(
     aircraft: AircraftObservation[];
     airports: AirportObservation[];
     liveries: LiveryObservation[];
-  } = {aircraft: [], airports: [], liveries: []};
+    warnings: string[];
+  } = {aircraft: [], airports: [], liveries: [], warnings: []};
   for (const locator of files) {
     const rows = await readMetadata(root, locator);
-    for (const row of rows.aircraft) {
-      contents.aircraft.push(row);
-    }
+    contents.warnings.push(...rows.warnings);
+    contents.aircraft.push(...rows.aircraft);
     for (const row of rows.airports) {
       contents.airports.push(row);
     }
@@ -252,7 +181,11 @@ async function snapshot(sourcePath: string): Promise<PackageSnapshot> {
   ]);
   const {files, warnings} = inventory(layout);
   const contents = await readContents(root, files);
-  return {...contents, metadata: metadata(sourcePath, manifest), warnings};
+  return {
+    ...contents,
+    metadata: metadata(sourcePath, manifest),
+    warnings: [...warnings, ...contents.warnings],
+  };
 }
 
 async function readPackage(sourcePath: string): Promise<PackageRead> {
@@ -272,7 +205,11 @@ async function hasManifest(sourcePath: string): Promise<boolean> {
     await fs.access(path.join(sourcePath, 'manifest.json'));
     return true;
   } catch (error) {
-    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+    if (
+      error instanceof Error &&
+      'code' in error &&
+      (error.code === 'ENOENT' || error.code === 'ENOTDIR')
+    ) {
       return false;
     }
     return true;

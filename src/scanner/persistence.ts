@@ -66,9 +66,10 @@ function airlineInputs(
   for (const snapshot of snapshots) {
     for (const livery of snapshot.liveries) {
       if (livery.airlineCode !== missing) {
+        const prior = rows.get(livery.airlineCode);
         rows.set(livery.airlineCode, {
           icaoCode: livery.airlineCode,
-          name: livery.airlineName,
+          name: livery.airlineName ?? (prior && prior.name) ?? missing,
         });
       }
     }
@@ -178,7 +179,8 @@ function saveLiveries(tx: Transaction, values: readonly LiveryRow[]): readonly n
       .values([...rows])
       .onConflictDoUpdate({
         set: {
-          aircraftId: sql`excluded.aircraft_id`,
+          aircraftId: sql`CASE WHEN ${schema.liveries.targetAircraftKey} IS excluded.target_aircraft_key
+            THEN ${schema.liveries.aircraftId} ELSE excluded.aircraft_id END`,
           airlineId: sql`excluded.airline_id`,
           name: sql`excluded.name`,
           registration: sql`excluded.registration`,
