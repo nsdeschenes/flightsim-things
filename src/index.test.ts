@@ -46,6 +46,7 @@ test('root help lists the available commands', () => {
   expect(rootHelp.exitCode).toBe(0);
   expect(rootHelp.stdout).toContain('community-path');
   expect(rootHelp.stdout).toContain('hello');
+  expect(rootHelp.stdout).toContain('scan');
 });
 
 test('hello still prints the greeting', () => {

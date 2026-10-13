@@ -145,8 +145,8 @@ queries. SQLite foreign keys continue to enforce storage integrity. Relation def
 do not require SQL migrations.
 
 The small `database.use` interface hides lifecycle and migration policy. Tables and
-Drizzle queries remain an intentional infrastructure interface. A future importer can
-own metadata interpretation and transactional upserts when its inputs are defined.
+Drizzle queries remain an intentional infrastructure interface. `src/scanner/` owns
+metadata interpretation and transactional upserts.
 
 ## Initial source mapping
 
@@ -156,17 +156,60 @@ own metadata interpretation and transactional upserts when its inputs are define
 | `manifest.json`: `title`, `creator`, `manufacturer`                        | Matching package columns                                                         |
 | `manifest.json`: `package_version`, `content_type`, `minimum_game_version` | `version`, `contentType`, `minimumGameVersion`                                   |
 | `layout.json`: indexed paths                                               | Discover relevant metadata files and source locators; discard the full inventory |
-| Later explicit aircraft/scenery metadata                                   | Aircraft/airport names and codes, livery names and aircraft targets              |
+| `aircraft.cfg`: `GENERAL` and `FLTSIM.n` sections                          | Aircraft metadata, livery names, registrations, and explicit ICAO airline codes  |
+| `aircraft.cfg`: `LIVERY.base_container` or `VARIATION.base_container`      | Normalized virtual aircraft target, resolved after all package batches           |
+| `livery.cfg`: `GENERAL.name` and optional `FLTSIM.n` overrides             | One livery per file, with explicit airline code and registration where known     |
+| `FSData` XML: `Airport` elements with `ident`, `name`, and optional `iata` | Airport names and explicit codes, keyed by source file and airport ident         |
+| `AirportServices/<ICAO>/Services.xml` or `Services.spb`                    | Explicit airport code; name and IATA code remain null                            |
 
 Store the original content type string, including unfamiliar values. It describes the
 package; it does not limit the number or kinds of child records.
 
-This change implements the database foundation. File reading, Community scanning,
-classification, and enrichment are future consumers. The two JSON files alone cannot
-reliably supply airline identity or airport codes. Aircraft configuration provides
+The `scan` command reads the saved Community directory and imports this metadata.
+The two JSON files alone cannot reliably supply airline identity or airport codes. Aircraft configuration provides
 variation and airline fields, including `ui_variation` and `icao_airline`, according to
 the [MSFS 2024 aircraft configuration documentation](https://docs.flightsimulator.com/msfs2024/html/5_Content_Configuration/CFG_Files/aircraft_cfg.htm).
 Leave unknown fields and links null until there is explicit evidence.
+
+Native MSFS 2024 [`livery.cfg` files](https://docs.flightsimulator.com/msfs2024/html/5_Content_Configuration/CFG_Files/livery_cfg.htm)
+define one livery per file. The scanner uses `GENERAL.name`, including when there
+are no `FLTSIM.n` overrides. Optional override values are recorded when their explicit
+values agree across sections. Missing or conflicting values remain null. The native
+livery's aircraft target remains null because this file does not specify a base.
+Legacy `aircraft.cfg` files with `LIVERY` or `VARIATION` sections create livery records,
+and their missing base containers remain null rather than creating aircraft records.
+
+The scanner discovers package directories, including package symlinks, without
+materializing the Community tree. It holds at most 16 package snapshots per batch
+and reads four packages concurrently. Snapshots contain metadata, not file payloads
+such as textures or compiled scenery. Individual metadata files and package layouts
+are read in full, so this bounds package concurrency rather than total bytes.
+One synchronous immediate transaction upserts each batch. Child inserts use chunks
+of 100 rows to stay below SQLite parameter limits. IDs and unique source keys survive
+repeated scans, and records are not deleted when sources disappear.
+An interrupted scan preserves existing livery links when their observed targets
+are unchanged. Changed or removed targets clear their links during the batch update.
+
+After all batches, the scanner resolves observed livery targets against observed
+aircraft using an indexed temporary table. An exact match in the livery's package
+takes precedence. A match in another scanned package must be unique. Stored aircraft
+from another Community directory, failed packages, or absent source entries do not
+participate. Missing or ambiguous targets remain null.
+
+Layout paths must remain within their package. Internal metadata symlinks cannot
+escape the package, although the package directory itself can be a symlink.
+These checks cover static paths. They do not guarantee containment during
+concurrent replacement of source files or directories.
+Malformed XML with a recognizable unrelated root produces a warning without
+rejecting other package metadata. Airport XML, airport-specific Services XML,
+and XML with an uncertain root remain strict.
+Each malformed package produces a contextual stderr message and is skipped.
+The command continues valid packages and returns a nonzero status when any package
+fails. Database and Community directory errors stop the scan.
+
+Compiled BGL scenery does not establish airport identity. The scanner stores the
+package and reports a warning without creating guessed airport records. Airport
+coverage therefore depends on explicit XML and AirportServices entries.
 
 ## Persistence and migrations
 
@@ -252,11 +295,9 @@ migration data, and a single public connection lifecycle.
 - Shared identity catalogs and package link tables would support canonical grouping, but introduce matching policy and additional tables before a reliable source exists.
 - A JSON blob per package would reduce table count, but lose foreign keys and indexed airport/livery queries.
 
-## Open questions and next step
+## Remaining limits
 
-Which later source should provide authoritative airport codes? Should moving a package
-retain its identity across installations? Until a scanner defines those rules, a new
-directory is a new source identity and airport codes require explicit evidence.
-
-The next implementation step is a read-only package metadata reader that maps observed
-manifest fields and selected layout paths into validated inputs for transactional upserts.
+Package identity follows the absolute installation path. Moving a package creates a
+new source identity. The scanner retains the old records until a future cleanup policy
+is defined. Airport codes require explicit evidence, and compiled scenery decoding
+remains unimplemented.

@@ -1,0 +1,132 @@
+import {Database} from 'bun:sqlite';
+import {afterEach, beforeEach, expect, test} from 'bun:test';
+import {opendir, rm, writeFile} from 'node:fs/promises';
+import path from 'node:path';
+
+import createFixture from './test-fixtures.ts';
+
+let fixture: Awaited<ReturnType<typeof createFixture>>;
+const cliTimeout = 60_000;
+const cfgPath = 'SimObjects/Airplanes/Base/aircraft.cfg';
+const baseCfg = '[GENERAL]\nicao_model=Base\n';
+const variantCfg =
+  '[LIVERY]\nbase_container=..\\Base\n[FLTSIM.0]\nui_variation=First\n[FLTSIM.1]\nui_variation=Second\n';
+
+beforeEach(async () => {
+  fixture = await createFixture();
+});
+afterEach(async () => {
+  await fixture.dispose();
+});
+
+function expectLinked(total: number): void {
+  expect(
+    fixture.query('SELECT count(*) AS total FROM liveries WHERE aircraft_id IS NOT NULL')
+  ).toEqual([{total}]);
+}
+
+async function seedBatches(): Promise<void> {
+  for (let index = 0; index < 17; index += 1) {
+    await fixture.addon(`package-${index}`, {
+      [cfgPath]: `${baseCfg}[FLTSIM.0]\nui_variation=First\n[FLTSIM.1]\nui_variation=Second\n`,
+    });
+  }
+  expect(await fixture.run('community-path', 'set', fixture.community)).toMatchObject({
+    exitCode: 0,
+  });
+  expect(await fixture.run('scan')).toMatchObject({exitCode: 0});
+  expectLinked(34);
+}
+
+async function interruptSecondBatch(): Promise<readonly string[]> {
+  const directory = await opendir(fixture.community);
+  const packages: string[] = [];
+  for await (const entry of directory) {
+    packages.push(path.join(fixture.community, entry.name));
+  }
+  using db = new Database(path.join(fixture.home, '.flightsim-things/addons.sqlite'));
+  const last = packages.at(-1);
+  if (typeof last !== 'string') {
+    throw new TypeError('Expected a package in the second batch');
+  }
+  db.run(
+    `CREATE TRIGGER stop_last_package BEFORE UPDATE ON packages
+     WHEN NEW.source_path = '${last.replaceAll("'", "''")}'
+     BEGIN SELECT RAISE(ABORT, 'injected second-batch failure'); END`
+  );
+  return packages;
+}
+
+async function expectInterrupted(): Promise<void> {
+  const result = await fixture.run('scan');
+  expect(result.exitCode).toBe(1);
+  expect(result.stdout).toContain('Saved 16 packages so far.');
+  expect(result.stderr).toContain('Could not access addon database');
+}
+
+async function changeTargets(packages: readonly string[]): Promise<void> {
+  const changed = packages.at(0);
+  const removed = packages.at(1);
+  if (typeof changed !== 'string' || typeof removed !== 'string') {
+    throw new TypeError('Expected two packages in the first batch');
+  }
+  await writeFile(path.join(changed, cfgPath), variantCfg.replace('Base', 'Absent'));
+  await writeFile(
+    path.join(removed, cfgPath),
+    variantCfg.replace('base_container=..\\Base\n', '')
+  );
+}
+
+test(
+  'interrupted second batch retains unchanged links and clears changed or removed targets',
+  async () => {
+    await seedBatches();
+    const packages = await interruptSecondBatch();
+    await expectInterrupted();
+    expectLinked(34);
+    await changeTargets(packages);
+    await expectInterrupted();
+    expectLinked(30);
+    expect(
+      fixture.query(
+        'SELECT count(*) AS total FROM liveries WHERE aircraft_id IS NULL AND target_aircraft_key IS NULL'
+      )
+    ).toEqual([{total: 2}]);
+    expect(
+      fixture.query(
+        "SELECT count(*) AS total FROM liveries WHERE aircraft_id IS NULL AND target_aircraft_key = 'simobjects/airplanes/absent'"
+      )
+    ).toEqual([{total: 2}]);
+  },
+  cliTimeout
+);
+
+async function seedExternalTarget(): Promise<string> {
+  const base = await fixture.addon('base', {[cfgPath]: baseCfg});
+  await fixture.addon('variant', {
+    'SimObjects/Airplanes/Variant/aircraft.cfg': variantCfg,
+  });
+  expect(await fixture.run('community-path', 'set', fixture.community)).toMatchObject({
+    exitCode: 0,
+  });
+  expect(await fixture.run('scan')).toMatchObject({exitCode: 0});
+  expectLinked(2);
+  return base;
+}
+
+test(
+  'completed scans clear prior links when the observed target disappears or becomes ambiguous',
+  async () => {
+    const base = await seedExternalTarget();
+    await rm(base, {recursive: true});
+    expect(await fixture.run('scan')).toMatchObject({exitCode: 0});
+    expectLinked(0);
+    await fixture.addon('base', {[cfgPath]: baseCfg});
+    expect(await fixture.run('scan')).toMatchObject({exitCode: 0});
+    expectLinked(2);
+    await fixture.addon('duplicate', {[cfgPath]: baseCfg});
+    expect(await fixture.run('scan')).toMatchObject({exitCode: 0});
+    expectLinked(0);
+  },
+  cliTimeout
+);
