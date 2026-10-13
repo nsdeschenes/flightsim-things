@@ -2,7 +2,6 @@ import {afterEach, beforeEach, expect, expectTypeOf, test} from 'bun:test';
 import {mkdir, mkdtemp, readFile, rm, stat, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
 
 import {Effect, Schema} from 'effect';
 
@@ -11,9 +10,6 @@ import schema from './schema.ts';
 import processFixture from './test-fixtures/process.ts';
 import relationsFixture from './test-fixtures/relations.ts';
 
-const repository = fileURLToPath(new URL('../..', import.meta.url));
-const databaseModule = fileURLToPath(new URL('index.ts', import.meta.url));
-const schemaModule = fileURLToPath(new URL('schema.ts', import.meta.url));
 const testDirectory = path.join(tmpdir(), 'flightsim-things-addon-database');
 let homeDirectory: string;
 
@@ -29,40 +25,13 @@ afterEach(async () => {
 async function run(
   program: string,
   executable?: string,
-  workingDirectory = repository
-): Promise<
-  Readonly<{
-    exitCode: number;
-    stderr: string;
-    stdout: string;
-  }>
-> {
-  let command = [
-    process.execPath,
-    '-e',
-    `
-    import database from ${JSON.stringify(databaseModule)};
-    import schema from ${JSON.stringify(schemaModule)};
-    import {Effect, Schema} from 'effect';
-    import {eq, sql} from 'drizzle-orm';
-    ${program}
-  `,
-  ];
-  if (typeof executable === 'string') {
-    command = [executable];
-  }
-  const child = Bun.spawn(command, {
-    cwd: workingDirectory,
-    env: {...process.env, HOME: homeDirectory, USERPROFILE: homeDirectory},
-    stderr: 'pipe',
-    stdout: 'pipe',
+  workingDirectory?: string
+): ReturnType<typeof processFixture.run> {
+  const result = await processFixture.run(homeDirectory, program, {
+    executable,
+    workingDirectory,
   });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ]);
-  return {exitCode, stderr, stdout};
+  return result;
 }
 
 test('generated Effect schemas retain optional/null fields and reject invalid types', () => {
@@ -214,7 +183,7 @@ test('concurrent first opens migrate once and package upserts preserve identity'
       packages: db.select().from(schema.packages).all().length,
     })))));
   `)
-  ).toMatchObject({exitCode: 0, stdout: '{"migrations":1,"packages":3}\n'});
+  ).toMatchObject({exitCode: 0, stdout: '{"migrations":2,"packages":3}\n'});
 }, 15_000);
 
 test('newer migration history fails before queries and releases its lock', async () => {

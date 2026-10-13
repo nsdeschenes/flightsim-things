@@ -85,6 +85,45 @@ const lockProgram = `
   }
 `;
 
-const processFixture = {compileProbe, lockProgram};
+async function run(
+  homeDirectory: string,
+  program: string,
+  options: Readonly<{executable?: string; workingDirectory?: string}> = {}
+): Promise<
+  Readonly<{
+    exitCode: number;
+    stderr: string;
+    stdout: string;
+  }>
+> {
+  let command = [
+    process.execPath,
+    '-e',
+    `
+    import database from ${JSON.stringify(databaseModule)};
+    import schema from ${JSON.stringify(schemaModule)};
+    import {Effect, Schema} from 'effect';
+    import {eq, sql} from 'drizzle-orm';
+    ${program}
+  `,
+  ];
+  if (typeof options.executable === 'string') {
+    command = [options.executable];
+  }
+  const child = Bun.spawn(command, {
+    cwd: options.workingDirectory ?? repository,
+    env: {...process.env, HOME: homeDirectory, USERPROFILE: homeDirectory},
+    stderr: 'pipe',
+    stdout: 'pipe',
+  });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  return {exitCode, stderr, stdout};
+}
+
+const processFixture = {compileProbe, lockProgram, run};
 
 export default processFixture;
