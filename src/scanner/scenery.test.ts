@@ -1,3 +1,4 @@
+import {Database} from 'bun:sqlite';
 import {afterEach, beforeEach, expect, test} from 'bun:test';
 import {symlink, writeFile} from 'node:fs/promises';
 import path from 'node:path';
@@ -14,6 +15,58 @@ beforeEach(async () => {
 afterEach(async () => {
   await fixture.dispose();
 });
+
+function enrichAirportLocation(): void {
+  using db = new Database(path.join(fixture.home, '.flightsim-things/addons.sqlite'));
+  db.run(
+    'UPDATE airports SET elevation_meters = ?, latitude = ?, longitude = ?',
+    [35.5, -33.946111, 151.177222]
+  );
+}
+
+test(
+  'airport rescans update metadata while preserving identity and enriched locations',
+  async () => {
+    const root = await fixture.addon('airport', {
+      'airport.xml':
+        '<FSData><Airport ident="KAAA" name="Original" iata="AAA"/></FSData>',
+    });
+    expect(await fixture.run('community-path', 'set', fixture.community)).toMatchObject({
+      exitCode: 0,
+    });
+    expect(await fixture.run('scan')).toMatchObject({exitCode: 0});
+    expect(
+      JSON.parse('[{"elevation_meters":null,"latitude":null,"longitude":null}]')
+    ).toEqual(
+      fixture.query('SELECT elevation_meters, latitude, longitude FROM airports')
+    );
+    const identity = fixture.query('SELECT id, package_id, source_key FROM airports');
+    enrichAirportLocation();
+    await writeFile(
+      path.join(root, 'airport.xml'),
+      '<FSData><Airport ident="KAAA" name="Updated" iata="BBB"/></FSData>'
+    );
+    expect(await fixture.run('scan')).toMatchObject({exitCode: 0});
+    expect(fixture.query('SELECT id, package_id, source_key FROM airports')).toEqual(
+      identity
+    );
+    expect(
+      fixture.query(
+        'SELECT name, icao_code, iata_code, elevation_meters, latitude, longitude FROM airports'
+      )
+    ).toEqual([
+      {
+        elevation_meters: 35.5,
+        iata_code: 'BBB',
+        icao_code: 'KAAA',
+        latitude: -33.946111,
+        longitude: 151.177222,
+        name: 'Updated',
+      },
+    ]);
+  },
+  cliTimeout
+);
 
 test.each([
   '<malformed',

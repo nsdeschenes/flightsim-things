@@ -1,4 +1,11 @@
-import {index, integer, sqliteTable, text, uniqueIndex} from 'drizzle-orm/sqlite-core';
+import {
+  index,
+  integer,
+  real,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core';
 import type {SQLiteTableExtraConfigValue} from 'drizzle-orm/sqlite-core/table';
 
 import packages from './packages.ts';
@@ -6,9 +13,12 @@ import packages from './packages.ts';
 const airports = sqliteTable(
   'airports',
   {
+    elevationMeters: real('elevation_meters'),
     iataCode: text('iata_code'),
     icaoCode: text('icao_code'),
     id: integer().primaryKey({autoIncrement: true}),
+    latitude: real(),
+    longitude: real(),
     name: text(),
     packageId: integer('package_id')
       .notNull()

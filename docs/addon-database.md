@@ -93,11 +93,15 @@ the transaction callback.
 | ---------- | ------------------------------------------------------------------------- | --------------------------------------------------------- |
 | `packages` | Title, creator, manufacturer, version, content type, minimum game version | Unique normalized absolute source directory               |
 | `aircraft` | Name, manufacturer, model, ICAO type designator                           | Belongs to a package; unique source key within it         |
-| `airports` | Name, ICAO and IATA codes                                                 | Belongs to a package; unique source key within it         |
+| `airports` | Name, ICAO and IATA codes, elevation, latitude, longitude                 | Belongs to a package; unique source key within it         |
 | `airlines` | Name, ICAO and IATA codes                                                 | Shared by liveries; known codes are unique, names are not |
 | `liveries` | Name, registration, observed aircraft target key                          | Belongs to a package; optional aircraft and airline links |
 
 All rows have generated integer IDs. Display metadata is nullable: `null` means unknown.
+Airport `elevationMeters` uses meters and maps to the SQLite `elevation_meters` column.
+Airport `latitude` and `longitude` use WGS84 decimal degrees. All three fields use
+nullable SQLite `REAL` columns, where `null` means unknown. The scanner leaves these
+fields unknown on insertion and preserves stored values when rescanning an airport.
 Source keys identify observed entities, such as a SimObject container path, a variation
 within a configuration file, or an airport within a scenery source. They are stable
 locators, independent of display names. Normalize package directories with `path.resolve`
