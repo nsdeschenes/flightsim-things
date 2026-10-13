@@ -122,6 +122,10 @@ The workflows use `GITHUB_TOKEN` and require no additional release secret.
 In GitHub Actions, leave **Use workflow from** set to `main` for both release workflows.
 Set `target_branch` to the existing branch that receives the release PR. The default is `main`.
 
+Before dispatching, review the target branch's Craft configuration and release hooks.
+Preparation runs those hooks with repository write permissions before it opens the release PR.
+Use only target branches you trust with that authority.
+
 1. Run **Prepare release**. For a stable release, use `target_branch=main` and choose `auto`, `major`, `minor`, `patch`, or a version such as `0.1.0`.
 2. Review the generated `release/<version>` PR into the target branch. Craft updates `package.json` and `CHANGELOG.md`.
 3. Wait for **CI** and **Binaries** on the release branch, then merge the PR.

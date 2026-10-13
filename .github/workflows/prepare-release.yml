@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: auto, major, minor, patch, or X.Y.Z[-alpha.N, -beta.N, -rc.N] without v
+        description: auto, major, minor, patch, or X.Y.Z[-(alpha|beta|rc)[.track].N] without v
         required: true
         default: auto
         type: string
