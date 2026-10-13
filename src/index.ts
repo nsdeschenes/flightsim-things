@@ -50,7 +50,7 @@ function exitCodeFor(error: unknown): number {
 
 function failureMessage(error: unknown): string {
   if (error instanceof Error) {
-    return error.stack ?? String(error);
+    return error.message;
   }
   return String(error);
 }
