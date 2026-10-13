@@ -176,6 +176,7 @@ test('root help lists the OpenAIP key command', async () => {
 test('help lists get and set with the OpenAIP key instructions', async () => {
   const help = await run('openaip-key', '--help');
   expect(help.exitCode).toBe(0);
+  expect(help.stderr).toBe('');
   expect(help.stdout).toContain('get');
   expect(help.stdout).toContain('set');
   expect(help.stdout).toContain('https://www.openaip.net/');
@@ -185,6 +186,7 @@ test('help lists get and set with the OpenAIP key instructions', async () => {
 test('set help lists the key argument and OpenAIP link', async () => {
   const setHelp = await run('openaip-key', 'set', '--help');
   expect(setHelp.exitCode).toBe(0);
+  expect(setHelp.stderr).toBe('');
   expect(setHelp.stdout).toContain('<key>');
   expect(setHelp.stdout).toContain('https://www.openaip.net/');
 });
@@ -192,8 +194,32 @@ test('set help lists the key argument and OpenAIP link', async () => {
 test('set requires a key argument', async () => {
   const result = await run('openaip-key', 'set');
   expect(result.exitCode).toBe(252);
-  expect(result.stderr).toContain('key');
+  expect(result.stderr).toContain('openaip-key --help');
 });
+
+test.each([
+  {
+    args: ['openaip-key', 'set', 'private-primary-key', 'private-extra-key'],
+    exitCode: 252,
+  },
+  {args: ['openaip-key', 'get', 'private-extra-key'], exitCode: 252},
+  {args: ['openaip-key', 'set', 'private-primary-key', '--private-flag'], exitCode: 252},
+  {args: ['openaip-key', 'private-unknown-key'], exitCode: 251},
+  {args: ['--log-level', 'private-option-key', 'openaip-key', 'get'], exitCode: 251},
+])(
+  'parser failure %# hides credentials and preserves the saved bytes',
+  async ({args, exitCode}: Readonly<{args: readonly string[]; exitCode: number}>) => {
+    const contents = '{"openaipApiKey":"previous-key","future":true}\n';
+    await seedConfiguration(contents);
+    const result = await run(...args);
+    expect(result.exitCode).toBe(exitCode);
+    expect(result.stdout).toContain('USAGE');
+    expect(result.stdout).not.toContain('private');
+    expect(result.stderr).not.toContain('private');
+    expect(result.stderr).toContain('openaip-key --help');
+    expect(await readFile(configurationFile, 'utf8')).toBe(contents);
+  }
+);
 
 test('OpenAIP key commands exclude credentials and failures from telemetry', async () => {
   const envelopes: string[] = [];

@@ -224,6 +224,17 @@ test('failed atomic replacement removes temporary files', async () => {
   expect(await readdir(path.dirname(configurationFile))).toEqual(['config.json']);
 });
 
+test.each(['sentry', 'openaip-key'])(
+  'malformed leading arguments skip telemetry for %s',
+  async command => {
+    await seedConfiguration('{broken');
+    const result = await run('--log-level', 'private-option-key', command, 'get');
+    expect(result.exitCode).toBe(251);
+    expect(result.stderr).not.toContain('Sentry telemetry skipped');
+    expect(await readFile(configurationFile, 'utf8')).toBe('{broken');
+  }
+);
+
 test('official SDK delivers logs, metrics, and traces before a successful command exits', async () => {
   expect(await set(dsn, '1')).toMatchObject({exitCode: 0});
   expect(envelopes).toEqual([]);
