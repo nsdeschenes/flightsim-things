@@ -5,6 +5,7 @@ import {CliConfig, CliError, Command, GlobalFlag} from 'effect/cli';
 import {version} from '#package';
 
 import communityPathCommand from './commands/community-path.ts';
+import openaipKeyCommand from './commands/openaip-key.ts';
 import scanCommand from './commands/scan.ts';
 import sentryCommand from './commands/sentry.ts';
 import withSentry from './sentry.ts';
@@ -21,7 +22,13 @@ const hello = Command.make('hello', {}, () => Console.log('Hello via Bun!')).pip
 );
 const command = Command.make('flightsim-things').pipe(
   Command.withDescription('Flight simulator tools'),
-  Command.withSubcommands([communityPathCommand, hello, scanCommand, sentryCommand])
+  Command.withSubcommands([
+    communityPathCommand,
+    hello,
+    openaipKeyCommand,
+    scanCommand,
+    sentryCommand,
+  ])
 );
 
 function exitCodeFor(error: unknown): number {
@@ -49,7 +56,11 @@ function failureMessage(error: unknown): string {
 }
 
 const args = process.argv.slice(argvOffset);
-const main = withSentry(() => Command.runWith(command, {version})(args), args).pipe(
+const sensitiveInvocation = args.includes('openaip-key');
+const main = withSentry(
+  () => Command.runWith(command, {renderErrors: !sensitiveInvocation, version})(args),
+  args
+).pipe(
   Effect.provide([
     BunServices.layer,
     CliConfig.layer({builtIns: [GlobalFlag.Help, GlobalFlag.Version]}),
@@ -57,7 +68,13 @@ const main = withSentry(() => Command.runWith(command, {version})(args), args).p
   Effect.match({
     onFailure(error: unknown) {
       process.exitCode = exitCodeFor(error);
-      if (!(error instanceof CliError.ShowHelp)) {
+      if (error instanceof CliError.ShowHelp) {
+        if (sensitiveInvocation && error.errors.length !== noErrors) {
+          process.stderr.write(
+            'Invalid OpenAIP key command arguments. Run flightsim-things openaip-key --help for usage.\n'
+          );
+        }
+      } else {
         process.stderr.write(`Command failed, ${failureMessage(error)}\n`);
       }
     },
