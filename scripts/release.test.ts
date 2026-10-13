@@ -4,7 +4,15 @@ import {homedir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
-const releaseScript = fileURLToPath(new URL('../scripts/release.ts', import.meta.url));
+interface CommandResult {
+  exitCode: number;
+  stderr: string;
+  stdout: string;
+}
+
+const successExitCode = 0;
+const failureExitCode = 1;
+const releaseScript = fileURLToPath(new URL('release.ts', import.meta.url));
 const testDirectory = path.join(
   homedir(),
   '.cache/agent-work/flightsim-things/release-flow/context'
@@ -28,20 +36,17 @@ afterEach(async () => {
   await rm(directory, {force: true, recursive: true});
 });
 
-function run(...args: readonly string[]): {
-  exitCode: number;
-  stderr: string;
-  stdout: string;
-} {
-  const result = Bun.spawnSync([process.execPath, releaseScript, ...args], {
+async function run(...args: readonly string[]): Promise<CommandResult> {
+  const result = Bun.spawn([process.execPath, releaseScript, ...args], {
     stderr: 'pipe',
     stdout: 'pipe',
   });
-  return {
-    exitCode: result.exitCode,
-    stderr: new TextDecoder().decode(result.stderr),
-    stdout: new TextDecoder().decode(result.stdout),
-  };
+  const [exitCode, stderr, stdout] = await Promise.all([
+    result.exited,
+    new Response(result.stderr).text(),
+    new Response(result.stdout).text(),
+  ]);
+  return {exitCode, stderr, stdout};
 }
 
 test.each([
@@ -59,9 +64,9 @@ test.each([
   '1.2.3-alpha.map.ui.1',
   '1.2.3\n',
   '1.2.3;echo bad',
-])('rejects invalid release version %s before file operations', input => {
-  const result = run('validate-version', input);
-  expect(result.exitCode).toBe(1);
+])('rejects invalid release version %s before file operations', async input => {
+  const result = await run('validate-version', input);
+  expect(result.exitCode).toBe(failureExitCode);
   expect(result.stderr).toContain('Expected X.Y.Z');
 });
 
@@ -76,20 +81,28 @@ test.each([
         await writeFile(path.join(directory, name), 'hello');
       })
     );
-    expect(run('stage', directory, releaseVersion).exitCode).toBe(0);
+    expect(await run('stage', directory, releaseVersion)).toMatchObject({
+      exitCode: successExitCode,
+    });
     expect(await readFile(path.join(directory, 'SHA256SUMS'), 'utf8')).toBe(
       releaseNames.map(name => `${helloChecksum}  ${name}\n`).join('')
     );
-    expect(run('verify-assets', directory, releaseVersion).exitCode).toBe(0);
+    expect(await run('verify-assets', directory, releaseVersion)).toMatchObject({
+      exitCode: successExitCode,
+    });
     await writeFile(
       path.join(directory, `flightsim-things-${releaseVersion}-linux-x64`),
       'corrupted'
     );
-    const corrupted = run('verify-assets', directory, releaseVersion);
-    expect(corrupted.exitCode).toBe(1);
+    const corrupted = await run('verify-assets', directory, releaseVersion);
+    expect(corrupted.exitCode).toBe(failureExitCode);
     expect(corrupted.stderr).toContain('Release checksums do not match');
-    expect(run('stage', directory, releaseVersion).exitCode).toBe(0);
-    expect(run('verify-assets', directory, releaseVersion).exitCode).toBe(0);
+    expect(await run('stage', directory, releaseVersion)).toMatchObject({
+      exitCode: successExitCode,
+    });
+    expect(await run('verify-assets', directory, releaseVersion)).toMatchObject({
+      exitCode: successExitCode,
+    });
   }
 );
 
@@ -99,8 +112,8 @@ test.each([
 ] as const)(
   'rejects missing and unexpected binaries for %s',
   async (releaseVersion: string, releaseNames: readonly string[]) => {
-    const missing = run('stage', directory, releaseVersion);
-    expect(missing.exitCode).toBe(1);
+    const missing = await run('stage', directory, releaseVersion);
+    expect(missing.exitCode).toBe(failureExitCode);
     expect(missing.stderr).toContain('Release asset set');
     await Promise.all(
       releaseNames.map(async name => {
@@ -108,7 +121,8 @@ test.each([
       })
     );
     await writeFile(path.join(directory, 'flightsim-things-9.9.9-linux-x64'), 'hello');
-    expect(run('stage', directory, releaseVersion).exitCode).toBe(1);
+    const unexpected = await run('stage', directory, releaseVersion);
+    expect(unexpected.exitCode).toBe(failureExitCode);
   }
 );
 
@@ -118,18 +132,18 @@ test.each([
   ['1.2.3-beta.2', 'prerelease'],
   ['1.2.3-rc.9', 'prerelease'],
   ['1.2.3-alpha.map-ui.12345678901234567890', 'prerelease'],
-])('classifies canonical release %s through the CLI', (input, kind) => {
-  const result = run('release-info', input, 'main');
-  expect(result.exitCode).toBe(0);
+])('classifies canonical release %s through the CLI', async (input, kind) => {
+  const result = await run('release-info', input, 'main');
+  expect(result.exitCode).toBe(successExitCode);
   expect(JSON.parse(result.stdout)).toEqual({
     targetBranch: 'main',
     version: {kind, value: input},
   });
 });
 
-test('permits tracked prereleases on an independent valid branch name', () => {
-  const result = run('prepare-request', '1.2.3-beta.map-ui.1', 'feature/map-ui');
-  expect(result.exitCode).toBe(0);
+test('permits tracked prereleases on an independent valid branch name', async () => {
+  const result = await run('prepare-request', '1.2.3-beta.map-ui.1', 'feature/map-ui');
+  expect(result.exitCode).toBe(successExitCode);
   expect(JSON.parse(result.stdout)).toEqual({
     kind: 'explicit',
     release: {
@@ -141,10 +155,11 @@ test('permits tracked prereleases on an independent valid branch name', () => {
 
 test.each(['auto', 'major', 'minor', 'patch', '1.2.3'])(
   'requires main for preparation request %s',
-  input => {
-    expect(run('prepare-request', input, 'main').exitCode).toBe(0);
-    const rejected = run('prepare-request', input, 'feature/map-ui');
-    expect(rejected.exitCode).toBe(1);
+  async input => {
+    const accepted = await run('prepare-request', input, 'main');
+    expect(accepted.exitCode).toBe(successExitCode);
+    const rejected = await run('prepare-request', input, 'feature/map-ui');
+    expect(rejected.exitCode).toBe(failureExitCode);
     expect(rejected.stderr).toContain('require target branch main');
   }
 );
@@ -156,8 +171,9 @@ test.each([
   'bad branch',
   'bad:branch',
   'branch\n',
-])('rejects invalid or reserved target %s', target => {
-  expect(run('release-info', '1.2.3-alpha.1', target).exitCode).toBe(1);
+])('rejects invalid or reserved target %s', async target => {
+  const result = await run('release-info', '1.2.3-alpha.1', target);
+  expect(result.exitCode).toBe(failureExitCode);
 });
 
 test('bumps a manifest to a tracked prerelease using the Craft environment', async () => {
@@ -165,13 +181,18 @@ test('bumps a manifest to a tracked prerelease using the Craft environment', asy
     path.join(directory, 'package.json'),
     '{"name":"fixture","version":"0.0.0"}\n'
   );
-  const result = Bun.spawnSync([process.execPath, releaseScript, 'bump-version'], {
+  const result = Bun.spawn([process.execPath, releaseScript, 'bump-version'], {
     cwd: directory,
     env: {...process.env, CRAFT_NEW_VERSION: '1.2.3-rc.map-ui.1'},
     stderr: 'pipe',
     stdout: 'pipe',
   });
-  expect(result.exitCode).toBe(0);
+  const [exitCode] = await Promise.all([
+    result.exited,
+    new Response(result.stderr).text(),
+    new Response(result.stdout).text(),
+  ]);
+  expect(exitCode).toBe(successExitCode);
   const manifest = await readFile(path.join(directory, 'package.json'), 'utf8');
   expect(JSON.parse(manifest)).toEqual({name: 'fixture', version: '1.2.3-rc.map-ui.1'});
 });

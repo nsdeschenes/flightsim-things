@@ -2,6 +2,14 @@ import {expect, test} from 'bun:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 
+interface CommandResult {
+  exitCode: number;
+  stdout: string;
+}
+
+const successExitCode = 0;
+const failureExitCode = 1;
+const fullGitShaLength = 40;
 const publishWorkflow = new URL(
   '../.github/workflows/publish-release.yml',
   import.meta.url
@@ -22,17 +30,22 @@ function extract(pattern: Readonly<RegExp>, workflow: string): string {
   return script;
 }
 
-function query(
+async function query(
   program: string,
   fixture: unknown,
   ...args: readonly string[]
-): {exitCode: number; stdout: string} {
-  const result = Bun.spawnSync(['jq', '-e', ...args, program], {
+): Promise<CommandResult> {
+  const result = Bun.spawn(['jq', '-e', ...args, program], {
     stderr: 'pipe',
     stdin: new TextEncoder().encode(JSON.stringify(fixture)),
     stdout: 'pipe',
   });
-  return {exitCode: result.exitCode, stdout: new TextDecoder().decode(result.stdout)};
+  const [exitCode, stdout] = await Promise.all([
+    result.exited,
+    new Response(result.stdout).text(),
+    new Response(result.stderr).text(),
+  ]);
+  return {exitCode, stdout};
 }
 
 test('publication requires the merged PR base, release head, and exact merge SHA', async () => {
@@ -40,7 +53,7 @@ test('publication requires the merged PR base, release head, and exact merge SHA
   const pr = {
     base: {ref: 'feature/map-ui'},
     head: {ref: 'release/1.2.3-beta.map-ui.1'},
-    merge_commit_sha: 'a'.repeat(40),
+    merge_commit_sha: 'a'.repeat(fullGitShaLength),
     merged_at: '2026-01-01',
   };
   const args = [
@@ -54,14 +67,16 @@ test('publication requires the merged PR base, release head, and exact merge SHA
     'sha',
     pr.merge_commit_sha,
   ];
-  expect(query(program, [[pr]], ...args).exitCode).toBe(0);
+  const accepted = await query(program, [[pr]], ...args);
+  expect(accepted.exitCode).toBe(successExitCode);
   for (const changed of [
     {...pr, base: {ref: 'main'}},
     {...pr, head: {ref: 'feature/map-ui'}},
-    {...pr, merge_commit_sha: 'b'.repeat(40)},
+    {...pr, merge_commit_sha: 'b'.repeat(fullGitShaLength)},
     {base: pr.base, head: pr.head, merge_commit_sha: pr.merge_commit_sha},
   ]) {
-    expect(query(program, [[changed]], ...args).exitCode).toBe(1);
+    const rejected = await query(program, [[changed]], ...args);
+    expect(rejected.exitCode).toBe(failureExitCode);
   }
 });
 
@@ -72,19 +87,22 @@ test('publication selects only the exact branch and SHA push or manual runs', as
     created_at: '2026-01-01',
     event: 'push',
     head_branch: 'feature/map-ui',
-    head_sha: 'a'.repeat(40),
+    head_sha: 'a'.repeat(fullGitShaLength),
     id: 1,
     status: 'completed',
   };
   const unrelated = [
     {...run, head_branch: 'main', id: 2},
-    {...run, head_sha: 'b'.repeat(40), id: 3},
+    {...run, head_sha: 'b'.repeat(fullGitShaLength), id: 3},
     {...run, event: 'pull_request', id: 4},
   ];
   const args = ['--arg', 'branch', run.head_branch, '--arg', 'sha', run.head_sha];
-  expect(
-    JSON.parse(query(program, {workflow_runs: [run, ...unrelated]}, ...args).stdout)
-  ).toEqual(run);
+  const selectedPush = await query(
+    program,
+    {workflow_runs: [run, ...unrelated]},
+    ...args
+  );
+  expect(JSON.parse(selectedPush.stdout)).toEqual(run);
   const manual = {
     ...run,
     conclusion: 'failure',
@@ -92,12 +110,15 @@ test('publication selects only the exact branch and SHA push or manual runs', as
     event: 'workflow_dispatch',
     id: 5,
   };
-  expect(
-    JSON.parse(
-      query(program, {workflow_runs: [run, manual, ...unrelated]}, ...args).stdout
-    )
-  ).toEqual(manual);
-  expect(query(program, {workflow_runs: unrelated}, ...args).exitCode).toBe(1);
+  const selectedManual = await query(
+    program,
+    {workflow_runs: [run, manual, ...unrelated]},
+    ...args
+  );
+  expect(JSON.parse(selectedManual.stdout)).toEqual(manual);
+  expect(await query(program, {workflow_runs: unrelated}, ...args)).toMatchObject({
+    exitCode: failureExitCode,
+  });
 });
 
 test.each([
@@ -107,7 +128,7 @@ test.each([
   'publication applies the derived prerelease value %s',
   async (prerelease, expected) => {
     const script = extract(publicationFlags, await readFile(publishWorkflow, 'utf8'));
-    const result = Bun.spawnSync(['bash', '-eu'], {
+    const result = Bun.spawn(['bash', '-eu'], {
       env: {...process.env, PRERELEASE: prerelease},
       stderr: 'pipe',
       stdin: new TextEncoder().encode(
@@ -115,14 +136,19 @@ test.each([
       ),
       stdout: 'pipe',
     });
-    expect(result.exitCode).toBe(0);
-    expect(new TextDecoder().decode(result.stdout)).toBe(expected);
+    const [exitCode, stdout] = await Promise.all([
+      result.exited,
+      new Response(result.stdout).text(),
+      new Response(result.stderr).text(),
+    ]);
+    expect(exitCode).toBe(successExitCode);
+    expect(stdout).toBe(expected);
   }
 );
 
 test.each([
-  ['main', '[]', 0],
-  ['feature/map-ui', '[{"headRefName":"release/1.2.3-alpha.map-ui.1"}]', 1],
+  ['main', '[]', successExitCode],
+  ['feature/map-ui', '[{"headRefName":"release/1.2.3-alpha.map-ui.1"}]', failureExitCode],
 ] as const)(
   'pending release guard queries only target %s',
   async (target, pending, exitCode) => {
@@ -131,7 +157,7 @@ test.each([
       import.meta.url
     );
     const guard = extract(pendingGuard, await readFile(prepareWorkflow, 'utf8'));
-    const result = Bun.spawnSync(['bash', '-euo', 'pipefail'], {
+    const result = Bun.spawn(['bash', '-euo', 'pipefail'], {
       env: {...process.env, PENDING: pending, TARGET_BRANCH: target},
       stderr: 'pipe',
       stdin: new TextEncoder().encode(
@@ -139,7 +165,12 @@ test.each([
       ),
       stdout: 'pipe',
     });
-    expect(result.exitCode).toBe(exitCode);
+    const [actualExitCode] = await Promise.all([
+      result.exited,
+      new Response(result.stdout).text(),
+      new Response(result.stderr).text(),
+    ]);
+    expect(actualExitCode).toBe(exitCode);
   }
 );
 
@@ -150,6 +181,7 @@ test.each([
   'publication rejects a latest run with conclusion %s and status %s',
   async (conclusion, status) => {
     const program = extract(successQuery, await readFile(publishWorkflow, 'utf8'));
-    expect(query(program, {conclusion, status}).exitCode).toBe(1);
+    const result = await query(program, {conclusion, status});
+    expect(result.exitCode).toBe(failureExitCode);
   }
 );
