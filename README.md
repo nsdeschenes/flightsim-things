@@ -43,6 +43,30 @@ The CLI saves the path in `~/.flightsim-things/config.json`.
 `get` prints the saved path even if you later remove that directory.
 If no path is saved or the saved path is invalid, run `community-path set <path>`.
 
+To scan the saved Community directory:
+
+```bash
+bun run start scan
+```
+
+`scan` saves package metadata, aircraft, livery variations, explicit airport metadata,
+and airline codes in `~/.flightsim-things/addons.sqlite`. It reads packages in bounded
+batches with four readers, then commits each batch in one transaction. Progress and
+the final counts appear on stdout. Package errors and metadata warnings appear on stderr.
+Malformed packages are skipped while valid packages are saved. Any failed package
+causes a nonzero exit status. Fix the reported metadata and run `scan` again.
+
+Repeated scans update existing rows and preserve their IDs. Scans retain records for
+removed packages and entries. Livery links use explicit virtual aircraft containers.
+Missing or ambiguous aircraft targets remain null.
+Native MSFS 2024 `livery.cfg` files store one livery per file, including files without
+`FLTSIM` overrides. Their aircraft targets remain null when no explicit base is known.
+
+Airport records require explicit `FSData` airport XML or an
+`AirportServices/<ICAO>/Services.xml` or `Services.spb` entry. Compiled scenery BGL files
+are not decoded. Scenery packages are saved with a warning, so their airport records
+can be incomplete. Unknown names and codes remain null.
+
 ## Configure Sentry telemetry
 
 To create or replace your Sentry configuration, provide a DSN and all four sample rates:
@@ -238,7 +262,7 @@ connection after each operation. Insert, select, and update validation comes fro
 reads through `db.query`. Finish those reads with `.sync()` inside the database callback.
 
 See [the schema, import mapping, and usage examples](docs/addon-database.md).
-Community scanning and metadata import commands are the next layer to build.
+The `scan` command imports metadata from the saved Community directory.
 
 After changing database tables, run `bun run db:generate` and review the generated SQL.
 Release builds embed the complete `drizzle/` directory in each executable.

@@ -5,6 +5,7 @@ import {CliConfig, CliError, Command, GlobalFlag} from 'effect/cli';
 import {version} from '#package';
 
 import communityPathCommand from './commands/community-path.ts';
+import scanCommand from './commands/scan.ts';
 import sentryCommand from './commands/sentry.ts';
 import withSentry from './sentry.ts';
 
@@ -20,7 +21,7 @@ const hello = Command.make('hello', {}, () => Console.log('Hello via Bun!')).pip
 );
 const command = Command.make('flightsim-things').pipe(
   Command.withDescription('Flight simulator tools'),
-  Command.withSubcommands([communityPathCommand, hello, sentryCommand])
+  Command.withSubcommands([communityPathCommand, hello, scanCommand, sentryCommand])
 );
 
 function exitCodeFor(error: unknown): number {

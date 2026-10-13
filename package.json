@@ -8,7 +8,11 @@
   "imports": {
     "#package": "./package.json",
     "#sentry-config": "./src/sentry-config.ts",
-    "#configuration": "./src/configuration.ts"
+    "#configuration": "./src/configuration.ts",
+    "#community-path": "./src/community-path.ts",
+    "#database": "./src/database/index.ts",
+    "#database-schema": "./src/database/schema.ts",
+    "#scanner": "./src/scanner/index.ts"
   },
   "scripts": {
     "db:generate": "drizzle-kit generate",
