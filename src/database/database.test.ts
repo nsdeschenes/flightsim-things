@@ -1,5 +1,5 @@
 import {afterEach, beforeEach, expect, expectTypeOf, test} from 'bun:test';
-import {mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile} from 'node:fs/promises';
+import {mkdir, mkdtemp, readFile, rm, stat, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -193,8 +193,6 @@ test('foreign keys, source uniqueness, and failed transactions protect existing 
     stdout:
       'DatabaseError\nDatabaseError\nDatabaseError DatabaseError\n["/Community/kept"]\n',
   });
-  const files = await readdir(path.join(homeDirectory, '.flightsim-things'));
-  expect(files.some(name => name.endsWith('.lock'))).toBe(false);
 });
 
 test('concurrent first opens migrate once and package upserts preserve identity', async () => {
@@ -233,8 +231,6 @@ test('newer migration history fails before queries and releases its lock', async
     stdout:
       'DatabaseError This addon database requires a newer application version.\nDatabaseError This addon database requires a newer application version.\n',
   });
-  const files = await readdir(path.join(homeDirectory, '.flightsim-things'));
-  expect(files.some(name => name.endsWith('.lock'))).toBe(false);
 });
 
 test('callbacks reject asynchronous and unexecuted queries and preserve usable storage', async () => {
@@ -257,7 +253,7 @@ test('database lock covers callbacks and releases after successful or failed que
     exitCode: 0,
     stderr: '',
     stdout:
-      'ELOCKED\nSuccess\nacquired after callback\nELOCKED\nFailure\nacquired after callback\n',
+      'SQLITE_BUSY\nSuccess\nacquired after callback\nSQLITE_BUSY\nFailure\nacquired after callback\n',
   });
 });
 

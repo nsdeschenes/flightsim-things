@@ -60,25 +60,28 @@ async function compileProbe(homeDirectory: string): Promise<string> {
 }
 
 const lockProgram = `
-  import {lockSync} from 'proper-lockfile';
+  import {Database} from 'bun:sqlite';
   import path from 'node:path';
-  const filename = path.join(process.env.HOME, '.flightsim-things/addons.sqlite');
+  const filename = path.join(process.env.HOME, '.flightsim-things/addons.sqlite.lock.sqlite');
   for (const fail of [false, true]) {
     const result = await Effect.runPromise(database.use(db => {
+      const contender = new Database(filename);
       try {
-        const release = lockSync(filename);
-        release();
+        contender.run('BEGIN IMMEDIATE');
         console.log('unlocked during callback');
       } catch (error) {
         console.log(error.code);
+      } finally {
+        contender.close(true);
       }
       if (fail) {throw new Error('failed query');}
       return db.select().from(schema.packages).all().length;
     }).pipe(Effect.exit));
     console.log(result._tag);
-    const release = lockSync(filename);
+    const contender = new Database(filename);
+    contender.run('BEGIN IMMEDIATE');
     console.log('acquired after callback');
-    release();
+    contender.close(true);
   }
 `;
 

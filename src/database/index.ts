@@ -1,12 +1,11 @@
-import {Database} from 'bun:sqlite';
+import {Database, SQLiteError} from 'bun:sqlite';
 import {chmod, mkdir} from 'node:fs/promises';
 
 import {sql} from 'drizzle-orm';
 import {drizzle} from 'drizzle-orm/bun-sqlite';
 import {migrate} from 'drizzle-orm/bun-sqlite/migrator';
 import {readMigrationFiles} from 'drizzle-orm/migrator';
-import {Data, Effect} from 'effect';
-import {lock} from 'proper-lockfile';
+import {Data, Effect, Schedule} from 'effect';
 
 import location from './location.ts';
 import schema from './schema.ts';
@@ -33,13 +32,14 @@ type QueryDatabase = Methods<AddonDatabase> & {
   };
 };
 
-const {databaseFile, directory, migrationsFolder} = location;
+const {databaseFile, directory, lockFile, migrationsFolder} = location;
 const privateDirectoryMode = 0o700;
 const privateFileMode = 0o600;
 const busyTimeoutMilliseconds = 5000;
+const lockBusyTimeoutMilliseconds = 0;
+const sqliteBusyErrorNumber = 5;
 const lockRetries = 100;
 const lockRetryDelayMilliseconds = 50;
-const lockRetryFactor = 1;
 
 const {TaggedError: taggedError} = Data;
 
@@ -65,25 +65,41 @@ function toError(cause: unknown): DatabaseError {
 function withDatabaseLock<Value>(run: () => Value): Effect.Effect<Value, DatabaseError> {
   return Effect.scoped(
     Effect.gen(function* useLockedDatabase() {
-      yield* Effect.acquireRelease(
-        Effect.tryPromise({
+      const coordination = yield* Effect.acquireRelease(
+        Effect.try({
           catch: toError,
-          try: async () => {
-            const release = await lock(databaseFile, {
-              retries: {
-                factor: lockRetryFactor,
-                maxTimeout: lockRetryDelayMilliseconds,
-                minTimeout: lockRetryDelayMilliseconds,
-                retries: lockRetries,
-              },
-            });
-            return release;
-          },
+          try: () => new Database(lockFile, {create: true, strict: true}),
         }),
-        release =>
-          Effect.promise(async () => {
-            await release();
+        (connection: DeepReadonly<Database>) =>
+          Effect.sync(() => {
+            connection.close(true);
           })
+      );
+      yield* Effect.tryPromise({
+        catch: toError,
+        try: async () => {
+          await chmod(lockFile, privateFileMode);
+        },
+      });
+      yield* Effect.try({
+        catch: toError,
+        try: () => {
+          coordination.run(`PRAGMA busy_timeout = ${lockBusyTimeoutMilliseconds}`);
+        },
+      });
+      yield* Effect.try({
+        catch: toError,
+        try: () => {
+          coordination.run('BEGIN IMMEDIATE');
+        },
+      }).pipe(
+        Effect.retry({
+          schedule: Schedule.spaced(lockRetryDelayMilliseconds),
+          times: lockRetries,
+          while: (error: DeepReadonly<DatabaseError>) =>
+            error.cause instanceof SQLiteError &&
+            error.cause.errno === sqliteBusyErrorNumber,
+        })
       );
       return yield* Effect.try({
         catch: toError,

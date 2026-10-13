@@ -196,10 +196,23 @@ the database module. Standalone executables read the embedded directory under
 `import.meta.dir`, including when launched from an empty working directory.
 Drizzle's Bun migrator applies the SQL and records it in `__drizzle_migrations`.
 
-A `proper-lockfile` lock covers migration history validation, migrations, and the
-synchronous callback. The pinned migrator reads history before opening its SQL
-transaction, so SQLite's busy timeout alone cannot protect concurrent initialization.
-Holding the lock through the callback also prevents a newer executable from migrating
+A separate `addons.sqlite.lock.sqlite` file coordinates database access with a
+SQLite `BEGIN IMMEDIATE` transaction. That transaction covers migration history
+validation, migrations, and the synchronous callback. It holds ownership during
+long synchronous work and releases ownership when the connection closes or its
+process exits. The coordination file persists so all processes lock the same file.
+It contains no application records.
+
+The pinned migrator reads history before opening its SQL transaction, so the main
+database's busy timeout alone cannot protect concurrent initialization. A separate
+connection also permits migrations and caller transactions on `addons.sqlite`.
+SQLite describes these transaction boundaries in its
+[transaction documentation](https://www.sqlite.org/lang_transaction.html).
+
+Contended coordination attempts retry up to 100 times with 50-millisecond delays.
+These asynchronous delays let other Effects in the same process continue while a
+connection holds the lock.
+Holding the lock through the callback prevents a newer executable from migrating
 between an older executable's compatibility check and its queries. This serializes
 `database.use` callbacks across processes. Keep callbacks short and do not nest them.
 Unknown migration names cause an older executable to fail before running caller queries.
