@@ -109,7 +109,7 @@ async function build(targetId: string): Promise<void> {
       `flightsim-things-${version}-${target.id}${target.extension}`
     );
     const result = await Bun.build({
-      compile: {outfile, target: target.target},
+      compile: {assets: ['./drizzle'], outfile, target: target.target},
       entrypoints: ['src/index.ts'],
       minify: true,
     });

@@ -1,0 +1,600 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "id": "8900f112-b872-4206-a61b-12081b6b4fb6",
+  "prevIds": ["00000000-0000-0000-0000-000000000000"],
+  "ddl": [
+    {
+      "name": "aircraft",
+      "entityType": "tables"
+    },
+    {
+      "name": "airlines",
+      "entityType": "tables"
+    },
+    {
+      "name": "airports",
+      "entityType": "tables"
+    },
+    {
+      "name": "liveries",
+      "entityType": "tables"
+    },
+    {
+      "name": "packages",
+      "entityType": "tables"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": true,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "aircraft"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "package_id",
+      "entityType": "columns",
+      "table": "aircraft"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "source_key",
+      "entityType": "columns",
+      "table": "aircraft"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "name",
+      "entityType": "columns",
+      "table": "aircraft"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "manufacturer",
+      "entityType": "columns",
+      "table": "aircraft"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "model",
+      "entityType": "columns",
+      "table": "aircraft"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "icao_type_designator",
+      "entityType": "columns",
+      "table": "aircraft"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": true,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "airlines"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "name",
+      "entityType": "columns",
+      "table": "airlines"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "icao_code",
+      "entityType": "columns",
+      "table": "airlines"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "iata_code",
+      "entityType": "columns",
+      "table": "airlines"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": true,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "airports"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "package_id",
+      "entityType": "columns",
+      "table": "airports"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "source_key",
+      "entityType": "columns",
+      "table": "airports"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "name",
+      "entityType": "columns",
+      "table": "airports"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "icao_code",
+      "entityType": "columns",
+      "table": "airports"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "iata_code",
+      "entityType": "columns",
+      "table": "airports"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": true,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "liveries"
+    },
+    {
+      "type": "integer",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "package_id",
+      "entityType": "columns",
+      "table": "liveries"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "source_key",
+      "entityType": "columns",
+      "table": "liveries"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "name",
+      "entityType": "columns",
+      "table": "liveries"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "aircraft_id",
+      "entityType": "columns",
+      "table": "liveries"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "target_aircraft_key",
+      "entityType": "columns",
+      "table": "liveries"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "airline_id",
+      "entityType": "columns",
+      "table": "liveries"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "registration",
+      "entityType": "columns",
+      "table": "liveries"
+    },
+    {
+      "type": "integer",
+      "notNull": false,
+      "autoincrement": true,
+      "default": null,
+      "generated": null,
+      "name": "id",
+      "entityType": "columns",
+      "table": "packages"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "source_path",
+      "entityType": "columns",
+      "table": "packages"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "title",
+      "entityType": "columns",
+      "table": "packages"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "creator",
+      "entityType": "columns",
+      "table": "packages"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "manufacturer",
+      "entityType": "columns",
+      "table": "packages"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "version",
+      "entityType": "columns",
+      "table": "packages"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "content_type",
+      "entityType": "columns",
+      "table": "packages"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "minimum_game_version",
+      "entityType": "columns",
+      "table": "packages"
+    },
+    {
+      "columns": ["package_id"],
+      "tableTo": "packages",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_aircraft_package_id_packages_id_fk",
+      "entityType": "fks",
+      "table": "aircraft"
+    },
+    {
+      "columns": ["package_id"],
+      "tableTo": "packages",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_airports_package_id_packages_id_fk",
+      "entityType": "fks",
+      "table": "airports"
+    },
+    {
+      "columns": ["package_id"],
+      "tableTo": "packages",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "nameExplicit": false,
+      "name": "fk_liveries_package_id_packages_id_fk",
+      "entityType": "fks",
+      "table": "liveries"
+    },
+    {
+      "columns": ["aircraft_id"],
+      "tableTo": "aircraft",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "fk_liveries_aircraft_id_aircraft_id_fk",
+      "entityType": "fks",
+      "table": "liveries"
+    },
+    {
+      "columns": ["airline_id"],
+      "tableTo": "airlines",
+      "columnsTo": ["id"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "SET NULL",
+      "nameExplicit": false,
+      "name": "fk_liveries_airline_id_airlines_id_fk",
+      "entityType": "fks",
+      "table": "liveries"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "aircraft_pk",
+      "table": "aircraft",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "airlines_pk",
+      "table": "airlines",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "airports_pk",
+      "table": "airports",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "liveries_pk",
+      "table": "liveries",
+      "entityType": "pks"
+    },
+    {
+      "columns": ["id"],
+      "nameExplicit": false,
+      "name": "packages_pk",
+      "table": "packages",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        {
+          "value": "package_id",
+          "isExpression": false
+        },
+        {
+          "value": "source_key",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "aircraft_package_source",
+      "entityType": "indexes",
+      "table": "aircraft"
+    },
+    {
+      "columns": [
+        {
+          "value": "icao_code",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "airlines_icao",
+      "entityType": "indexes",
+      "table": "airlines"
+    },
+    {
+      "columns": [
+        {
+          "value": "iata_code",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "airlines_iata",
+      "entityType": "indexes",
+      "table": "airlines"
+    },
+    {
+      "columns": [
+        {
+          "value": "package_id",
+          "isExpression": false
+        },
+        {
+          "value": "source_key",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "airports_package_source",
+      "entityType": "indexes",
+      "table": "airports"
+    },
+    {
+      "columns": [
+        {
+          "value": "icao_code",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "airports_icao",
+      "entityType": "indexes",
+      "table": "airports"
+    },
+    {
+      "columns": [
+        {
+          "value": "iata_code",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "airports_iata",
+      "entityType": "indexes",
+      "table": "airports"
+    },
+    {
+      "columns": [
+        {
+          "value": "package_id",
+          "isExpression": false
+        },
+        {
+          "value": "source_key",
+          "isExpression": false
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "origin": "manual",
+      "name": "liveries_package_source",
+      "entityType": "indexes",
+      "table": "liveries"
+    },
+    {
+      "columns": [
+        {
+          "value": "aircraft_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "liveries_aircraft",
+      "entityType": "indexes",
+      "table": "liveries"
+    },
+    {
+      "columns": [
+        {
+          "value": "airline_id",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "liveries_airline",
+      "entityType": "indexes",
+      "table": "liveries"
+    },
+    {
+      "columns": ["source_path"],
+      "nameExplicit": false,
+      "name": "packages_source_path_unique",
+      "entityType": "uniques",
+      "table": "packages"
+    },
+    {
+      "value": "\"name\" IS NOT NULL OR \"icao_code\" IS NOT NULL OR \"iata_code\" IS NOT NULL",
+      "name": "airlines_known_identity",
+      "entityType": "checks",
+      "table": "airlines"
+    }
+  ],
+  "renames": []
+}
