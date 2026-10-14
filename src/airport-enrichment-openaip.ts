@@ -157,6 +157,7 @@ function requestPage(
     try: async (signal: Readonly<AbortSignal>) => {
       const response = await fetch(url, {
         headers: {'x-openaip-api-key': Redacted.value(key)},
+        redirect: 'error',
         signal,
       });
       const parsed = await validateResponse(response);

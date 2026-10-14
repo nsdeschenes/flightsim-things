@@ -172,6 +172,31 @@ test.each([
   cliTimeout
 );
 test(
+  'a redirect cannot forward the API key or update any airport',
+  async () => {
+    const fixture = await create();
+    const before = fixture.query();
+    const result = await fixture.enrich([
+      {
+        body: fixtures.page([{icaoCode: 'KAAA', name: 'Redirected'}]),
+        code: 'KAAA',
+        redirect: 'https://other-origin.invalid/airports',
+      },
+      {body: fixtures.page([{icaoCode: 'KBBB', name: 'New'}]), code: 'KBBB'},
+    ]);
+    expect(result).toMatchObject({exitCode: 1, stdout: ''});
+    expect(result.stderr).toContain('Check your connection');
+    expect(result.stderr).not.toContain(fixtures.key);
+    expect(await fixture.observed()).toEqual([{code: 'KAAA', page: 1}]);
+    expect(fixture.query()).toEqual(before);
+    expect(fixture.query()).toMatchObject([
+      {icao_code: 'KAAA', name: 'Old'},
+      {icao_code: 'KBBB', name: 'Also old'},
+    ]);
+  },
+  cliTimeout
+);
+test(
   'a later failed lookup leaves earlier matched airports unchanged',
   async () => {
     const fixture = await create();

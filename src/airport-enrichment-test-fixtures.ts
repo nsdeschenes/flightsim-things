@@ -1,6 +1,6 @@
 import {Database} from 'bun:sqlite';
 import {mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
-import {homedir} from 'node:os';
+import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -18,15 +18,13 @@ type RequestPlan = Readonly<{
   mutation?: string;
   page?: number;
   raw?: string;
+  redirect?: string;
   stallBody?: boolean;
   status?: number;
 }>;
 type Result = Readonly<{exitCode: number; stderr: string; stdout: string}>;
 const cli = fileURLToPath(new URL('index.ts', import.meta.url));
-const testDirectory = path.join(
-  homedir(),
-  '.cache/agent-work/flightsim-things/airports-enrich/context'
-);
+const testDirectory = path.join(tmpdir(), 'flightsim-things-airports-enrich');
 const successExitCode = 0;
 const key = 'sentinel-private-openaip-key';
 const emptyPlans: readonly RequestPlan[] = [];
@@ -57,6 +55,10 @@ globalThis.fetch = async function mockedOpenAipFetch(input, options) {
     lock.run('ROLLBACK');
   }
   if (plan.error) {throw new Error(plan.error);}
+  if (plan.redirect) {
+    if (options.redirect === 'error') {throw new Error('Redirect rejected');}
+    appendFileSync(path.join(root, 'observed.jsonl'), JSON.stringify({redirect: plan.redirect, apiKey: new Headers(options.headers).get('x-openaip-api-key')}) + '\\n');
+  }
   if (plan.stallBody) {
     return new Response(new ReadableStream({start(controller) {
       options.signal.addEventListener('abort', () => {

@@ -121,6 +121,7 @@ Repeated enrichment keeps the same rows and IDs.
 
 Requests use the saved key and the GET `/airports` endpoint in the
 [official OpenAIP API specification](https://api.core.openaip.net/api/system/specs/v1/schema.json).
+OpenAIP requests reject redirects to keep the saved API key on `https://api.core.openaip.net`.
 Responses are validated with Zod. Requests run sequentially, with a 30-second timeout per page.
 Network, response validation, and pagination failures leave all airport rows unchanged.
 Database updates commit together in one transaction after all lookups succeed.
