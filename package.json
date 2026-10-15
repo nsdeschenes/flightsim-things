@@ -46,6 +46,7 @@
     "@e18e/eslint-plugin": "^0.8.1",
     "@effect/tsgo": "0.51.1",
     "@j178/prek": "^0.5.5",
+    "@stylistic/eslint-plugin": "^5.10.0",
     "@types/bun": "latest",
     "@types/proper-lockfile": "^4.1.4",
     "drizzle-kit": "1.0.0-rc.4",
