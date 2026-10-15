@@ -20,6 +20,7 @@ function get(): Effect.Effect<
         message: 'No Sentry configuration is saved. Run sentry set with all options.',
       });
     }
+
     return configuration.value;
   });
 }
@@ -28,6 +29,7 @@ function parseSampleRate(input: string): number {
   if (input.trim() === '') {
     return Number.NaN;
   }
+
   return Number(input);
 }
 
@@ -83,6 +85,7 @@ const updateCommand = Command.make(
           message: 'Provide at least one option to update.',
         });
       }
+
       yield* configurationStore.update(previous =>
         configurationStore.validate({
           dsn: Option.getOrElse(dsn, () => previous.dsn),

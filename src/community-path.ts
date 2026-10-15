@@ -16,9 +16,11 @@ function toError(error: unknown): CommunityPathError {
   if (error instanceof CommunityPathError) {
     return error;
   }
+
   if (error instanceof Error) {
     return new CommunityPathError({cause: error, message: error.message});
   }
+
   return new CommunityPathError({
     cause: error,
     message: String(error),
@@ -31,6 +33,7 @@ function parseCommunityPath(value: unknown): string {
       'Invalid Community directory. Run community-path set <path> to replace it.'
     );
   }
+
   return value;
 }
 
@@ -47,6 +50,7 @@ function resolveCommunityPath(input: string): string {
   } else if (input.startsWith('~/') || input.startsWith(`~${path.sep}`)) {
     expandedPath = path.join(os.homedir(), input.slice('~/'.length));
   }
+
   return path.resolve(expandedPath);
 }
 
@@ -62,6 +66,7 @@ function validateCommunityDirectory(
             message: `Community directory does not exist: ${communityPath}`,
           });
         }
+
         return toError(error);
       },
       try: async () => {
@@ -74,6 +79,7 @@ function validateCommunityDirectory(
         message: `Community path is not a directory: ${communityPath}`,
       });
     }
+
     return yield* Effect.void;
   });
 }
@@ -88,6 +94,7 @@ function get(): Effect.Effect<string, CommunityPathError> {
         message: 'No Community directory is saved. Run community-path set <path>.',
       });
     }
+
     return yield* Effect.try({
       catch: toError,
       try: () => parseCommunityPath(saved.value),

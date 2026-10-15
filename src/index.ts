@@ -37,9 +37,11 @@ function exitCodeFor(error: unknown): number {
   if (!(error instanceof CliError.ShowHelp)) {
     return commandFailureExitCode;
   }
+
   if (error.errors.length === noErrors) {
     return successExitCode;
   }
+
   if (
     error.errors.some(
       (parseError: Readonly<Error>) => parseError instanceof CliError.UnknownSubcommand
@@ -47,6 +49,7 @@ function exitCodeFor(error: unknown): number {
   ) {
     return unknownCommandExitCode;
   }
+
   return invalidArgumentsExitCode;
 }
 
@@ -54,6 +57,7 @@ function failureMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;
   }
+
   return String(error);
 }
 

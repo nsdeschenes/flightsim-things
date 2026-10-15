@@ -17,6 +17,7 @@ async function prepareProbe(
   if (process.platform === 'win32') {
     filename = 'probe.exe';
   }
+
   const executable = path.join(homeDirectory, filename);
   await cp(path.join(repository, 'drizzle'), migrationsFolder, {recursive: true});
   await writeFile(
@@ -110,6 +111,7 @@ async function run(
   if (typeof options.executable === 'string') {
     command = [options.executable];
   }
+
   const child = Bun.spawn(command, {
     cwd: options.workingDirectory ?? repository,
     env: {...process.env, HOME: homeDirectory, USERPROFILE: homeDirectory},

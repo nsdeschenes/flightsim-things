@@ -30,6 +30,7 @@ async function run(
   if (typeof binary === 'string' && binary !== '') {
     executable = [binary];
   }
+
   const child = Bun.spawn([...executable, ...args], {
     cwd: homeDirectory,
     env: {...process.env, HOME: homeDirectory, USERPROFILE: homeDirectory},
@@ -255,6 +256,7 @@ test('OpenAIP key commands exclude credentials and failures from telemetry', asy
     ]) {
       expect(await run('openaip-key', ...args)).toMatchObject(expected);
     }
+
     expect(envelopes).toEqual([]);
     expect(await run('hello')).toMatchObject({exitCode: 0});
     expect(envelopes.join('\n')).toContain('cli.command.completed');

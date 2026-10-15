@@ -54,6 +54,7 @@ function page(
     ...overrides,
   };
 }
+
 type TestDatabase = ReturnType<typeof drizzle<typeof schema.relations>>;
 type Fixture = Readonly<{
   db: TestDatabase;
@@ -75,6 +76,7 @@ function seedAirports(
       .run();
   }
 }
+
 function createFixture(): Fixture {
   const client = new Database(':memory:');
   const db = drizzle({client, relations: schema.relations});
@@ -94,6 +96,7 @@ function createFixture(): Fixture {
       try: () => query(db),
     });
   }
+
   const databaseSpy = spyOn(database, 'use').mockImplementation(use);
   const configurationSpy = spyOn(configuration, 'get').mockReturnValue(
     Effect.succeedSome(key)
@@ -118,5 +121,6 @@ function createFixture(): Fixture {
     },
   };
 }
+
 const fixtures = {createFixture, key, page};
 export default fixtures;

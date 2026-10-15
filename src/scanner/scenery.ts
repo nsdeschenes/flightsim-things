@@ -43,6 +43,7 @@ async function unrelatedRoot(contents: XmlContents): Promise<boolean> {
     ) {
       return false;
     }
+
     return (
       typeof groups.root === 'string' &&
       groups.root !== 'FSData' &&
@@ -57,6 +58,7 @@ function text(value: unknown): string | null {
   if (typeof value !== 'string' || value.trim() === '') {
     return missing;
   }
+
   return value.trim();
 }
 
@@ -69,13 +71,16 @@ function airportObservation(
   if (ident === missing || !airportCode.test(ident)) {
     throw new Error(`Airport in ${key} requires an explicit valid ident`);
   }
+
   if (iata !== missing && !iataCode.test(iata)) {
     throw new Error(`Invalid explicit airport IATA code in ${key}: ${iata}`);
   }
+
   let normalizedIata = iata;
   if (iata !== missing) {
     normalizedIata = iata.toUpperCase();
   }
+
   return {
     iataCode: normalizedIata,
     icaoCode: ident.toUpperCase(),
@@ -99,11 +104,13 @@ function airportObservations(
       observations.push(airportObservation(key, child));
     }
   }
+
   if (
     new Set(observations.map(airport => airport.sourceKey)).size !== observations.length
   ) {
     throw new Error(`Duplicate airport ident in ${key}`);
   }
+
   return observations;
 }
 
@@ -115,11 +122,13 @@ async function readAirports(key: string, contents: XmlContents): Promise<Scenery
     if (!(await unrelatedRoot(contents))) {
       throw error;
     }
+
     return {
       airports: [],
       warnings: [`Skipped malformed unrelated XML in ${key}: ${String(error)}`],
     };
   }
+
   return {airports: airportObservations(key, document), warnings: []};
 }
 
@@ -130,6 +139,7 @@ async function readScenery(key: string, contents: XmlContents): Promise<SceneryR
     if (key.endsWith('.xml')) {
       Bun.XML.parse(contents);
     }
+
     return {
       airports: [
         {
@@ -142,10 +152,12 @@ async function readScenery(key: string, contents: XmlContents): Promise<SceneryR
       warnings: [],
     };
   }
+
   if (key.endsWith('.xml')) {
     const result = await readAirports(key, contents);
     return result;
   }
+
   return {airports: [], warnings: []};
 }
 

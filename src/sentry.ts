@@ -31,6 +31,7 @@ function sample<Signal>(signal: Readonly<Signal>, rate: number): Readonly<Signal
   if (rate === fullSampleRate || (rate > zeroSampleRate && Math.random() < rate)) {
     return signal;
   }
+
   return Option.getOrNull(Option.none());
 }
 
@@ -40,6 +41,7 @@ function makeSdkLayer(configuration: Configuration): ReturnType<typeof effectLay
       if (sample(log, configuration.sampleRates.logs)) {
         return {...log, message: String(log.message)};
       }
+
       return Option.getOrNull(Option.none());
     },
     beforeSendMetric: (metric: DeepReadonly<Metric>) =>
@@ -86,14 +88,17 @@ function instrument<Result, Failure, Requirements>(
             if (client) {
               client.getOptions().ignoreSpans = ['CLI command'];
             }
+
             return Effect.void;
           }
+
           return ErrorReporter.report(cause);
         }),
         Effect.onExit(() => {
           if (!recordCommand) {
             return Effect.void;
           }
+
           return Effect.log('CLI command finished').pipe(
             Effect.andThen(
               Effect.sync(() => {
@@ -121,6 +126,7 @@ function withSentry<Result, Failure, Requirements>(
   ) {
     return command();
   }
+
   return Effect.gen(function* runWithSentry() {
     const configuration = yield* configurationStore.read().pipe(
       Effect.catch(({message}: Readonly<{message: string}>) =>
@@ -133,6 +139,7 @@ function withSentry<Result, Failure, Requirements>(
     if (Option.isNone(configuration)) {
       return yield* command();
     }
+
     return yield* instrument(command, configuration.value);
   });
 }

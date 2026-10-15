@@ -101,6 +101,7 @@ test('killing a process inside its callback permits an immediate database reopen
     holder.kill('SIGKILL');
     await holder.exited;
   }
+
   expect(
     await run(`
       console.log(await Effect.runPromise(database.use(db => {

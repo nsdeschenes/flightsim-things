@@ -20,6 +20,7 @@ const scanCommand = Command.make('scan', {}, () =>
         message: `${summary.failedPackages} packages could not be scanned. Fix the reported metadata and run scan again.`,
       });
     }
+
     return yield* Effect.void;
   })
 ).pipe(

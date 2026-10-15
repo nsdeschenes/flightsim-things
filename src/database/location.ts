@@ -8,6 +8,7 @@ let migrationsFolder = path.resolve(import.meta.dir, '../../drizzle');
 if (Bun.isStandaloneExecutable) {
   migrationsFolder = path.join(import.meta.dir, 'drizzle');
 }
+
 const location = {databaseFile, directory, lockFile, migrationsFolder};
 
 export default location;

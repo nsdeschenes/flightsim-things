@@ -35,6 +35,7 @@ async function run(
   if (typeof binary === 'string' && binary !== '') {
     executable = [binary];
   }
+
   const child = Bun.spawn([...executable, ...args], {
     cwd: homeDirectory,
     env: {...process.env, HOME: homeDirectory, USERPROFILE: homeDirectory},

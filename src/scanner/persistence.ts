@@ -74,6 +74,7 @@ function airlineInputs(
       }
     }
   }
+
   return [...rows.values()];
 }
 
@@ -93,6 +94,7 @@ function saveAirlines(tx: Transaction, snapshots: readonly PackageSnapshot[]): I
       ids.set(row.icaoCode, row.id);
     }
   }
+
   return ids;
 }
 
@@ -121,6 +123,7 @@ function packageRows(
   if (typeof packageId !== 'number') {
     throw new TypeError(`Package upsert did not return ${snapshot.metadata.sourcePath}`);
   }
+
   return {
     aircraft: snapshot.aircraft.map(row => ({...row, packageId})),
     airports: snapshot.airports.map(row => ({...row, packageId})),
@@ -152,6 +155,7 @@ function saveAircraft(
       ids.push(row.id);
     }
   }
+
   return ids;
 }
 
@@ -194,6 +198,7 @@ function saveLiveries(tx: Transaction, values: readonly LiveryRow[]): readonly n
       ids.push(row.id);
     }
   }
+
   return ids;
 }
 
@@ -242,6 +247,7 @@ function seedLinkScope(tx: Transaction, rows: WrittenRows): void {
       )})`
     );
   }
+
   for (const ids of chunks(rows.liveries)) {
     tx.run(
       sql`INSERT INTO scan_liveries (id) VALUES ${sql.join(

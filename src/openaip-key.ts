@@ -25,6 +25,7 @@ function validate(value: unknown): Effect.Effect<Redacted.Redacted, OpenAipKeyEr
       })
     );
   }
+
   return Effect.succeed(Redacted.make(value));
 }
 
@@ -39,6 +40,7 @@ function get(): Effect.Effect<Redacted.Redacted, OpenAipKeyError> {
           'No OpenAIP API key is saved. Sign in at https://www.openaip.net/, open API clients, create a client, and copy its API key. Run openaip-key set <key> to save it.',
       });
     }
+
     return yield* validate(saved.value);
   });
 }

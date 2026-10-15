@@ -26,6 +26,7 @@ function isDsn(input: string): boolean {
   ) {
     return false;
   }
+
   const url = new URL(input);
   return (
     (url.protocol === 'https:' || url.protocol === 'http:') &&
@@ -76,9 +77,11 @@ function toError(cause: unknown): SentryConfigurationError {
   if (cause instanceof configuration.Error) {
     return new SentryConfigurationError({cause, message: cause.message});
   }
+
   if (cause instanceof SentryConfigurationError) {
     return cause;
   }
+
   return new SentryConfigurationError({
     cause,
     message:
@@ -109,6 +112,7 @@ function readConfiguration(): Effect.Effect<
     if (!Option.isSome(saved)) {
       return Option.none();
     }
+
     return yield* validateConfiguration(saved.value).pipe(
       Effect.asSome,
       Effect.mapError(
@@ -141,6 +145,7 @@ function updateConfiguration(
             message: 'No Sentry configuration is saved. Run sentry set with all options.',
           });
         }
+
         yield* validateConfiguration(saved.value);
         const previous = yield* Schema.decodeUnknownEffect(storedConfigurationSchema)(
           saved.value

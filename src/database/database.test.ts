@@ -176,6 +176,7 @@ test('concurrent first opens migrate once and package upserts preserve identity'
   for (const result of await Promise.all(writers)) {
     expect(result).toMatchObject({exitCode: 0, stderr: ''});
   }
+
   expect(
     await run(`
     console.log(JSON.stringify(await Effect.runPromise(database.use(db => ({

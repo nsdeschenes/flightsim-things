@@ -28,6 +28,7 @@ async function lookupFailure(): Promise<string> {
   );
   return error.message;
 }
+
 const invalidAirports: readonly Readonly<{airport: unknown; name: string}>[] = [
   {airport: {icaoCode: 'KAAA', name: 42}, name: 'nontext metadata'},
   {airport: {icaoCode: 'kaaa'}, name: 'invalid ICAO'},
@@ -147,6 +148,7 @@ test('a stalled response body times out and aborts with virtual time', async () 
     if (!signal) {
       throw new Error('Missing abort signal');
     }
+
     const stream = new ReadableStream<Uint8Array>({
       start: (
         controller: Readonly<ReadableStreamDefaultController<Uint8Array>>
@@ -165,6 +167,7 @@ test('a stalled response body times out and aborts with virtual time', async () 
     const response = await Promise.resolve(new Response(stream));
     return response;
   }
+
   fetchStalled.preconnect = globalThis.fetch.preconnect;
   fetchSpy.mockImplementationOnce(fetchStalled);
   const program = Effect.gen(function* timeout() {

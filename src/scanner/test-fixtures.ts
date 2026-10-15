@@ -60,6 +60,7 @@ async function writeAddon(
     await mkdir(path.dirname(path.join(root, filename)), {recursive: true});
     await writeFile(path.join(root, filename), contents);
   }
+
   return root;
 }
 
