@@ -34,6 +34,7 @@ function toError(cause: unknown): ScanError {
   if (cause instanceof Error) {
     ({message} = cause);
   }
+
   return new ScanError({cause, message});
 }
 
@@ -46,8 +47,10 @@ async function readBatch(
     if (entry.done === true) {
       return {finished: true, paths};
     }
+
     paths.push(entry.value);
   }
+
   return {finished: false, paths};
 }
 
@@ -76,6 +79,7 @@ function reportReads(reads: readonly PackageRead[]): Effect.Effect<
         );
       }
     }
+
     return {...counts, snapshots};
   });
 }
@@ -91,6 +95,7 @@ function summarize(
     summary.liveries += snapshot.liveries.length;
     summary.packages += nextIndex;
   }
+
   return summary;
 }
 
@@ -128,6 +133,7 @@ function importBatch(
       saved = yield* persistence.save(result.snapshots);
       yield* Console.log(`Saved ${summary.packages} packages so far.`);
     }
+
     return {saved, summary};
   });
 }
@@ -171,6 +177,7 @@ function scanBatches(
       appendIds(written.aircraft, imported.saved.aircraft);
       appendIds(written.liveries, imported.saved.liveries);
     }
+
     return {summary, written};
   });
 }

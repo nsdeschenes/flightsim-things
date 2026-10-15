@@ -77,6 +77,7 @@ async function validateAssets(
   if (verifyChecksums || files.includes('SHA256SUMS')) {
     expected = [...binaries, 'SHA256SUMS'].toSorted();
   }
+
   assert.deepEqual(
     files.toSorted(),
     expected,
@@ -101,6 +102,7 @@ async function build(targetId: string): Promise<void> {
   if (targetId !== 'all') {
     selected = targets.filter(target => target.id === targetId);
   }
+
   assert.ok(selected.length > successExitCode, `Unknown target ${targetId}`);
   await mkdir('dist', {recursive: true});
   for (const target of selected) {

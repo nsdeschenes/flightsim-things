@@ -52,10 +52,12 @@ function toError(cause: unknown): DatabaseError {
   if (cause instanceof DatabaseError) {
     return cause;
   }
+
   let detail = String(cause);
   if (cause instanceof Error) {
     detail = cause.message;
   }
+
   return new DatabaseError({
     cause,
     message: `Could not access addon database at ${databaseFile}. ${detail}`,
@@ -145,6 +147,7 @@ function synchronousResult<Value>(value: Value): Value {
       message: 'Database callbacks must return synchronous, materialized data.',
     });
   }
+
   return value;
 }
 

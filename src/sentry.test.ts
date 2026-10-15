@@ -45,6 +45,7 @@ async function run(...args: readonly string[]): Promise<CommandResult> {
   if (typeof binary === 'string' && binary !== '') {
     executable = [binary];
   }
+
   const child = Bun.spawn([...executable, ...args], {
     cwd: homeDirectory,
     env: {...process.env, HOME: homeDirectory, USERPROFILE: homeDirectory},
@@ -99,6 +100,7 @@ function envelopeTypes(): string[] {
           ) {
             return [record.type];
           }
+
           return [];
         })
     )

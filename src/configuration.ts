@@ -36,10 +36,12 @@ function toError(cause: unknown): ConfigurationError {
   if (cause instanceof ConfigurationError) {
     return cause;
   }
+
   let detail = String(cause);
   if (cause instanceof Error) {
     detail = cause.message;
   }
+
   return new ConfigurationError({
     cause,
     message: `Could not access CLI configuration. Check your configuration directory permissions. ${detail}`,
@@ -56,12 +58,14 @@ function parseDocument(contents: string): ConfigurationDocument {
       message: `Invalid JSON in ${configurationFile}. Repair the file before saving configuration; existing settings have been preserved.`,
     });
   }
+
   const parsed = Schema.decodeUnknownOption(Schema.JsonObject)(document);
   if (Option.isNone(parsed) || Array.isArray(document)) {
     throw new ConfigurationError({
       message: `Configuration in ${configurationFile} must be a JSON object. Repair the file before saving configuration; existing settings have been preserved.`,
     });
   }
+
   return parsed.value;
 }
 
@@ -79,8 +83,10 @@ function readDocument(): Effect.Effect<
         if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
           return Option.none();
         }
+
         throw error;
       }
+
       return Option.some(parseDocument(contents));
     },
   });
@@ -90,6 +96,7 @@ function getValue(document: ConfigurationDocument, key: string): Option.Option<u
   if (Object.hasOwn(document, key)) {
     return Option.some(document[key]);
   }
+
   return Option.none();
 }
 
@@ -118,6 +125,7 @@ async function replaceConfiguration(temporaryFile: string): Promise<void> {
       ) {
         throw error;
       }
+
       await delay(retryDelayMilliseconds * renameRetryFactor ** attempt);
     }
   }
@@ -224,6 +232,7 @@ function update<Failure, Requirements>(
       if (Effect.isEffect(next)) {
         return yield* next;
       }
+
       return next;
     })
   );

@@ -48,8 +48,10 @@ function normalizedCode(code: string | null): string {
   if (code === null) {
     return '';
   }
+
   return code.trim().toUpperCase();
 }
+
 function lookupFor(row: InstalledAirport): AirportCode | null {
   const icao = normalizedCode(row.icaoCode);
   const iata = normalizedCode(row.iataCode);
@@ -60,8 +62,10 @@ function lookupFor(row: InstalledAirport): AirportCode | null {
   } else if (openaip.iataPattern.test(iata)) {
     return {code: iata, field: 'iataCode'};
   }
+
   return missing;
 }
+
 function addRow(
   groups: Readonly<
     Pick<Map<string, {lookup: AirportCode; rows: InstalledAirport[]}>, 'get' | 'set'>
@@ -77,6 +81,7 @@ function addRow(
     groups.set(groupKey, {lookup, rows: [row]});
   }
 }
+
 function groupRows(
   rows: readonly InstalledAirport[]
 ): Readonly<{groups: readonly LookupGroup[]; skipped: number}> {
@@ -90,8 +95,10 @@ function groupRows(
       addRow(groups, lookup, row);
     }
   }
+
   return {groups: [...groups.values()], skipped};
 }
+
 function originalCode(
   field: 'icaoCode' | 'iataCode',
   value: string | null
@@ -99,8 +106,10 @@ function originalCode(
   if (value === null) {
     return isNull(schema.airports[field]);
   }
+
   return eq(schema.airports[field], value);
 }
+
 function updateRow(
   tx: Transaction,
   row: InstalledAirport,
@@ -120,6 +129,7 @@ function updateRow(
     )
     .run().changes;
 }
+
 function applyLookup(
   tx: Transaction,
   completed: CompletedLookup,
@@ -138,6 +148,7 @@ function applyLookup(
     }
   }
 }
+
 function applyMatches(
   lookups: readonly CompletedLookup[],
   summary: Summary
@@ -150,6 +161,7 @@ function applyMatches(
           for (const lookup of lookups) {
             applyLookup(tx, lookup, updated);
           }
+
           return updated;
         },
         {behavior: 'immediate'}
@@ -161,6 +173,7 @@ function applyMatches(
       )
     );
 }
+
 function installedRows(): Effect.Effect<readonly InstalledAirport[], EnrichmentError> {
   return database
     .use(db =>
@@ -181,6 +194,7 @@ function installedRows(): Effect.Effect<readonly InstalledAirport[], EnrichmentE
       )
     );
 }
+
 function enrich(): Effect.Effect<Summary, EnrichmentError> {
   return Effect.gen(function* enrichInstalledAirports() {
     const rows = yield* installedRows();
@@ -189,6 +203,7 @@ function enrich(): Effect.Effect<Summary, EnrichmentError> {
         'No installed airports were found. Run scan before airports enrich.'
       );
     }
+
     const {groups, skipped} = groupRows(rows);
     const summary = {
       airports: rows.length,
@@ -200,6 +215,7 @@ function enrich(): Effect.Effect<Summary, EnrichmentError> {
     if (groups.length === noRows) {
       return summary;
     }
+
     const key = yield* openaipKey
       .get()
       .pipe(
@@ -215,5 +231,6 @@ function enrich(): Effect.Effect<Summary, EnrichmentError> {
     return yield* applyMatches(lookups, summary);
   });
 }
+
 const airportEnrichment = {enrich};
 export default airportEnrichment;

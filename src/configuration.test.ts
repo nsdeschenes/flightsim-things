@@ -128,6 +128,7 @@ test.each(['{broken', 'null', '[]', '42', '"text"'])(
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('Repair the file');
     }
+
     expect(await readFile(configurationFile, 'utf8')).toBe(contents);
     expect(await readdir(path.dirname(configurationFile))).toEqual(['config.json']);
   }

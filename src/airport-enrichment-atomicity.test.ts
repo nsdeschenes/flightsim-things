@@ -77,6 +77,7 @@ test.each([
       );
       return response;
     }
+
     fetchAfterMutation.preconnect = globalThis.fetch.preconnect;
     fixture.fetch
       .mockImplementationOnce(fetchAfterMutation)

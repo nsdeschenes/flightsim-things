@@ -31,6 +31,7 @@ async function seedBatches(): Promise<void> {
       [cfgPath]: `${baseCfg}[FLTSIM.0]\nui_variation=First\n[FLTSIM.1]\nui_variation=Second\n`,
     });
   }
+
   expect(await fixture.run('community-path', 'set', fixture.community)).toMatchObject({
     exitCode: 0,
   });
@@ -44,11 +45,13 @@ async function interruptSecondBatch(): Promise<readonly string[]> {
   for await (const entry of directory) {
     packages.push(path.join(fixture.community, entry.name));
   }
+
   using db = new Database(path.join(fixture.home, '.flightsim-things/addons.sqlite'));
   const last = packages.at(-1);
   if (typeof last !== 'string') {
     throw new TypeError('Expected a package in the second batch');
   }
+
   db.run(
     `CREATE TRIGGER stop_last_package BEFORE UPDATE ON packages
      WHEN NEW.source_path = '${last.replaceAll("'", "''")}'
@@ -70,6 +73,7 @@ async function changeTargets(packages: readonly string[]): Promise<void> {
   if (typeof changed !== 'string' || typeof removed !== 'string') {
     throw new TypeError('Expected two packages in the first batch');
   }
+
   await writeFile(path.join(changed, cfgPath), variantCfg.replace('Base', 'Absent'));
   await writeFile(
     path.join(removed, cfgPath),

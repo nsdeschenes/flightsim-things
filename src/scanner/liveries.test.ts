@@ -34,6 +34,7 @@ function verifyNativeRows(): void {
   if (!Array.isArray(expected)) {
     throw new TypeError('Expected native livery rows');
   }
+
   expect(
     fixture.query(
       'SELECT l.name, l.registration, l.aircraft_id, a.icao_code FROM liveries l LEFT JOIN airlines a ON a.id=l.airline_id ORDER BY l.name'

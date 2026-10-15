@@ -35,6 +35,7 @@ async function run(
   if (repeatFailure) {
     failureCode = 'failures[0]';
   }
+
   const program = `
     import configuration from ${JSON.stringify(moduleFile)};
     import fs from 'node:fs/promises';

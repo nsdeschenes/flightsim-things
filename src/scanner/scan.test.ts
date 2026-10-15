@@ -32,6 +32,7 @@ async function mixedPackages(): Promise<string> {
       'LIVERY'
     );
   }
+
   return fixture.addon(
     '99-base',
     {
@@ -59,6 +60,7 @@ function verifyImported(result: Awaited<ReturnType<typeof fixture.run>>): void {
   if (!Array.isArray(airports)) {
     throw new TypeError('Expected airport fixture array');
   }
+
   expect(
     fixture.query('SELECT icao_code, iata_code, name FROM airports ORDER BY icao_code')
   ).toEqual(airports);

@@ -28,6 +28,7 @@ function text(value: unknown): string | null {
   if (typeof value !== 'string' || value.trim() === '') {
     return missing;
   }
+
   return value.trim();
 }
 
@@ -47,6 +48,7 @@ function uncomment(line: string): string {
       return line.slice(firstIndex, index).trim();
     }
   }
+
   return line.trim();
 }
 
@@ -65,6 +67,7 @@ function addConfigurationLine(
     if (!section || separator < firstIndex) {
       throw new Error(`Invalid aircraft configuration line: ${line}`);
     }
+
     section.values.set(
       line.slice(firstIndex, separator).trim().toLowerCase(),
       line
@@ -80,6 +83,7 @@ function parseConfiguration(contents: string): readonly ConfigurationSection[] {
   for (const rawLine of contents.replace(bom, '').split(lineBreak)) {
     addConfigurationLine(uncomment(rawLine), sections);
   }
+
   if (
     !sections.some(
       section =>
@@ -92,6 +96,7 @@ function parseConfiguration(contents: string): readonly ConfigurationSection[] {
       'Aircraft configuration requires GENERAL, LIVERY, or FLTSIM sections'
     );
   }
+
   return sections;
 }
 
@@ -103,6 +108,7 @@ function sectionValues(
   if (section) {
     return section.values;
   }
+
   return new Map();
 }
 
@@ -130,14 +136,17 @@ function targetContainer(
   if (!livery) {
     return container;
   }
+
   const base = text(livery.values.get('base_container'));
   if (base === missing) {
     return missing;
   }
+
   const target = vfsKey(path.posix.join(container, base.replaceAll('\\', '/')));
   if (!target.startsWith('simobjects/airplanes/')) {
     throw new Error(`Invalid virtual aircraft container: ${base}`);
   }
+
   return target;
 }
 
@@ -151,6 +160,7 @@ function liveryObservation(
   if (airlineCode !== missing) {
     airlineCode = airlineCode.toUpperCase();
   }
+
   return {
     airlineCode,
     airlineName: text(values.get('atc_airline')),
@@ -168,10 +178,12 @@ function readAircraft(relative: string, contents: string): Contents {
   if (new Set(variations.map(section => section.name)).size !== variations.length) {
     throw new Error(`Duplicate FLTSIM section in ${relative}`);
   }
+
   const aircraft: AircraftObservation[] = [];
   if (!sections.some(section => liverySections.has(section.name))) {
     aircraft.push(aircraftObservation(container, sections));
   }
+
   const target = targetContainer(container, sections);
   return {
     aircraft,
@@ -193,6 +205,7 @@ function commonOverrideValue(
   if (values.size === nextIndex) {
     return [...values].at(firstIndex) ?? missing;
   }
+
   return missing;
 }
 
@@ -204,6 +217,7 @@ function nativeLiveryObservation(
   if (airlineCode !== missing) {
     airlineCode = airlineCode.toUpperCase();
   }
+
   return {
     airlineCode,
     airlineName: commonOverrideValue(sections, 'atc_airline'),

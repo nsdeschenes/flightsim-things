@@ -84,45 +84,57 @@ type Candidates = Readonly<{
 function failure(message: string): AirportEnrichmentError {
   return new AirportEnrichmentError({message});
 }
+
 function textMetadata(airport: Airport, lookup: AirportCode): AirportMetadata {
   const metadata: {-readonly [Key in keyof AirportMetadata]: AirportMetadata[Key]} = {};
   if (lookup.field === 'icaoCode' && typeof airport.iataCode === 'string') {
     metadata.iataCode = airport.iataCode;
   }
+
   if (lookup.field === 'iataCode' && typeof airport.icaoCode === 'string') {
     metadata.icaoCode = airport.icaoCode;
   }
+
   if (typeof airport.name === 'string' && airport.name.trim() !== '') {
     metadata.name = airport.name.trim();
   }
+
   return metadata;
 }
+
 function metadataFor(airport: Airport, lookup: AirportCode): AirportMetadata {
   const metadata: {-readonly [Key in keyof AirportMetadata]: AirportMetadata[Key]} =
     textMetadata(airport, lookup);
   if (airport.elevation) {
     metadata.elevationMeters = airport.elevation.value;
   }
+
   if (airport.geometry) {
     const [longitude, latitude] = airport.geometry.coordinates;
     metadata.latitude = latitude;
     metadata.longitude = longitude;
   }
+
   return metadata;
 }
+
 function parseAirportPage(json: unknown): AirportPage {
   const parsed = pageSchema.safeParse(json);
   if (!parsed.success) {
     throw failure('OpenAIP returned invalid airport data. No airports were updated.');
   }
+
   return parsed.data;
 }
+
 function requestError(error: unknown): AirportEnrichmentError {
   if (error instanceof AirportEnrichmentError) {
     return error;
   }
+
   return failure('Could not request OpenAIP airports. Check your connection and retry.');
 }
+
 async function validateResponse(
   response: Readonly<Pick<Response, 'ok' | 'status' | 'json'>>
 ): Promise<AirportPage> {
@@ -132,16 +144,20 @@ async function validateResponse(
         'OpenAIP rejected the API key. Run openaip-key set <key> with a valid key.'
       );
     }
+
     throw failure(`OpenAIP airport request failed with HTTP ${response.status}.`);
   }
+
   let json: unknown;
   try {
     json = await response.json();
   } catch {
     throw failure('OpenAIP returned invalid JSON. No airports were updated.');
   }
+
   return parseAirportPage(json);
 }
+
 function requestPage(
   lookup: AirportCode,
   page: number,
@@ -171,6 +187,7 @@ function requestPage(
     })
   );
 }
+
 function validatePagination(
   response: AirportPage,
   page: number,
@@ -195,6 +212,7 @@ function validatePagination(
     throw failure('OpenAIP returned inconsistent pagination. No airports were updated.');
   }
 }
+
 function addCandidate(
   candidates: Candidates,
   airport: Airport,
@@ -207,11 +225,14 @@ function addCandidate(
     if (previous) {
       return JSON.stringify(previous) !== JSON.stringify(metadata);
     }
+
     candidates.identified.set(providerId, metadata);
   }
+
   candidates.matches.push(metadata);
   return false;
 }
+
 function addPage(
   candidates: Candidates,
   response: AirportPage,
@@ -226,18 +247,23 @@ function addPage(
       conflictingIdentity = true;
     }
   }
+
   return conflictingIdentity;
 }
+
 function selectMatch(candidates: Candidates, conflictingIdentity: boolean): LookupResult {
   if (conflictingIdentity || candidates.matches.length > uniqueMatchCount) {
     return {kind: 'ambiguous'};
   }
+
   const [metadata] = candidates.matches;
   if (metadata) {
     return {kind: 'matched', metadata};
   }
+
   return {kind: 'unmatched'};
 }
+
 function collectPage(
   state: LookupState,
   response: AirportPage,
@@ -248,6 +274,7 @@ function collectPage(
   if (state.page >= response.totalPages && received !== response.totalCount) {
     throw failure('OpenAIP returned incomplete pagination. No airports were updated.');
   }
+
   return {
     conflictingIdentity:
       addPage(search.candidates, response, search.lookup) || state.conflictingIdentity,
@@ -256,6 +283,7 @@ function collectPage(
     received,
   };
 }
+
 function lookupAirport(
   lookup: AirportCode,
   key: Readonly<Redacted.Redacted>
@@ -285,5 +313,6 @@ function lookupAirport(
     }
   });
 }
+
 const openaip = {failure, iataPattern, icaoPattern, lookupAirport};
 export default openaip;
