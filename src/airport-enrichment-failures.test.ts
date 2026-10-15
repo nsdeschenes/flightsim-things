@@ -1,27 +1,24 @@
-import {afterEach, beforeEach, expect, spyOn, test} from 'bun:test';
+import {expect, test} from 'bun:test';
 
 import {Effect, Fiber, Redacted} from 'effect';
 import {adjust, layer} from 'effect/testing/TestClock';
+import {http, HttpResponse} from 'msw';
 
 import openaip from './airport-enrichment-openaip.ts';
 import fixtures from './airport-enrichment-test-fixtures.ts';
+import testHttp from './test-http.ts';
+
+type TestRequest = (typeof testHttp.requests)[number];
 
 type PaginationCase = Readonly<{
   label: string;
   message: string;
   overrides: NonNullable<Parameters<typeof fixtures.page>[1]>;
 }>;
-let fetchSpy: ReturnType<typeof spyOn<typeof globalThis, 'fetch'>>;
 const lookup = {code: 'KAAA', field: 'icaoCode'} satisfies Parameters<
   typeof openaip.lookupAirport
 >[0];
 const key = Redacted.make(fixtures.key);
-beforeEach(() => {
-  fetchSpy = spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected HTTP'));
-});
-afterEach(() => {
-  fetchSpy.mockRestore();
-});
 async function lookupFailure(): Promise<string> {
   const error = await Effect.runPromise(
     openaip.lookupAirport(lookup, key).pipe(Effect.flip)
@@ -48,8 +45,10 @@ const invalidAirports: readonly Readonly<{airport: unknown; name: string}>[] = [
 test.each([...invalidAirports])(
   'Zod rejects $name',
   async ({airport}: Readonly<{airport: unknown}>) => {
-    fetchSpy.mockResolvedValueOnce(
-      Response.json({...fixtures.page([]), items: [airport]})
+    testHttp.server.use(
+      http.get('https://api.core.openaip.net/api/airports', () =>
+        HttpResponse.json({...fixtures.page([]), items: [airport]})
+      )
     );
     expect(await lookupFailure()).toBe(
       'OpenAIP returned invalid airport data. No airports were updated.'
@@ -73,8 +72,12 @@ const invalidPagination: readonly PaginationCase[] = [
 test.each([...invalidPagination])(
   'rejects $label',
   async ({overrides, message}: PaginationCase) => {
-    fetchSpy.mockResolvedValueOnce(
-      Response.json(fixtures.page([{icaoCode: 'KAAA'}, {icaoCode: 'KBBB'}], overrides))
+    testHttp.server.use(
+      http.get('https://api.core.openaip.net/api/airports', () =>
+        HttpResponse.json(
+          fixtures.page([{icaoCode: 'KAAA'}, {icaoCode: 'KBBB'}], overrides)
+        )
+      )
     );
     expect(await lookupFailure()).toBe(
       `OpenAIP returned ${message}. No airports were updated.`
@@ -92,23 +95,32 @@ const laterPagination: readonly PaginationCase[] = [
 test.each([...laterPagination])(
   'rejects $label later pagination',
   async ({overrides, message}: PaginationCase) => {
-    fetchSpy
-      .mockResolvedValueOnce(
-        Response.json(
-          fixtures.page([{icaoCode: 'KAAA'}], {limit: 1, totalCount: 2, totalPages: 2})
-        )
+    testHttp.server.use(
+      http.get(
+        'https://api.core.openaip.net/api/airports',
+        ({request}: Readonly<{request: TestRequest}>) => {
+          if (new URL(request.url).searchParams.get('page') === '1') {
+            return HttpResponse.json(
+              fixtures.page([{icaoCode: 'KAAA'}], {
+                limit: 1,
+                totalCount: 2,
+                totalPages: 2,
+              })
+            );
+          }
+
+          return HttpResponse.json(
+            fixtures.page([], {
+              limit: 1,
+              page: 2,
+              totalCount: 2,
+              totalPages: 2,
+              ...overrides,
+            })
+          );
+        }
       )
-      .mockResolvedValueOnce(
-        Response.json(
-          fixtures.page([], {
-            limit: 1,
-            page: 2,
-            totalCount: 2,
-            totalPages: 2,
-            ...overrides,
-          })
-        )
-      );
+    );
     expect(await lookupFailure()).toBe(
       `OpenAIP returned ${message}. No airports were updated.`
     );
@@ -126,50 +138,77 @@ test.each([
   {message: 'OpenAIP airport request failed with HTTP 503.', status: 503},
   {message: 'OpenAIP returned invalid JSON. No airports were updated.', status: 200},
 ])('HTTP $status hides response contents', async ({status, message}) => {
-  fetchSpy.mockResolvedValueOnce(new Response(fixtures.key, {status}));
+  testHttp.server.use(
+    http.get('https://api.core.openaip.net/api/airports', () =>
+      HttpResponse.text(fixtures.key, {status})
+    )
+  );
   expect(await lookupFailure()).toBe(message);
 });
-test('network and redirect rejection hide sensitive request details', async () => {
-  fetchSpy.mockRejectedValueOnce(new Error(`Redirect rejected: ${fixtures.key}`));
+test('network rejection hides sensitive request details', async () => {
+  testHttp.server.use(
+    http.get('https://api.core.openaip.net/api/airports', () => HttpResponse.error())
+  );
   expect(await lookupFailure()).toBe(
     'Could not request OpenAIP airports. Check your connection and retry.'
   );
-  const [, options] = fetchSpy.mock.calls[0] ?? [];
-  expect(options).toMatchObject({redirect: 'error'});
+});
+test('redirect rejection never forwards the API key to the destination', async () => {
+  const destinationRequests: TestRequest[] = [];
+  testHttp.server.use(
+    http.get(
+      'https://api.core.openaip.net/api/airports',
+      () =>
+        new HttpResponse(fixtures.key, {
+          headers: {Location: 'https://redirect.example/airports'},
+          status: 302,
+        })
+    ),
+    http.get(
+      'https://redirect.example/airports',
+      ({request}: Readonly<{request: TestRequest}>) => {
+        destinationRequests.push(request);
+        return HttpResponse.json(fixtures.page([]));
+      }
+    )
+  );
+  expect(await lookupFailure()).toBe(
+    'Could not request OpenAIP airports. Check your connection and retry.'
+  );
+  expect(testHttp.requests).toHaveLength(1);
+  expect(testHttp.requests.map((request: TestRequest) => request.redirect)).toEqual([
+    'error',
+  ]);
+  expect(destinationRequests).toEqual([]);
 });
 test('a stalled response body times out and aborts with virtual time', async () => {
   let aborted = false;
   const started = Promise.withResolvers<boolean>();
-  async function fetchStalled(
-    _input: unknown,
-    options?: Readonly<{signal?: Readonly<AbortSignal> | undefined | null}>
-  ): Promise<Response> {
-    const signal = options && options.signal;
-    if (!signal) {
-      throw new Error('Missing abort signal');
-    }
-
-    const stream = new ReadableStream<Uint8Array>({
-      start: (
-        controller: Readonly<ReadableStreamDefaultController<Uint8Array>>
-      ): void => {
-        signal.addEventListener(
-          'abort',
-          () => {
-            aborted = true;
-            controller.error(new Error(fixtures.key));
+  testHttp.server.use(
+    http.get(
+      'https://api.core.openaip.net/api/airports',
+      ({request}: Readonly<{request: TestRequest}>) => {
+        const stream = new ReadableStream<Uint8Array>({
+          pull: (): void => {
+            started.resolve(true);
           },
-          {once: true}
-        );
-        started.resolve(true);
-      },
-    });
-    const response = await Promise.resolve(new Response(stream));
-    return response;
-  }
-
-  fetchStalled.preconnect = globalThis.fetch.preconnect;
-  fetchSpy.mockImplementationOnce(fetchStalled);
+          start: (
+            controller: Readonly<ReadableStreamDefaultController<Uint8Array>>
+          ): void => {
+            request.signal.addEventListener(
+              'abort',
+              () => {
+                aborted = true;
+                controller.error(new Error(fixtures.key));
+              },
+              {once: true}
+            );
+          },
+        });
+        return new HttpResponse(stream);
+      }
+    )
+  );
   const program = Effect.gen(function* timeout() {
     const fiber = yield* openaip
       .lookupAirport(lookup, key)
