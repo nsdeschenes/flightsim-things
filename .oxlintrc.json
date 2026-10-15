@@ -47,7 +47,8 @@
     "node/no-process-env": "off",
     "import/no-default-export": "allow",
     "one-var": ["error", "never"],
-    "func-style": ["error", "declaration", {"allowArrowFunctions": false}]
+    "func-style": ["error", "declaration", {"allowArrowFunctions": false}],
+    "max-lines": "off"
   },
   "env": {
     "builtin": true
