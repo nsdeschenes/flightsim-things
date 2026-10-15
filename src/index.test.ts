@@ -57,6 +57,15 @@ test('hello still prints the greeting', () => {
   });
 });
 
+test('command failures print a concise message', () => {
+  expect(run('sentry', 'get')).toEqual({
+    exitCode: 1,
+    stderr:
+      'Command failed, No Sentry configuration is saved. Run sentry set with all options.\n',
+    stdout: '',
+  });
+});
+
 test('version reports the manifest version', () => {
   expect(run('--version')).toEqual({
     exitCode: 0,
