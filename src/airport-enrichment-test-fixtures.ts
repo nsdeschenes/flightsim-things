@@ -59,7 +59,6 @@ type TestDatabase = ReturnType<typeof drizzle<typeof schema.relations>>;
 type Fixture = Readonly<{
   db: TestDatabase;
   client: Database;
-  fetch: ReturnType<typeof spyOn<typeof globalThis, 'fetch'>>;
   configuration: ReturnType<typeof spyOn<typeof configuration, 'get'>>;
   seed: (rows: readonly SeedAirport[]) => void;
   rows: () => (typeof schema.airports.$inferSelect)[];
@@ -101,20 +100,15 @@ function createFixture(): Fixture {
   const configurationSpy = spyOn(configuration, 'get').mockReturnValue(
     Effect.succeedSome(key)
   );
-  const fetchSpy = spyOn(globalThis, 'fetch').mockRejectedValue(
-    new Error('Unexpected HTTP request')
-  );
   return {
     client,
     configuration: configurationSpy,
     db,
     dispose: () => {
-      fetchSpy.mockRestore();
       configurationSpy.mockRestore();
       databaseSpy.mockRestore();
       client.close();
     },
-    fetch: fetchSpy,
     rows: () => db.select().from(schema.airports).orderBy(schema.airports.id).all(),
     seed: rows => {
       seedAirports(db, record.id, rows);

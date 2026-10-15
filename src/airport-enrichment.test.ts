@@ -1,10 +1,14 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test';
 
 import {Effect, Option} from 'effect';
+import {http, HttpResponse} from 'msw';
 
 import airportEnrichment from '#airport-enrichment';
 
 import fixtures from './airport-enrichment-test-fixtures.ts';
+import testHttp from './test-http.ts';
+
+type TestRequest = (typeof testHttp.requests)[number];
 
 const missing = Option.getOrNull(Option.none());
 const metadata = {
@@ -35,7 +39,11 @@ test('normalized ICAO groups ignore fuzzy matches, preserve identity and rerun',
       name: ' Actual ',
     },
   ]);
-  fixture.fetch.mockResolvedValueOnce(Response.json(response));
+  testHttp.server.use(
+    http.get('https://api.core.openaip.net/api/airports', () =>
+      HttpResponse.json(response)
+    )
+  );
   expect(await Effect.runPromise(airportEnrichment.enrich())).toEqual({
     airports: 2,
     ambiguous: 0,
@@ -48,7 +56,6 @@ test('normalized ICAO groups ignore fuzzy matches, preserve identity and rerun',
     {...metadata, icaoCode: 'KAAA', id: 2, sourceKey: 'airport-1'},
   ];
   expect(fixture.rows()).toEqual(expected);
-  fixture.fetch.mockResolvedValueOnce(Response.json(response));
   expect(await Effect.runPromise(airportEnrichment.enrich())).toEqual({
     airports: 2,
     ambiguous: 0,
@@ -57,8 +64,31 @@ test('normalized ICAO groups ignore fuzzy matches, preserve identity and rerun',
     unmatched: 0,
   });
   expect(fixture.rows()).toEqual(expected);
-  expect(fixture.fetch).toHaveBeenCalledTimes(2);
+  expect(testHttp.requests).toHaveLength(2);
 });
+function mockMixedLookups(): void {
+  const responses = new Map([
+    ['AAA', fixtures.page([{iataCode: 'AAA', icaoCode: 'KAAA', name: '   '}])],
+    ['KCCC', fixtures.page([{icaoCode: 'KCCC'}])],
+    ['KDDD', fixtures.page([], {totalPages: 0})],
+    ['KEEE', fixtures.page([{icaoCode: 'KEEE'}, {icaoCode: 'KEEE'}])],
+  ]);
+  testHttp.server.use(
+    http.get(
+      'https://api.core.openaip.net/api/airports',
+      ({request}: Readonly<{request: TestRequest}>) => {
+        const search = new URL(request.url).searchParams.get('search');
+        const response = responses.get(search ?? '');
+        if (!response) {
+          throw new Error(`Unexpected airport search ${search}`);
+        }
+
+        return HttpResponse.json(response);
+      }
+    )
+  );
+}
+
 test('IATA fallback preserves optional metadata and summary counts are disjoint', async () => {
   fixture.seed([
     {
@@ -74,15 +104,7 @@ test('IATA fallback preserves optional metadata and summary counts are disjoint'
     {icaoCode: 'KDDD'},
     {icaoCode: 'KEEE', name: 'Ambiguous'},
   ]);
-  fixture.fetch
-    .mockResolvedValueOnce(
-      Response.json(fixtures.page([{iataCode: 'AAA', icaoCode: 'KAAA', name: '   '}]))
-    )
-    .mockResolvedValueOnce(Response.json(fixtures.page([{icaoCode: 'KCCC'}])))
-    .mockResolvedValueOnce(Response.json(fixtures.page([], {totalPages: 0})))
-    .mockResolvedValueOnce(
-      Response.json(fixtures.page([{icaoCode: 'KEEE'}, {icaoCode: 'KEEE'}]))
-    );
+  mockMixedLookups();
   expect(await Effect.runPromise(airportEnrichment.enrich())).toEqual({
     airports: 6,
     ambiguous: 1,
@@ -105,7 +127,7 @@ test('IATA fallback preserves optional metadata and summary counts are disjoint'
     {icaoCode: 'KDDD', name: missing},
     {icaoCode: 'KEEE', name: 'Ambiguous'},
   ]);
-  expect(fixture.fetch).toHaveBeenCalledTimes(4);
+  expect(testHttp.requests).toHaveLength(4);
 });
 test('empty installed airports fail before configuration or HTTP', async () => {
   const error = await Effect.runPromise(airportEnrichment.enrich().pipe(Effect.flip));
@@ -113,7 +135,7 @@ test('empty installed airports fail before configuration or HTTP', async () => {
     'No installed airports were found. Run scan before airports enrich.'
   );
   expect(fixture.configuration).not.toHaveBeenCalled();
-  expect(fixture.fetch).not.toHaveBeenCalled();
+  expect(testHttp.requests).toEqual([]);
 });
 test('unusable codes skip configuration and HTTP', async () => {
   fixture.seed([
@@ -128,12 +150,12 @@ test('unusable codes skip configuration and HTTP', async () => {
     unmatched: 0,
   });
   expect(fixture.configuration).not.toHaveBeenCalled();
-  expect(fixture.fetch).not.toHaveBeenCalled();
+  expect(testHttp.requests).toEqual([]);
 });
 test('usable codes propagate missing saved keys before HTTP', async () => {
   fixture.seed([{icaoCode: 'KAAA'}]);
   fixture.configuration.mockReturnValue(Effect.succeedNone);
   const error = await Effect.runPromise(airportEnrichment.enrich().pipe(Effect.flip));
   expect(error.message).toContain('No OpenAIP API key is saved');
-  expect(fixture.fetch).not.toHaveBeenCalled();
+  expect(testHttp.requests).toEqual([]);
 });

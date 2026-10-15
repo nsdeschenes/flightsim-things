@@ -2,11 +2,15 @@ import {afterEach, beforeEach, expect, test} from 'bun:test';
 
 import {eq} from 'drizzle-orm';
 import {Effect, Option} from 'effect';
+import {http, HttpResponse} from 'msw';
 
 import airportEnrichment from '#airport-enrichment';
 import schema from '#database-schema';
 
 import fixtures from './airport-enrichment-test-fixtures.ts';
+import testHttp from './test-http.ts';
+
+type TestRequest = (typeof testHttp.requests)[number];
 
 const missing = Option.getOrNull(Option.none());
 let fixture: ReturnType<typeof fixtures.createFixture>;
@@ -22,11 +26,19 @@ afterEach(() => {
 });
 test('a later failed lookup leaves earlier matched airports unchanged', async () => {
   const before = fixture.rows();
-  fixture.fetch
-    .mockResolvedValueOnce(
-      Response.json(fixtures.page([{icaoCode: 'KAAA', name: 'New'}]))
+  testHttp.server.use(
+    http.get(
+      'https://api.core.openaip.net/api/airports',
+      ({request}: Readonly<{request: TestRequest}>) => {
+        const search = new URL(request.url).searchParams.get('search');
+        if (search === 'KAAA') {
+          return HttpResponse.json(fixtures.page([{icaoCode: 'KAAA', name: 'New'}]));
+        }
+
+        return HttpResponse.error();
+      }
     )
-    .mockRejectedValueOnce(new Error(fixtures.key));
+  );
   const error = await Effect.runPromise(airportEnrichment.enrich().pipe(Effect.flip));
   expect(error.message).toBe(
     'Could not request OpenAIP airports. Check your connection and retry.'
@@ -38,13 +50,15 @@ test('a rejected later SQL update rolls back the transaction and hides its cause
   fixture.client.run(
     `CREATE TRIGGER fail_update BEFORE UPDATE ON airports WHEN old.id = 2 BEGIN SELECT RAISE(ABORT, '${fixtures.key}'); END`
   );
-  fixture.fetch
-    .mockResolvedValueOnce(
-      Response.json(fixtures.page([{icaoCode: 'KAAA', name: 'New'}]))
+  testHttp.server.use(
+    http.get(
+      'https://api.core.openaip.net/api/airports',
+      ({request}: Readonly<{request: TestRequest}>) => {
+        const search = new URL(request.url).searchParams.get('search');
+        return HttpResponse.json(fixtures.page([{icaoCode: search ?? '', name: 'New'}]));
+      }
     )
-    .mockResolvedValueOnce(
-      Response.json(fixtures.page([{icaoCode: 'KBBB', name: 'New'}]))
-    );
+  );
   const error = await Effect.runPromise(airportEnrichment.enrich().pipe(Effect.flip));
   expect(error.message).toBe('Could not update the addon database. Retry the command.');
   expect(fixture.rows()).toEqual(before);
@@ -61,7 +75,7 @@ test.each([
     changes,
   }: Readonly<{changes: Partial<typeof schema.airports.$inferInsert>}>) => {
     fixture.db.insert(schema.packages).values({sourcePath: '/Community/other'}).run();
-    async function fetchAfterMutation(): Promise<Response> {
+    function respondAfterMutation(): Response {
       fixture.db
         .update(schema.airports)
         .set({...changes, name: 'Concurrent'})
@@ -72,20 +86,23 @@ test.each([
         .set({name: 'Live'})
         .where(eq(schema.airports.id, 2))
         .run();
-      const response = await Promise.resolve(
-        Response.json(fixtures.page([{icaoCode: 'KAAA', name: 'Remote'}]))
-      );
-      return response;
+      return HttpResponse.json(fixtures.page([{icaoCode: 'KAAA', name: 'Remote'}]));
     }
 
-    fetchAfterMutation.preconnect = globalThis.fetch.preconnect;
-    fixture.fetch
-      .mockImplementationOnce(fetchAfterMutation)
-      .mockResolvedValueOnce(
-        Response.json(
-          fixtures.page([{elevation: {unit: 0, value: -2}, icaoCode: 'KBBB'}])
-        )
-      );
+    testHttp.server.use(
+      http.get(
+        'https://api.core.openaip.net/api/airports',
+        ({request}: Readonly<{request: TestRequest}>) => {
+          if (new URL(request.url).searchParams.get('search') === 'KAAA') {
+            return respondAfterMutation();
+          }
+
+          return HttpResponse.json(
+            fixtures.page([{elevation: {unit: 0, value: -2}, icaoCode: 'KBBB'}])
+          );
+        }
+      )
+    );
     expect(await Effect.runPromise(airportEnrichment.enrich())).toEqual({
       airports: 2,
       ambiguous: 0,
