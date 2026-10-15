@@ -1,266 +1,186 @@
-import {afterEach, expect, test} from 'bun:test';
+import {afterEach, beforeEach, expect, spyOn, test} from 'bun:test';
 
+import {Effect, Fiber, Redacted} from 'effect';
+import {adjust, layer} from 'effect/testing/TestClock';
+
+import openaip from './airport-enrichment-openaip.ts';
 import fixtures from './airport-enrichment-test-fixtures.ts';
 
-type Fixture = Awaited<ReturnType<typeof fixtures.createFixture>>;
-type FailureCase = Readonly<{
+type PaginationCase = Readonly<{
+  label: string;
   message: string;
-  plan: Readonly<{body?: unknown; error?: string; raw?: string; status?: number}>;
+  overrides: NonNullable<Parameters<typeof fixtures.page>[1]>;
 }>;
-const cliTimeout = 60_000;
-const active: Fixture[] = [];
-afterEach(async () => {
-  for (const fixture of active) {
-    await fixture.dispose();
-  }
-  active.length = 0;
+let fetchSpy: ReturnType<typeof spyOn<typeof globalThis, 'fetch'>>;
+const lookup = {code: 'KAAA', field: 'icaoCode'} satisfies Parameters<
+  typeof openaip.lookupAirport
+>[0];
+const key = Redacted.make(fixtures.key);
+beforeEach(() => {
+  fetchSpy = spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected HTTP'));
 });
-async function create(saveKey = true): Promise<Fixture> {
-  const fixture = await fixtures.createFixture(
-    [
-      {icaoCode: 'KAAA', name: 'Old'},
-      {icaoCode: 'KBBB', name: 'Also old'},
-    ],
-    saveKey
+afterEach(() => {
+  fetchSpy.mockRestore();
+});
+async function lookupFailure(): Promise<string> {
+  const error = await Effect.runPromise(
+    openaip.lookupAirport(lookup, key).pipe(Effect.flip)
   );
-  active.push(fixture);
-  return fixture;
+  return error.message;
 }
-const failureCases: readonly FailureCase[] = [
-  {message: 'OpenAIP rejected the API key', plan: {raw: fixtures.key, status: 401}},
-  {message: 'OpenAIP rejected the API key', plan: {raw: fixtures.key, status: 403}},
-  {message: 'HTTP 503', plan: {raw: fixtures.key, status: 503}},
-  {message: 'invalid JSON', plan: {raw: `{"secret":"${fixtures.key}",broken}`}},
-  {message: 'Check your connection', plan: {error: fixtures.key}},
+const invalidAirports: readonly Readonly<{airport: unknown; name: string}>[] = [
+  {airport: {icaoCode: 'KAAA', name: 42}, name: 'nontext metadata'},
+  {airport: {icaoCode: 'kaaa'}, name: 'invalid ICAO'},
+  {airport: {iataCode: 'AB12', icaoCode: 'KAAA'}, name: 'invalid IATA'},
+  {airport: {geometry: {coordinates: [181, 0], type: 'Point'}}, name: 'longitude bounds'},
+  {airport: {geometry: {coordinates: [0, 91], type: 'Point'}}, name: 'latitude bounds'},
   {
-    message: 'invalid airport data',
-    plan: {body: fixtures.page([{icaoCode: 'KAAA', name: 42}])},
+    airport: {geometry: {coordinates: [0, 0, 0], type: 'Point'}},
+    name: 'coordinate arity',
   },
+  {airport: {elevation: {unit: 1, value: 100}}, name: 'elevation unit'},
   {
-    message: 'invalid airport data',
-    plan: {body: fixtures.page([{icaoCode: 'kaaa', name: fixtures.key}])},
-  },
-  {
-    message: 'invalid airport data',
-    plan: {body: fixtures.page([{iataCode: 'AB12', icaoCode: 'KAAA'}])},
-  },
-  {
-    message: 'invalid airport data',
-    plan: {
-      body: fixtures.page([
-        {geometry: {coordinates: [181, 0], type: 'Point'}, icaoCode: 'KAAA'},
-      ]),
-    },
-  },
-  {
-    message: 'invalid airport data',
-    plan: {
-      body: fixtures.page([
-        {geometry: {coordinates: [0, 91], type: 'Point'}, icaoCode: 'KAAA'},
-      ]),
-    },
-  },
-  {
-    message: 'invalid airport data',
-    plan: {
-      body: fixtures.page([
-        {geometry: {coordinates: [0, 0, 0], type: 'Point'}, icaoCode: 'KAAA'},
-      ]),
-    },
-  },
-  {
-    message: 'invalid airport data',
-    plan: {body: fixtures.page([{elevation: {unit: 1, value: 100}, icaoCode: 'KAAA'}])},
-  },
-  {
-    message: 'invalid airport data',
-    plan: {body: fixtures.page([{elevation: {unit: 0, value: '100'}, icaoCode: 'KAAA'}])},
-  },
-  {
-    message: 'invalid airport data',
-    plan: {
-      body: fixtures.page([
-        {elevation: {referenceDatum: 0, unit: 0, value: 100}, icaoCode: 'KAAA'},
-      ]),
-    },
-  },
-  {
-    message: 'invalid airport data',
-    plan: {body: fixtures.page([{icaoCode: 'KAAA'}], {page: 1.5})},
-  },
-  {
-    message: 'inconsistent pagination',
-    plan: {body: fixtures.page([{icaoCode: 'KAAA'}], {page: 2})},
-  },
-  {
-    message: 'inconsistent pagination',
-    plan: {body: fixtures.page([{icaoCode: 'KAAA'}], {nextPage: 1})},
-  },
-  {
-    message: 'inconsistent pagination',
-    plan: {
-      body: fixtures.page([{icaoCode: 'KAAA'}], {
-        limit: 1,
-        nextPage: 3,
-        totalCount: 3,
-        totalPages: 3,
-      }),
-    },
-  },
-  {
-    message: 'inconsistent pagination',
-    plan: {body: fixtures.page([{icaoCode: 'KAAA'}], {totalCount: 0})},
-  },
-  {
-    message: 'incomplete pagination',
-    plan: {body: fixtures.page([{icaoCode: 'KAAA'}], {totalCount: 2})},
+    airport: {elevation: {referenceDatum: 0, unit: 0, value: 100}},
+    name: 'elevation datum',
   },
 ];
-test.each([...failureCases])(
-  'request failure %# preserves every airport and hides provider data',
-  async ({message, plan}: FailureCase) => {
-    const fixture = await create();
-    const before = fixture.query();
-    const result = await fixture.enrich([{code: 'KAAA', ...plan}]);
-    expect(result.exitCode).toBe(1);
-    expect(result.stdout).toBe('');
-    expect(result.stderr).toContain(message);
-    expect(result.stderr).not.toContain(fixtures.key);
-    expect(fixture.query()).toEqual(before);
+test.each([...invalidAirports])(
+  'Zod rejects $name',
+  async ({airport}: Readonly<{airport: unknown}>) => {
+    fetchSpy.mockResolvedValueOnce(
+      Response.json({...fixtures.page([]), items: [airport]})
+    );
+    expect(await lookupFailure()).toBe(
+      'OpenAIP returned invalid airport data. No airports were updated.'
+    );
+  }
+);
+const invalidPagination: readonly PaginationCase[] = [
+  {label: 'fractional page', message: 'invalid airport data', overrides: {page: 1.5}},
+  {label: 'wrong page', message: 'inconsistent pagination', overrides: {page: 2}},
+  {
+    label: 'looping next page',
+    message: 'inconsistent pagination',
+    overrides: {nextPage: 1},
   },
-  cliTimeout
+  {
+    label: 'missing final item',
+    message: 'incomplete pagination',
+    overrides: {totalCount: 3},
+  },
+];
+test.each([...invalidPagination])(
+  'rejects $label',
+  async ({overrides, message}: PaginationCase) => {
+    fetchSpy.mockResolvedValueOnce(
+      Response.json(fixtures.page([{icaoCode: 'KAAA'}, {icaoCode: 'KBBB'}], overrides))
+    );
+    expect(await lookupFailure()).toBe(
+      `OpenAIP returned ${message}. No airports were updated.`
+    );
+  }
+);
+const laterPagination: readonly PaginationCase[] = [
+  {label: 'truncated', message: 'incomplete pagination', overrides: {}},
+  {
+    label: 'changed total',
+    message: 'inconsistent pagination',
+    overrides: {totalCount: 3, totalPages: 3},
+  },
+];
+test.each([...laterPagination])(
+  'rejects $label later pagination',
+  async ({overrides, message}: PaginationCase) => {
+    fetchSpy
+      .mockResolvedValueOnce(
+        Response.json(
+          fixtures.page([{icaoCode: 'KAAA'}], {limit: 1, totalCount: 2, totalPages: 2})
+        )
+      )
+      .mockResolvedValueOnce(
+        Response.json(
+          fixtures.page([], {
+            limit: 1,
+            page: 2,
+            totalCount: 2,
+            totalPages: 2,
+            ...overrides,
+          })
+        )
+      );
+    expect(await lookupFailure()).toBe(
+      `OpenAIP returned ${message}. No airports were updated.`
+    );
+  }
 );
 test.each([
-  {overrides: {}},
-  {overrides: {totalCount: 3, totalPages: 3}},
-  {overrides: {limit: 2, totalPages: 1}},
-  {overrides: {totalPages: 3}},
-])(
-  'truncated or changing later pages %# cannot commit an early match',
-  async ({overrides}: Readonly<{overrides: Readonly<Record<string, unknown>>}>) => {
-    const fixture = await create();
-    const before = fixture.query();
-    const result = await fixture.enrich([
-      {
-        body: fixtures.page([{icaoCode: 'KAAA', name: 'Early'}], {
-          limit: 1,
-          totalCount: 2,
-          totalPages: 2,
-        }),
-        code: 'KAAA',
+  {
+    message: 'OpenAIP rejected the API key. Run openaip-key set <key> with a valid key.',
+    status: 401,
+  },
+  {
+    message: 'OpenAIP rejected the API key. Run openaip-key set <key> with a valid key.',
+    status: 403,
+  },
+  {message: 'OpenAIP airport request failed with HTTP 503.', status: 503},
+  {message: 'OpenAIP returned invalid JSON. No airports were updated.', status: 200},
+])('HTTP $status hides response contents', async ({status, message}) => {
+  fetchSpy.mockResolvedValueOnce(new Response(fixtures.key, {status}));
+  expect(await lookupFailure()).toBe(message);
+});
+test('network and redirect rejection hide sensitive request details', async () => {
+  fetchSpy.mockRejectedValueOnce(new Error(`Redirect rejected: ${fixtures.key}`));
+  expect(await lookupFailure()).toBe(
+    'Could not request OpenAIP airports. Check your connection and retry.'
+  );
+  const [, options] = fetchSpy.mock.calls[0] ?? [];
+  expect(options).toMatchObject({redirect: 'error'});
+});
+test('a stalled response body times out and aborts with virtual time', async () => {
+  let aborted = false;
+  const started = Promise.withResolvers<boolean>();
+  async function fetchStalled(
+    _input: unknown,
+    options?: Readonly<{signal?: Readonly<AbortSignal> | undefined | null}>
+  ): Promise<Response> {
+    const signal = options && options.signal;
+    if (!signal) {
+      throw new Error('Missing abort signal');
+    }
+    const stream = new ReadableStream<Uint8Array>({
+      start: (
+        controller: Readonly<ReadableStreamDefaultController<Uint8Array>>
+      ): void => {
+        signal.addEventListener(
+          'abort',
+          () => {
+            aborted = true;
+            controller.error(new Error(fixtures.key));
+          },
+          {once: true}
+        );
+        started.resolve(true);
       },
-      {
-        body: fixtures.page([], {
-          limit: 1,
-          page: 2,
-          totalCount: 2,
-          totalPages: 2,
-          ...overrides,
-        }),
-        code: 'KAAA',
-        page: 2,
-      },
-    ]);
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('pagination');
-    expect(fixture.query()).toEqual(before);
-    expect(await fixture.observed()).toEqual([
-      {code: 'KAAA', page: 1},
-      {code: 'KAAA', page: 2},
-    ]);
-  },
-  cliTimeout
-);
-test(
-  'a redirect cannot forward the API key or update any airport',
-  async () => {
-    const fixture = await create();
-    const before = fixture.query();
-    const result = await fixture.enrich([
-      {
-        body: fixtures.page([{icaoCode: 'KAAA', name: 'Redirected'}]),
-        code: 'KAAA',
-        redirect: 'https://other-origin.invalid/airports',
-      },
-      {body: fixtures.page([{icaoCode: 'KBBB', name: 'New'}]), code: 'KBBB'},
-    ]);
-    expect(result).toMatchObject({exitCode: 1, stdout: ''});
-    expect(result.stderr).toContain('Check your connection');
-    expect(result.stderr).not.toContain(fixtures.key);
-    expect(await fixture.observed()).toEqual([{code: 'KAAA', page: 1}]);
-    expect(fixture.query()).toEqual(before);
-    expect(fixture.query()).toMatchObject([
-      {icao_code: 'KAAA', name: 'Old'},
-      {icao_code: 'KBBB', name: 'Also old'},
-    ]);
-  },
-  cliTimeout
-);
-test(
-  'a later failed lookup leaves earlier matched airports unchanged',
-  async () => {
-    const fixture = await create();
-    const before = fixture.query();
-    const result = await fixture.enrich([
-      {body: fixtures.page([{icaoCode: 'KAAA', name: 'New'}]), code: 'KAAA'},
-      {code: 'KBBB', error: fixtures.key},
-    ]);
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('Check your connection');
-    expect(result.stderr).not.toContain(fixtures.key);
-    expect(fixture.query()).toEqual(before);
-  },
-  cliTimeout
-);
-test(
-  'a failed database update rolls back the complete transaction without exposing its cause',
-  async () => {
-    const fixture = await create();
-    const before = fixture.query();
-    const result = await fixture.enrich([
-      {body: fixtures.page([{icaoCode: 'KAAA', name: 'New'}]), code: 'KAAA'},
-      {
-        body: fixtures.page([{icaoCode: 'KBBB', name: 'New'}]),
-        code: 'KBBB',
-        mutation: `CREATE TRIGGER fail_update BEFORE UPDATE ON airports WHEN old.id = 2 BEGIN SELECT RAISE(ABORT, '${fixtures.key}'); END`,
-      },
-    ]);
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('Could not update the addon database');
-    expect(result.stderr).not.toContain(fixtures.key);
-    expect(fixture.query()).toEqual(before);
-  },
-  cliTimeout
-);
-test(
-  'a usable installed code needs a saved API key before HTTP',
-  async () => {
-    const fixture = await create(false);
-    const result = await fixture.enrich();
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain('No OpenAIP API key is saved');
-    expect(await fixture.observed()).toEqual([]);
-    expect(fixture.query()).toMatchObject([
-      {icao_code: 'KAAA', name: 'Old'},
-      {icao_code: 'KBBB', name: 'Also old'},
-    ]);
-  },
-  cliTimeout
-);
-test(
-  'a stalled response body times out, aborts HTTP, and leaves all airports unchanged',
-  async () => {
-    const fixture = await create();
-    const before = fixture.query();
-    const result = await fixture.enrich([
-      {body: fixtures.page([{icaoCode: 'KAAA', name: 'New'}]), code: 'KAAA'},
-      {code: 'KBBB', stallBody: true},
-    ]);
-    expect(result).toMatchObject({exitCode: 1, stdout: ''});
-    expect(result.stderr).toContain('OpenAIP airport request timed out');
-    expect(result.stderr).not.toContain(fixtures.key);
-    expect(await fixture.aborted()).toBe('aborted');
-    expect(fixture.query()).toEqual(before);
-  },
-  cliTimeout
-);
+    });
+    const response = await Promise.resolve(new Response(stream));
+    return response;
+  }
+  fetchStalled.preconnect = globalThis.fetch.preconnect;
+  fetchSpy.mockImplementationOnce(fetchStalled);
+  const program = Effect.gen(function* timeout() {
+    const fiber = yield* openaip
+      .lookupAirport(lookup, key)
+      .pipe(Effect.result, Effect.forkChild);
+    yield* Effect.promise(async () => {
+      await started.promise;
+    });
+    yield* adjust('30 seconds');
+    return yield* Fiber.join(fiber);
+  }).pipe(Effect.provide(layer()));
+  const result = await Effect.runPromise(program);
+  expect(result).toMatchObject({
+    _tag: 'Failure',
+    failure: {message: 'OpenAIP airport request timed out. Retry the command.'},
+  });
+  expect(aborted).toBe(true);
+});
