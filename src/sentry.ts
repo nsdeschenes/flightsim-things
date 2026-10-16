@@ -6,6 +6,7 @@ import {
   metrics,
   SentryEffectLogger,
   SentryEffectTracer,
+  vercelAIIntegration,
 } from '@sentry/effect/server';
 import {Cause, Effect, ErrorReporter, Logger, Option} from 'effect';
 import {CliError} from 'effect/cli';
@@ -47,6 +48,7 @@ function makeSdkLayer(configuration: Configuration): ReturnType<typeof effectLay
     beforeSendMetric: (metric: DeepReadonly<Metric>) =>
       sample(metric, configuration.sampleRates.metrics),
     dsn: configuration.dsn,
+    integrations: [vercelAIIntegration({recordInputs: false, recordOutputs: false})],
     release: `flightsim-things@${version}`,
     sampleRate: configuration.sampleRates.errors,
     traceLifecycle: 'static',

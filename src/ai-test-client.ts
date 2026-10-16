@@ -3,10 +3,11 @@ import {inspect} from 'node:util';
 import {BunRuntime} from '@effect/platform-bun';
 import {generateText} from 'ai';
 import {Effect, Option, Redacted} from 'effect';
-import {http, HttpResponse} from 'msw';
+import {http, HttpResponse, passthrough} from 'msw';
 
 import ai from '#ai';
 
+import withSentry from './sentry.ts';
 import testHttp from './test-http.ts';
 
 type CapturedRequest = Readonly<{
@@ -17,6 +18,7 @@ type CapturedRequest = Readonly<{
 }>;
 const requests: CapturedRequest[] = [];
 const lastArgument = -1;
+const sentryEnvelopeUrl = /^http:\/\/127\.0\.0\.1:\d+\/api\/123\/envelope\//u;
 type TestRequest = Readonly<{
   headers: Readonly<{get: (name: string) => string | null}>;
   json: () => Promise<unknown>;
@@ -69,6 +71,7 @@ const googleResponse = {
 
 function interceptProviders(): void {
   testHttp.server.use(
+    http.post(sentryEnvelopeUrl, passthrough),
     http.post(
       'https://api.openai.com/v1/responses',
       async ({request}: Readonly<{request: TestRequest}>) => {
@@ -94,12 +97,12 @@ function interceptProviders(): void {
   testHttp.server.listen({onUnhandledRequest: 'error'});
 }
 
-async function generate(): Promise<string> {
+async function generate(prompt = 'Say hello.'): Promise<string> {
   const configuredModel = await Effect.runPromise(ai.model());
   const result = await generateText({
     maxRetries: 0,
     model: configuredModel,
-    prompt: 'Say hello.',
+    prompt,
   });
   return result.text;
 }
@@ -130,9 +133,29 @@ async function exerciseProviders(): Promise<void> {
   }
 }
 
+async function exerciseTracing(): Promise<void> {
+  interceptProviders();
+  try {
+    await Effect.runPromise(
+      withSentry(
+        () =>
+          Effect.promise(async () => {
+            const text = await generate('private-prompt-sentinel');
+            process.stdout.write(`${text}\n`);
+          }),
+        ['generate']
+      )
+    );
+  } finally {
+    testHttp.server.close();
+  }
+}
+
 async function main(): Promise<void> {
   const action = process.argv.at(lastArgument);
-  if (action === 'requests') {
+  if (action === 'tracing') {
+    await exerciseTracing();
+  } else if (action === 'requests') {
     await exerciseProviders();
   } else if (action === 'inspect') {
     const saved = await Effect.runPromise(ai.get());
