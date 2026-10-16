@@ -76,8 +76,8 @@ jobs:
       - run: tar -xf "${{ runner.temp }}/node_modules.tar"
       - run: bun run fmt:check
 
-  test:
-    needs: install
+  test-source:
+    needs: [install, lint, typecheck, format]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -90,4 +90,34 @@ jobs:
           name: node-modules
           path: ${{ runner.temp }}
       - run: tar -xf "${{ runner.temp }}/node_modules.tar"
-      - run: bun run test
+      - run: bun run test:source
+
+  test-acceptance:
+    needs: [install, lint, typecheck, format]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - uses: actions/download-artifact@v8
+        with:
+          name: node-modules
+          path: ${{ runner.temp }}
+      - run: tar -xf "${{ runner.temp }}/node_modules.tar"
+      - run: bun run test:acceptance
+
+  test:
+    needs: [test-source, test-acceptance]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require both test suites to pass
+        env:
+          SOURCE_RESULT: ${{ needs.test-source.result }}
+          ACCEPTANCE_RESULT: ${{ needs.test-acceptance.result }}
+        run: |
+          test "$SOURCE_RESULT" = success
+          test "$ACCEPTANCE_RESULT" = success

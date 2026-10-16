@@ -91,10 +91,26 @@ configuration values and in `ai get` output.
 
 ```bash
 bun run test
+bun run test:source
+bun run test:acceptance
 bun run typecheck
 bun run lint
 bun run fmt:check
 ```
+
+`bun run test` runs both suites. Source tests live beside their modules in `src/`
+and include unit, component, and adapter integration tests. Acceptance tests in
+`acceptance/` exercise the application CLI and release tooling through subprocesses.
+Bare `bun test` runs only the source suite.
+
+Run one acceptance file with `bun run test:acceptance ./commands/ai.test.ts`.
+Set `FLIGHTSIM_TEST_BINARY` to an absolute or repository-relative executable path
+to run application acceptance against a compiled binary. Release-tool tests keep
+using `scripts/release.ts`.
+
+CI runs lint, typecheck, and formatting first. Once all three pass, source and
+acceptance tests run in separate parallel jobs using the shared dependency artifact.
+The final `test` check requires both suites to succeed.
 
 `bun install` patches the TypeScript compiler with Effect diagnostics, which run during
 `typecheck`. Use `bun run effect:diagnostics` to run them separately.
