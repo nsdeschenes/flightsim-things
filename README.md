@@ -76,6 +76,26 @@ Missing values are blank. Rows are sorted by ICAO type designator, name, and ID.
 Use `--hyperlink auto`, `always`, or `never` as with `airports list`.
 Run `scan` first to populate the saved inventory.
 
+## List Airlines
+
+Show saved airline metadata, or filter by airline ICAO code and aircraft ICAO type designator:
+
+```bash
+bun run start airlines list
+bun run start airlines list --code BAW
+bun run start airlines list --aircraft A320
+bun run start airlines list --code BAW --aircraft A320
+```
+
+Both filters match exact codes, ignore case, and trim surrounding whitespace.
+The code filter matches ICAO codes only. Together the filters require both matches.
+Aircraft matches require a livery linked to the airline and aircraft in the saved inventory.
+Unresolved aircraft links do not match. Each airline appears once, even with multiple matching liveries.
+Without an aircraft filter, the list includes saved airlines with no linked liveries.
+The table shows ID, ICAO code, IATA code, and name. Missing values are blank.
+Rows are sorted by ICAO code, name, and ID. Output is plain text without directory links.
+This command reads the saved database without scanning. Run `scan` first to populate it.
+
 ## Enrich Airports
 
 Create an API client at [OpenAIP](https://www.openaip.net/) and copy its API key, then run:
