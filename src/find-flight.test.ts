@@ -679,6 +679,51 @@ test(
   cliTimeout
 );
 
+test.each([
+  {
+    name: 'partial airport aliases',
+    statements: [
+      "UPDATE airports SET icao_code = NULL, iata_code = ' cdg ' WHERE id = 1",
+      "UPDATE airports SET icao_code = ' lfpg ', iata_code = 'CDG' WHERE id = 2",
+    ],
+  },
+  {
+    name: 'a late transitive airport bridge',
+    statements: [
+      "UPDATE airports SET icao_code = NULL, iata_code = ' cdg ' WHERE id = 1",
+      "UPDATE airports SET icao_code = ' lfpg ', iata_code = NULL WHERE id = 2",
+      "INSERT INTO airports (package_id, source_key, icao_code, iata_code, name) VALUES (1, 'bridge', 'LFPG', 'CDG', 'Paris bridge')",
+    ],
+  },
+])(
+  'discovery retains all normalized codes from $name on the first representative',
+  async ({statements}) => {
+    await seedFiltered();
+    using db = new Database(path.join(fixture.home, '.flightsim-things/addons.sqlite'));
+    for (const statement of statements) {
+      db.run(statement);
+    }
+
+    const before = snapshot();
+    const result = await run('success', ...discoveryFlags);
+    const prompts = requestPrompts(await capturedRequests());
+    verifyPromptData(prompts, {
+      ...expectedInventory({airport: 'EGLL', endpoint: 'departure'}, [
+        {codes: ['CDG', 'LFPG'], id: 1, name: 'Paris'},
+        {codes: ['EGLL', 'LHR'], id: 3, name: 'London'},
+      ]),
+      fixed: {aircraft: 'A320', airline: 'BAW', mode: 'inventory'},
+    });
+    expect(result).toEqual({
+      exitCode: 0,
+      stderr: '',
+      stdout: discoveryOutput.replaceAll('LFPG/CDG', 'CDG/LFPG'),
+    });
+    expect(snapshot()).toEqual(before);
+  },
+  cliTimeout
+);
+
 type FilteredEndpointCase = Readonly<{
   args: readonly string[];
   airport: string;

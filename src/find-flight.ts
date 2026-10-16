@@ -141,6 +141,23 @@ function fixedAirportCodes(
   ];
 }
 
+function mergeAirportCodes(
+  airports: readonly Airport[],
+  representative: (id: number) => number
+): readonly Airport[] {
+  const mergedAirports = new Map<number, Airport>();
+  for (const airport of airports) {
+    const id = representative(airport.id);
+    const retained = mergedAirports.get(id) ?? airport;
+    mergedAirports.set(id, {
+      ...retained,
+      codes: [...new Set([...retained.codes, ...airport.codes])],
+    });
+  }
+
+  return [...mergedAirports.values()];
+}
+
 function inventoryAirports(airports: readonly SavedAirport[]): readonly Airport[] {
   const parents = new Map<number, number>();
   function representative(id: number): number {
@@ -182,7 +199,7 @@ function inventoryAirports(airports: readonly SavedAirport[]): readonly Airport[
     link(airport);
   }
 
-  return identified.filter(airport => representative(airport.id) === airport.id);
+  return mergeAirportCodes(identified, representative);
 }
 
 function counterpartAirports(
