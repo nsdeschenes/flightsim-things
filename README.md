@@ -42,7 +42,17 @@ Show saved airport metadata in an ASCII table:
 bun run start airports list
 ```
 
-The table includes every airport database column and leaves missing values blank.
+Find an airport by its exact ICAO or IATA code, ignoring case:
+
+```bash
+bun run start airports list --code KJFK
+```
+
+The table includes every airport database column and the package directory.
+Missing values are blank. Directories are clickable in terminals that support links.
+Use `--hyperlink always` to force links or `--hyperlink never` to disable them.
+The default, `--hyperlink auto`, uses links only in interactive terminals whose
+`TERM` is not `dumb`. Piped output stays plain text.
 Rows are sorted by ICAO code, name, and ID, with missing codes and names first.
 This command reads the saved inventory without scanning or fetching metadata.
 
