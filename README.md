@@ -129,14 +129,16 @@ Configuration commands make no AI requests. SDK consumers can use `ai.model()` f
 Research flights from a departure ICAO or IATA code using your saved inventory:
 
 ```bash
-bun run start find-flight EGLL
+bun run start find-flight --dep EGLL
 ```
 
 Research flights to a destination ICAO or IATA code from your saved airports:
 
 ```bash
-bun run start find-flight-to LFPG
+bun run start find-flight --arr LFPG
 ```
+
+Specify exactly one of `--dep` or `--arr`.
 
 Run `scan` first and configure an AI model that supports its provider's web search
 and structured output. The other end of the route requires saved airport codes.

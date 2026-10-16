@@ -12,29 +12,26 @@ import createFixture from '#acceptance-scanner';
 const cliTimeout = 60_000;
 const noValue = Option.getOrNull(Option.none<string>());
 const client = fileURLToPath(new URL('find-flight-test-client.ts', import.meta.url));
-type TestCommand = Readonly<{
+type TestDirection = Readonly<{
   airport: string;
   counterpart: string;
-  endpoint: string;
-  help: string;
-  name: string;
+  endpoint: 'departure' | 'destination';
+  flag: string;
   preposition: string;
 }>;
-const commands: TestCommand[] = [
+const directions: TestDirection[] = [
   {
     airport: 'EGLL',
     counterpart: 'destination',
     endpoint: 'departure',
-    help: 'Departure ICAO or IATA code',
-    name: 'find-flight',
+    flag: '--dep',
     preposition: 'from',
   },
   {
     airport: 'LFPG',
     counterpart: 'departure',
     endpoint: 'destination',
-    help: 'Destination ICAO or IATA code',
-    name: 'find-flight-to',
+    flag: '--arr',
     preposition: 'to',
   },
 ];
@@ -64,10 +61,9 @@ async function configure(): Promise<void> {
 
 async function run(
   scenario: string,
-  airport = 'EGLL',
-  command = 'find-flight'
+  ...args: readonly string[]
 ): Promise<Readonly<{exitCode: number; stderr: string; stdout: string}>> {
-  const child = Bun.spawn([process.execPath, client, command, airport], {
+  const child = Bun.spawn([process.execPath, client, 'find-flight', ...args], {
     env: {
       ...process.env,
       FLIGHTSIM_AI_TEST_CASE: scenario,
@@ -278,7 +274,7 @@ test(
       path.join(fixture.home, '.flightsim-things/config.json'),
       'utf8'
     );
-    const result = await run('success', ' lhr ');
+    const result = await run('success', '--dep', ' lhr ');
     expect(result).toMatchObject({exitCode: 0, stderr: ''});
     expect(result.stdout)
       .toBe(`Potential flights from LHR. These are suggestions, not confirmed schedules.
@@ -308,7 +304,7 @@ test(
       path.join(fixture.home, '.flightsim-things/config.json'),
       'utf8'
     );
-    const result = await run('success', ' cdg ', 'find-flight-to');
+    const result = await run('success', '--arr', ' cdg ');
     expect(result).toEqual({
       exitCode: 0,
       stderr: '',
@@ -331,16 +327,81 @@ EGLL/LHR - Route and A320 operation supported.
   cliTimeout
 );
 
-test(
-  'destination CLI normalizes ICAO input and excludes every destination alias',
-  async () => {
+test.each(directions)(
+  '$flag normalizes ICAO input and excludes fixed airport aliases from the inventory',
+  async command => {
     await seed();
-    const result = await run('success', ' lfpg ', 'find-flight-to');
+    const result = await run(
+      'success',
+      command.flag,
+      ` ${command.airport.toLowerCase()} `
+    );
     expect(result).toMatchObject({exitCode: 0, stderr: ''});
-    expect(result.stdout).toContain('Potential flights to LFPG.');
-    expect(result.stdout).toContain('EGLL/LHR London');
-    expect(result.stdout).not.toContain('CDG');
-    await verifyRequests('destination', 'LFPG');
+    expect(result.stdout).toContain(
+      `Potential flights ${command.preposition} ${command.airport}.`
+    );
+    await verifyRequests(command.endpoint, command.airport);
+  },
+  cliTimeout
+);
+
+test(
+  'CLI help documents both endpoint flags and excludes the retired command',
+  async () => {
+    const help = await fixture.run('find-flight', '--help');
+    expect(help).toMatchObject({exitCode: 0, stderr: ''});
+    expect(help.stdout).toContain('--dep');
+    expect(help.stdout).toContain('Departure ICAO or IATA code');
+    expect(help.stdout).toContain('--arr');
+    expect(help.stdout).toContain('Destination ICAO or IATA code');
+    expect(help.stdout).toContain('Specify exactly one of --dep or --arr.');
+    const rootHelp = await fixture.run('--help');
+    expect(rootHelp).toMatchObject({exitCode: 0, stderr: ''});
+    expect(rootHelp.stdout).not.toContain('find-flight-to');
+  },
+  cliTimeout
+);
+
+test.each([
+  {args: [], selection: 'neither endpoint'},
+  {args: ['--dep', 'EGLL', '--arr', 'LFPG'], selection: 'both endpoints'},
+])(
+  'CLI rejects $selection before database access, configuration, or paid requests',
+  async ({args}) => {
+    expect(await run('network', ...args)).toEqual({
+      exitCode: 1,
+      stderr: 'Command failed, Specify exactly one of --dep or --arr.\n',
+      stdout: '',
+    });
+    expect(
+      await Bun.file(path.join(fixture.home, '.flightsim-things/addons.sqlite')).exists()
+    ).toBe(false);
+    expect(
+      await Bun.file(path.join(fixture.home, '.flightsim-things/config.json')).exists()
+    ).toBe(false);
+    expect(await Bun.file(path.join(fixture.home, 'ai-requests.json')).exists()).toBe(
+      false
+    );
+  },
+  cliTimeout
+);
+
+test.each(directions)(
+  'CLI rejects $flag without an airport value',
+  async command => {
+    const result = await run('network', command.flag);
+    expect(result.exitCode).toBe(252);
+    expect(result.stderr).toContain(command.flag);
+  },
+  cliTimeout
+);
+
+test(
+  'CLI rejects the retired positional airport form',
+  async () => {
+    const result = await run('network', 'EGLL');
+    expect(result.exitCode).toBe(252);
+    expect(result.stderr).toContain('EGLL');
   },
   cliTimeout
 );
@@ -354,12 +415,12 @@ const rejectedScenarios = [
   'mixed-invalid',
 ];
 test.each(
-  commands.flatMap(command => rejectedScenarios.map(scenario => ({command, scenario})))
+  directions.flatMap(command => rejectedScenarios.map(scenario => ({command, scenario})))
 )(
-  '$command.name rejects $scenario suggestions without emitting a route',
-  async ({command, scenario}: Readonly<{command: TestCommand; scenario: string}>) => {
+  '$command.flag rejects $scenario suggestions without emitting a route',
+  async ({command, scenario}: Readonly<{command: TestDirection; scenario: string}>) => {
     await seed();
-    const result = await run(scenario, command.airport, command.name);
+    const result = await run(scenario, command.flag, command.airport);
     expect(result).toMatchObject({exitCode: 1, stdout: ''});
     expect(result.stderr).toContain('Could not validate flight suggestions');
   },
@@ -367,14 +428,14 @@ test.each(
 );
 
 test.each(
-  commands.flatMap(command =>
+  directions.flatMap(command =>
     ['network', 'no-sources'].map(scenario => ({command, scenario}))
   )
 )(
-  '$command.name safely reports $scenario research failures',
-  async ({command, scenario}: Readonly<{command: TestCommand; scenario: string}>) => {
+  '$command.flag safely reports $scenario research failures',
+  async ({command, scenario}: Readonly<{command: TestDirection; scenario: string}>) => {
     await seed();
-    const result = await run(scenario, command.airport, command.name);
+    const result = await run(scenario, command.flag, command.airport);
     expect(result).toMatchObject({exitCode: 1, stdout: ''});
     expect(result.stderr).toContain('model that supports provider web search');
     expect(result.stderr).not.toContain('private-provider-body');
@@ -383,11 +444,11 @@ test.each(
   cliTimeout
 );
 
-test.each(commands)(
-  '$name allows no supported flights and an uninstalled $endpoint',
+test.each(directions)(
+  '$flag allows no supported flights and an uninstalled $endpoint',
   async command => {
     await seed();
-    expect(await run('no-results', 'KJFK', command.name)).toEqual({
+    expect(await run('no-results', command.flag, 'KJFK')).toEqual({
       exitCode: 0,
       stderr: '',
       stdout: `No supported potential flights found ${command.preposition} KJFK with your saved inventory.\n`,
@@ -396,29 +457,26 @@ test.each(commands)(
   cliTimeout
 );
 
-test.each(commands)(
-  '$name help and input prerequisites fail before paid requests',
+test.each(directions)(
+  '$flag input prerequisites fail before paid requests',
   async command => {
-    const help = await fixture.run(command.name, '--help');
-    expect(help).toMatchObject({exitCode: 0, stderr: ''});
-    expect(help.stdout).toContain(command.help);
-    const invalid = await run('network', 'EG', command.name);
+    const invalid = await run('network', command.flag, 'EG');
     expect(invalid).toMatchObject({exitCode: 1, stdout: ''});
     expect(invalid.stderr).toContain(`Enter a ${command.endpoint} ICAO code`);
-    const empty = await run('network', command.airport, command.name);
+    const empty = await run('network', command.flag, command.airport);
     expect(empty).toMatchObject({exitCode: 1, stdout: ''});
     expect(empty.stderr).toContain(`No identified ${command.counterpart} airports`);
   },
   cliTimeout
 );
 
-test.each(commands)(
-  '$name rejects unresolved liveries before paid requests',
+test.each(directions)(
+  '$flag rejects unresolved liveries before paid requests',
   async command => {
     await seed();
     using db = new Database(path.join(fixture.home, '.flightsim-things/addons.sqlite'));
     db.run('UPDATE liveries SET aircraft_id = NULL');
-    const unlinked = await run('network', command.airport, command.name);
+    const unlinked = await run('network', command.flag, command.airport);
     expect(unlinked).toMatchObject({exitCode: 1, stdout: ''});
     expect(unlinked.stderr).toContain(
       'No liveries linked to both an aircraft and airline'
@@ -427,23 +485,23 @@ test.each(commands)(
   cliTimeout
 );
 
-test.each(commands)(
-  '$name requires AI configuration after inventory prerequisites pass',
+test.each(directions)(
+  '$flag requires AI configuration after inventory prerequisites pass',
   async command => {
     await seed();
     await writeFile(path.join(fixture.home, '.flightsim-things/config.json'), '{}');
-    const result = await run('network', command.airport, command.name);
+    const result = await run('network', command.flag, command.airport);
     expect(result).toMatchObject({exitCode: 1, stdout: ''});
     expect(result.stderr).toContain('No AI configuration is saved. Run ai set');
   },
   cliTimeout
 );
 
-test.each(commands)(
-  '$name filters duplicate suggestions after validation',
+test.each(directions)(
+  '$flag filters duplicate suggestions after validation',
   async command => {
     await seed();
-    const result = await run('duplicate', command.airport, command.name);
+    const result = await run('duplicate', command.flag, command.airport);
     expect(result).toMatchObject({exitCode: 0, stderr: ''});
     expect(result.stdout.match(/BA123/gu)).toHaveLength(1);
     expect(result.stdout.match(/Route source:/gu)).toHaveLength(1);
