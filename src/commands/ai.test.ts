@@ -1,21 +1,16 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test';
 import {mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile} from 'node:fs/promises';
-import {homedir} from 'node:os';
+import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const cli = fileURLToPath(new URL('../index.ts', import.meta.url));
-const testDirectory = path.join(
-  homedir(),
-  '.cache/agent-work/flightsim-things/vercel-ai/context'
-);
 const saved = {exitCode: 0, stderr: '', stdout: 'AI configuration saved.\n'};
 let homeDirectory: string;
 let configurationFile: string;
 
 beforeEach(async () => {
-  await mkdir(testDirectory, {recursive: true});
-  homeDirectory = await mkdtemp(path.join(testDirectory, 'cli-test-'));
+  homeDirectory = await mkdtemp(path.join(tmpdir(), 'flightsim-ai-cli-test-'));
   configurationFile = path.join(homeDirectory, '.flightsim-things/config.json');
 });
 
@@ -272,6 +267,7 @@ test.each([
   {args: ['ai', 'get', 'private-extra-key'], exitCode: 252},
   {args: ['ai', 'private-unknown-key'], exitCode: 251},
   {args: ['--log-level', 'private-option-key', 'ai', 'get'], exitCode: 251},
+  {args: ['--unknown', 'ai', 'get', 'private-extra-key'], exitCode: 252},
   {
     args: [
       'ai',

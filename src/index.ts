@@ -1,10 +1,11 @@
 import {BunRuntime, BunServices} from '@effect/platform-bun';
-import {Effect} from 'effect';
+import {Effect, Option} from 'effect';
 import {CliConfig, CliError, Command, GlobalFlag} from 'effect/cli';
 
 import {version} from '#package';
 
 import command from './commands/index.ts';
+import classifyInvocation from './invocation.ts';
 import withSentry from './sentry.ts';
 
 const argvOffset = 2;
@@ -43,18 +44,27 @@ function failureMessage(error: unknown): string {
 }
 
 const args = process.argv.slice(argvOffset);
-const aiInvocation = args.includes('ai');
-const sensitiveInvocation = aiInvocation || args.includes('openaip-key');
+const invocation = classifyInvocation(
+  args,
+  command.subcommands.flatMap(
+    (
+      group: Readonly<{
+        commands: readonly Readonly<{name: string; alias: string | undefined}>[];
+      }>
+    ) => group.commands
+  )
+);
+const sensitiveInvocation = Option.isSome(invocation.sensitiveCommand);
 let sensitiveUsageError =
   'Invalid OpenAIP key command arguments. Run flightsim-things openaip-key --help for usage.\n';
-if (aiInvocation) {
+if (Option.contains(invocation.sensitiveCommand, 'ai')) {
   sensitiveUsageError =
     'Invalid AI command arguments. Run flightsim-things ai --help for usage.\n';
 }
 
 const main = withSentry(
   () => Command.runWith(command, {renderErrors: !sensitiveInvocation, version})(args),
-  args
+  invocation
 ).pipe(
   Effect.provide([
     BunServices.layer,

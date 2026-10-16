@@ -1,6 +1,6 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test';
 import {mkdir, mkdtemp, readFile, rm, writeFile} from 'node:fs/promises';
-import {homedir} from 'node:os';
+import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -9,10 +9,6 @@ import {Array as array, Record as record, Struct as struct} from 'effect/Schema'
 
 const repository = fileURLToPath(new URL('..', import.meta.url));
 const client = fileURLToPath(new URL('ai-test-client.ts', import.meta.url));
-const testDirectory = path.join(
-  homedir(),
-  '.cache/agent-work/flightsim-things/vercel-ai/context'
-);
 let homeDirectory: string;
 let configurationFile: string;
 type EnvelopeItem = Readonly<{payload: string; type: string}>;
@@ -35,8 +31,7 @@ const aiSpan = struct({
 const decodeSpanBatch = Schema.decodeUnknownSync(struct({items: array(aiSpan)}));
 
 beforeEach(async () => {
-  await mkdir(testDirectory, {recursive: true});
-  homeDirectory = await mkdtemp(path.join(testDirectory, 'sdk-test-'));
+  homeDirectory = await mkdtemp(path.join(tmpdir(), 'flightsim-ai-sdk-test-'));
   configurationFile = path.join(homeDirectory, '.flightsim-things/config.json');
 });
 

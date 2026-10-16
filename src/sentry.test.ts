@@ -251,6 +251,36 @@ test('official SDK delivers logs, metrics, and traces before a successful comman
   expect(envelopes.join('\n')).not.toContain(homeDirectory);
 });
 
+test.each(['ai', 'openaip-key', 'sentry'])(
+  'Community directory named %s still emits telemetry',
+  async directoryName => {
+    const directory = path.join(homeDirectory, directoryName);
+    await mkdir(directory);
+    expect(await set(dsn, '1')).toMatchObject({exitCode: 0});
+    expect(await run('community-path', 'set', directoryName)).toEqual({
+      exitCode: 0,
+      stderr: '',
+      stdout: `${directory}\n`,
+    });
+    expect(envelopeTypes().toSorted()).toEqual(['log', 'trace_metric', 'transaction']);
+    expect(envelopes.join('\n')).toContain('cli.command.completed');
+  }
+);
+
+test.each([
+  {output: 'flightsim-things community-path set', prefix: ['--help', 'false']},
+  {output: 'flightsim-things v', prefix: ['-v', 'false']},
+])(
+  'boolean-valued builtin $prefix remains a control invocation',
+  async ({prefix, output}) => {
+    expect(await set(dsn, '1')).toMatchObject({exitCode: 0});
+    const result = await run(...prefix, 'community-path', 'set', 'ai');
+    expect(result).toMatchObject({exitCode: 0, stderr: ''});
+    expect(result.stdout).toContain(output);
+    expect(envelopes).toEqual([]);
+  }
+);
+
 test('official SDK captures a real filesystem command failure before exit', async () => {
   expect(await set(dsn, '1')).toMatchObject({exitCode: 0});
   expect(await run('community-path', 'set', 'missing-private-directory')).toMatchObject({

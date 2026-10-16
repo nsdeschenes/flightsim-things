@@ -202,6 +202,16 @@ test('set requires a key argument', async () => {
   expect(result.stderr).toContain('openaip-key --help');
 });
 
+test('an AI-named key keeps OpenAIP parser guidance and hides extra credentials', async () => {
+  const result = await run('openaip-key', 'set', 'ai', 'private-extra-key');
+  expect(result.exitCode).toBe(252);
+  expect(result.stderr).toBe(
+    'Invalid OpenAIP key command arguments. Run flightsim-things openaip-key --help for usage.\n'
+  );
+  expect(result.stdout).toContain('USAGE');
+  expect(result.stdout).not.toContain('private-extra-key');
+});
+
 test.each([
   {
     args: ['openaip-key', 'set', 'private-primary-key', 'private-extra-key'],
