@@ -23,7 +23,10 @@ const textPart = z.object({text: z.string()});
 const message = z.object({content: z.array(textPart)});
 const requestSchema = z.object({input: z.array(message)});
 const source = z.object({id: z.string()});
-const extractionSchema = z.object({sources: z.array(source)});
+const extractionSchema = z.object({
+  fixed: z.object({endpoint: z.enum(['departure', 'destination'])}),
+  sources: z.array(source),
+});
 type TestRequest = Readonly<{
   headers: Readonly<{get: (name: string) => string | null}>;
   json: () => Promise<unknown>;
@@ -31,18 +34,20 @@ type TestRequest = Readonly<{
 const firstIndex = 0;
 const one = 1;
 const unknownId = 999;
-const departureId = 3;
+const londonId = 3;
+const duplicateParisId = 2;
+const otherSavedAirportId = 5;
+const routeAirports = {
+  departure: {counterpart: one, fixed: londonId},
+  destination: {counterpart: londonId, fixed: one},
+};
 
-function selectedId(unknownScenario: string, departureScenario = ''): number {
+function selectedId(unknownScenario: string, fallback: number): number {
   if (scenario === unknownScenario) {
     return unknownId;
   }
 
-  if (scenario === departureScenario) {
-    return departureId;
-  }
-
-  return one;
+  return fallback;
 }
 
 function selectedSources(sources: readonly Readonly<{id: string}>[]): readonly string[] {
@@ -53,7 +58,7 @@ function selectedSources(sources: readonly Readonly<{id: string}>[]): readonly s
   return sources.map(value => value.id);
 }
 
-function researchSources(body: unknown): readonly Readonly<{id: string}>[] {
+function researchData(body: unknown): z.infer<typeof extractionSchema> {
   const request = requestSchema.parse(body);
   const prompt = request.input
     .flatMap(
@@ -64,13 +69,43 @@ function researchSources(body: unknown): readonly Readonly<{id: string}>[] {
   const json: unknown = JSON.parse(
     prompt.slice(prompt.indexOf(dataStart) + dataStart.length)
   );
-  return extractionSchema.parse(json).sources;
+  return extractionSchema.parse(json);
+}
+
+function proposedAirport(endpoint: 'departure' | 'destination'): number {
+  if (scenario === 'other-saved-airport') {
+    return otherSavedAirportId;
+  }
+
+  if (scenario === 'partial-alias') {
+    return duplicateParisId;
+  }
+
+  if (scenario === 'fixed-id') {
+    return routeAirports[endpoint].fixed;
+  }
+
+  return selectedId('unknown-id', routeAirports[endpoint].counterpart);
+}
+
+function suggestedFlight(body: unknown): Readonly<{
+  airportId: number;
+  flightNumber: string;
+  liveryId: number;
+  reason: string;
+  sourceIds: readonly string[];
+}> {
+  const data = researchData(body);
+  return {
+    airportId: proposedAirport(data.fixed.endpoint),
+    flightNumber: 'BA123',
+    liveryId: selectedId('unknown-livery', one),
+    reason: 'Route and A320 operation supported.\u001B[31m\n',
+    sourceIds: selectedSources(data.sources),
+  };
 }
 
 function extraction(body: unknown): string {
-  const destinationAirportId = selectedId('unknown-id', 'departure-id');
-  const liveryId = selectedId('unknown-livery');
-  const sourceIds = selectedSources(researchSources(body));
   if (scenario === 'malformed') {
     return 'not JSON';
   }
@@ -79,17 +114,16 @@ function extraction(body: unknown): string {
     return JSON.stringify({flights: []});
   }
 
-  return JSON.stringify({
-    flights: [
-      {
-        destinationAirportId,
-        flightNumber: 'BA123',
-        liveryId,
-        reason: 'Route and A320 operation supported.\u001B[31m\n',
-        sourceIds,
-      },
-    ],
-  });
+  const flight = suggestedFlight(body);
+  if (scenario === 'mixed-invalid') {
+    return JSON.stringify({flights: [flight, {...flight, sourceIds: ['invented']}]});
+  }
+
+  if (scenario === 'duplicate') {
+    return JSON.stringify({flights: [flight, flight]});
+  }
+
+  return JSON.stringify({flights: [flight]});
 }
 
 function openaiResponse(

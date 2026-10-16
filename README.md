@@ -129,12 +129,29 @@ Configuration commands make no AI requests. SDK consumers can use `ai.model()` f
 Research flights from a departure ICAO or IATA code using your saved inventory:
 
 ```bash
-bun run start find-flight EGLL
+bun run start find-flight --dep EGLL
 ```
 
+Research flights to a destination ICAO or IATA code from your saved airports:
+
+```bash
+bun run start find-flight --arr LFPG
+```
+
+Supply both flags to constrain the full route:
+
+```bash
+bun run start find-flight --dep EGLL --arr LFPG
+```
+
+Specify `--dep`, `--arr`, or both. With both flags, the destination must match an
+identified saved airport outside the departure airport. The departure need not be
+installed.
+
 Run `scan` first and configure an AI model that supports its provider's web search
-and structured output. Destinations require saved airport codes. Aircraft and
-airlines require a livery linked to both. The departure airport need not be installed.
+and structured output. The other end of the route requires saved airport codes.
+Aircraft and airlines require a livery linked to both. With a single flag, the
+airport you enter need not be installed.
 Use `airports enrich` to fill missing airport codes.
 
 Each search makes two paid AI requests, one for web research and one to select
