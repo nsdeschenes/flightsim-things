@@ -111,5 +111,8 @@ test('concurrent Community and partial Sentry saves retain all values', async ()
       sampleRates: {errors: 0, futureRate: 0.5, logs: 0.2, metrics: 0, traces: 0.4},
     },
   });
-  expect(await readdir(configurationDirectory)).toEqual(['config.json']);
+  expect(await readdir(configurationDirectory)).toEqual([
+    'config.json',
+    'config.json.lock.sqlite',
+  ]);
 });

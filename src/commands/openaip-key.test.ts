@@ -70,7 +70,10 @@ test('set creates and replaces the exact key across CLI processes without echoin
   });
   const stats = await stat(configurationFile);
   expect(stats.mode % 0o1000).toBe(0o600);
-  expect(await readdir(path.dirname(configurationFile))).toEqual(['config.json']);
+  expect(await readdir(path.dirname(configurationFile))).toEqual([
+    'config.json',
+    'config.json.lock.sqlite',
+  ]);
 });
 
 test('set repairs an invalid saved key and preserves all other settings', async () => {
@@ -165,7 +168,10 @@ test('filesystem failure reports a safe error and preserves the configuration di
   expect(result.exitCode).toBe(1);
   expect(result.stderr).toContain('Check directory permissions');
   expect(result.stderr).not.toContain('private-replacement');
-  expect(await readdir(path.dirname(configurationFile))).toEqual(['config.json']);
+  expect(await readdir(path.dirname(configurationFile))).toEqual([
+    'config.json',
+    'config.json.lock.sqlite',
+  ]);
 });
 
 test('root help lists the OpenAIP key command', async () => {

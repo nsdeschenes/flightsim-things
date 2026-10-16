@@ -1,3 +1,4 @@
+import {Database, SQLiteError} from 'bun:sqlite';
 import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -6,7 +7,6 @@ import {setTimeout as delay} from 'node:timers/promises';
 
 import {Effect, Option, Schema} from 'effect';
 import {TaggedError as taggedError} from 'effect/Data';
-import {lock} from 'proper-lockfile';
 
 type DeepReadonly<Value> = Value extends object
   ? Value extends (...args: readonly never[]) => unknown
@@ -15,17 +15,16 @@ type DeepReadonly<Value> = Value extends object
   : Value;
 type ConfigurationValue = DeepReadonly<Schema.Json>;
 type ConfigurationDocument = Readonly<Record<string, ConfigurationValue>>;
-type ReleaseLock = () => Promise<void>;
 
 const configurationDirectory = path.join(os.homedir(), '.flightsim-things');
 const configurationFile = path.join(configurationDirectory, 'config.json');
 const privateFileMode = 0o600;
 const lockRetries = 40;
 const retryDelayMilliseconds = 50;
-const retryFactor = 1;
+const sqliteBusyErrorNumber = 5;
 const renameRetries = 4;
 const renameRetryFactor = 2;
-const renameAttemptIncrement = 1;
+const attemptIncrement = 1;
 
 class ConfigurationError extends taggedError('ConfigurationError')<{
   readonly message: string;
@@ -111,7 +110,7 @@ function get(key: string): Effect.Effect<Option.Option<unknown>, ConfigurationEr
 }
 
 async function replaceConfiguration(temporaryFile: string): Promise<void> {
-  for (let attempt = 0; attempt <= renameRetries; attempt += renameAttemptIncrement) {
+  for (let attempt = 0; attempt <= renameRetries; attempt += attemptIncrement) {
     try {
       await fs.rename(temporaryFile, configurationFile);
       return;
@@ -172,6 +171,40 @@ function validateValue(
   );
 }
 
+async function waitForLock(connection: DeepReadonly<Database>): Promise<void> {
+  for (let attempt = 0; ; attempt += attemptIncrement) {
+    try {
+      connection.run('BEGIN IMMEDIATE');
+      return;
+    } catch (error) {
+      if (
+        attempt === lockRetries ||
+        !(error instanceof SQLiteError) ||
+        error.errno !== sqliteBusyErrorNumber
+      ) {
+        throw error;
+      }
+
+      await delay(retryDelayMilliseconds);
+    }
+  }
+}
+
+async function acquireConfigurationLock(): Promise<Database> {
+  await fs.mkdir(configurationDirectory, {recursive: true});
+  const lockFile = `${configurationFile}.lock.sqlite`;
+  const connection = new Database(lockFile, {create: true, strict: true});
+  try {
+    await fs.chmod(lockFile, privateFileMode);
+    connection.run('PRAGMA busy_timeout = 0');
+    await waitForLock(connection);
+    return connection;
+  } catch (error) {
+    connection.close(true);
+    throw error;
+  }
+}
+
 function modify<Failure, Requirements>(
   key: string,
   change: (
@@ -181,18 +214,7 @@ function modify<Failure, Requirements>(
   return Effect.acquireUseRelease(
     Effect.tryPromise({
       catch: toError,
-      try: async () => {
-        await fs.mkdir(configurationDirectory, {recursive: true});
-        return lock(configurationFile, {
-          realpath: false,
-          retries: {
-            factor: retryFactor,
-            maxTimeout: retryDelayMilliseconds,
-            minTimeout: retryDelayMilliseconds,
-            retries: lockRetries,
-          },
-        });
-      },
+      try: acquireConfigurationLock,
     }),
     () =>
       Effect.gen(function* modifyConfigurationValue() {
@@ -202,13 +224,10 @@ function modify<Failure, Requirements>(
         const value = yield* validateValue(next);
         yield* persist({...document, [key]: value});
       }),
-    (release: ReleaseLock) =>
-      Effect.tryPromise({
-        catch: toError,
-        try: async () => {
-          await release();
-        },
-      }).pipe(Effect.orDie)
+    (connection: DeepReadonly<Database>) =>
+      Effect.sync(() => {
+        connection.close(true);
+      })
   ).pipe(Effect.uninterruptible);
 }
 

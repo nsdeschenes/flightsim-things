@@ -70,6 +70,7 @@ test('set, get, and update persist between CLI processes', async () => {
   ).toBe(`${JSON.stringify({communityPath: nextDirectory})}\n`);
   expect(await readdir(path.join(homeDirectory, '.flightsim-things'))).toEqual([
     'config.json',
+    'config.json.lock.sqlite',
   ]);
 });
 
@@ -185,7 +186,10 @@ test('a failed replacement reports the filesystem error and removes its temporar
   const result = run('community-path', 'set', homeDirectory);
   expect(result.exitCode).toBe(1);
   expect(result.stderr).toContain('read');
-  expect(await readdir(configurationDirectory)).toEqual(['config.json']);
+  expect(await readdir(configurationDirectory)).toEqual([
+    'config.json',
+    'config.json.lock.sqlite',
+  ]);
 });
 
 test('community-path help lists the directory commands', () => {
