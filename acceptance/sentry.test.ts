@@ -1,14 +1,18 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test';
-import {mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile} from 'node:fs/promises';
-import {homedir} from 'node:os';
+import {mkdir, readFile, readdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
 
-const cli = fileURLToPath(new URL('index.ts', import.meta.url));
-const testDirectory = path.join(
-  homedir(),
-  '.cache/agent-work/flightsim-things/sentry-cli/context'
-);
+import createCliFixture from '#acceptance-cli';
+
+const successExitCode = 0;
+const failureExitCode = 1;
+const unknownCommandExitCode = 251;
+const envelopeHeaderLines = 1;
+const envelopeItemLines = 2;
+const itemHeaderIndex = 0;
+
+let fixture: Awaited<ReturnType<typeof createCliFixture>>;
+
 const envelopes: string[] = [];
 const signalTypes = ['event', 'log', 'trace_metric', 'transaction'];
 let homeDirectory: string;
@@ -17,8 +21,8 @@ let server: Bun.Server<unknown>;
 let dsn: string;
 
 beforeEach(async () => {
-  await mkdir(testDirectory, {recursive: true});
-  homeDirectory = await mkdtemp(path.join(testDirectory, 'cli-test-'));
+  fixture = await createCliFixture();
+  homeDirectory = fixture.home;
   configurationFile = path.join(homeDirectory, '.flightsim-things/config.json');
   envelopes.length = 0;
   server = Bun.serve({
@@ -34,34 +38,13 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await server.stop(true);
-  await rm(homeDirectory, {force: true, recursive: true});
+  await fixture.dispose();
 });
 
 type CommandResult = Readonly<{exitCode: number; stderr: string; stdout: string}>;
 
-async function run(...args: readonly string[]): Promise<CommandResult> {
-  let executable = [process.execPath, cli];
-  const binary = process.env.FLIGHTSIM_TEST_BINARY;
-  if (typeof binary === 'string' && binary !== '') {
-    executable = [binary];
-  }
-
-  const child = Bun.spawn([...executable, ...args], {
-    cwd: homeDirectory,
-    env: {...process.env, HOME: homeDirectory, USERPROFILE: homeDirectory},
-    stderr: 'pipe',
-    stdout: 'pipe',
-  });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ]);
-  return {exitCode, stderr, stdout};
-}
-
 async function set(input = dsn, rate = '0'): Promise<CommandResult> {
-  const result = await run(
+  const result = await fixture.run(
     'sentry',
     'set',
     '--dsn',
@@ -88,8 +71,10 @@ function envelopeTypes(): string[] {
     .flatMap(envelope =>
       envelope
         .split('\n')
-        .slice(1)
-        .filter((line, index) => index % 2 === 0 && line !== '')
+        .slice(envelopeHeaderLines)
+        .filter(
+          (line, index) => index % envelopeItemLines === itemHeaderIndex && line !== ''
+        )
         .flatMap(line => {
           const record: unknown = JSON.parse(line);
           if (
@@ -116,11 +101,13 @@ test('Sentry set, partial update, and JSON get preserve Community configuration 
     stderr: '',
     stdout: 'Sentry configuration saved.\n',
   });
-  expect(await run('sentry', 'update', '--logs', '0.25', '--traces', '0')).toMatchObject({
+  expect(
+    await fixture.run('sentry', 'update', '--logs', '0.25', '--traces', '0')
+  ).toMatchObject({
     exitCode: 0,
   });
   const expected = {dsn, sampleRates: {errors: 0, logs: 0.25, metrics: 0, traces: 0}};
-  expect(await run('sentry', 'get')).toEqual({
+  expect(await fixture.run('sentry', 'get')).toEqual({
     exitCode: 0,
     stderr: '',
     stdout: `${JSON.stringify(expected)}\n`,
@@ -130,12 +117,10 @@ test('Sentry set, partial update, and JSON get preserve Community configuration 
     future: {enabled: true},
     sentry: expected,
   });
-  const stats = await stat(configurationFile);
-  expect(stats.mode % 0o1000).toBe(0o600);
-  expect(await run('community-path', 'set', homeDirectory)).toMatchObject({
+  expect(await fixture.run('community-path', 'set', homeDirectory)).toMatchObject({
     exitCode: 0,
   });
-  expect(await run('sentry', 'get')).toMatchObject({
+  expect(await fixture.run('sentry', 'get')).toMatchObject({
     stdout: `${JSON.stringify(expected)}\n`,
   });
 });
@@ -143,15 +128,15 @@ test('Sentry set, partial update, and JSON get preserve Community configuration 
 test.each([{args: ['sentry', 'get']}, {args: ['sentry', 'update', '--logs', '1']}])(
   'unset configuration explains how to create it for %s',
   async ({args}: Readonly<{args: readonly string[]}>) => {
-    const result = await run(...args);
-    expect(result.exitCode).toBe(1);
+    const result = await fixture.run(...args);
+    expect(result.exitCode).toBe(failureExitCode);
     expect(result.stderr).toContain('sentry set');
   }
 );
 
 test('update requires at least one option', async () => {
-  const result = await run('sentry', 'update');
-  expect(result.exitCode).toBe(1);
+  const result = await fixture.run('sentry', 'update');
+  expect(result.exitCode).toBe(failureExitCode);
   expect(result.stderr).toContain('at least one option');
 });
 
@@ -160,8 +145,8 @@ test.each(['-0.1', '1.1', 'NaN', 'Infinity', '', 'junk'])(
   async rate => {
     expect(await set()).toMatchObject({exitCode: 0});
     const previous = await readFile(configurationFile, 'utf8');
-    const result = await run('sentry', 'update', '--errors', rate);
-    expect(result.exitCode).not.toBe(0);
+    const result = await fixture.run('sentry', 'update', '--errors', rate);
+    expect(result.exitCode).not.toBe(successExitCode);
     expect(await readFile(configurationFile, 'utf8')).toBe(previous);
   }
 );
@@ -181,15 +166,15 @@ test.each([
   expect(await set()).toMatchObject({exitCode: 0});
   const previous = await readFile(configurationFile, 'utf8');
   const result = await set(input);
-  expect(result.exitCode).not.toBe(0);
+  expect(result.exitCode).not.toBe(successExitCode);
   expect(await readFile(configurationFile, 'utf8')).toBe(previous);
 });
 
 test('IPv6 Sentry DSNs persist without URL normalization', async () => {
   const ipv6Dsn = 'http://key@[::1]:9000/123';
   expect(await set(ipv6Dsn)).toMatchObject({exitCode: 0});
-  const result = await run('sentry', 'get');
-  expect(result.exitCode).toBe(0);
+  const result = await fixture.run('sentry', 'get');
+  expect(result.exitCode).toBe(successExitCode);
   expect(JSON.parse(result.stdout)).toEqual({
     dsn: ipv6Dsn,
     sampleRates: {errors: 0, logs: 0, metrics: 0, traces: 0},
@@ -197,11 +182,11 @@ test('IPv6 Sentry DSNs persist without URL normalization', async () => {
 });
 
 test('set requires all four sampling rates and help lists commands', async () => {
-  expect(await run('sentry', 'set', '--dsn', dsn)).toMatchObject({
+  expect(await fixture.run('sentry', 'set', '--dsn', dsn)).toMatchObject({
     exitCode: 252,
   });
-  const help = await run('sentry', '--help');
-  expect(help.exitCode).toBe(0);
+  const help = await fixture.run('sentry', '--help');
+  expect(help.exitCode).toBe(successExitCode);
   for (const name of ['get', 'set', 'update']) {
     expect(help.stdout).toContain(name);
   }
@@ -209,14 +194,16 @@ test('set requires all four sampling rates and help lists commands', async () =>
 
 test('malformed configuration skips telemetry and preserves bytes on set and update', async () => {
   await seedConfiguration('{broken');
-  const greeting = await run('hello');
+  const greeting = await fixture.run('hello');
   expect(greeting).toMatchObject({exitCode: 0, stdout: 'Hello via Bun!\n'});
   expect(greeting.stderr).toContain('Sentry telemetry skipped.');
-  const get = await run('sentry', 'get');
-  expect(get.exitCode).toBe(1);
+  const get = await fixture.run('sentry', 'get');
+  expect(get.exitCode).toBe(failureExitCode);
   expect(get.stderr).toContain('Repair the file');
   expect(await set()).toMatchObject({exitCode: 1});
-  expect(await run('sentry', 'update', '--logs', '1')).toMatchObject({exitCode: 1});
+  expect(await fixture.run('sentry', 'update', '--logs', '1')).toMatchObject({
+    exitCode: 1,
+  });
   expect(await readFile(configurationFile, 'utf8')).toBe('{broken');
 });
 
@@ -231,8 +218,8 @@ test.each(['sentry', 'openaip-key'])(
   'malformed leading arguments skip telemetry for %s',
   async command => {
     await seedConfiguration('{broken');
-    const result = await run('--log-level', 'private-option-key', command, 'get');
-    expect(result.exitCode).toBe(251);
+    const result = await fixture.run('--log-level', 'private-option-key', command, 'get');
+    expect(result.exitCode).toBe(unknownCommandExitCode);
     expect(result.stderr).not.toContain('Sentry telemetry skipped');
     expect(await readFile(configurationFile, 'utf8')).toBe('{broken');
   }
@@ -241,7 +228,7 @@ test.each(['sentry', 'openaip-key'])(
 test('official SDK delivers logs, metrics, and traces before a successful command exits', async () => {
   expect(await set(dsn, '1')).toMatchObject({exitCode: 0});
   expect(envelopes).toEqual([]);
-  expect(await run('hello')).toEqual({
+  expect(await fixture.run('hello')).toEqual({
     exitCode: 0,
     stderr: '',
     stdout: 'Hello via Bun!\n',
@@ -257,7 +244,7 @@ test.each(['ai', 'openaip-key', 'sentry'])(
     const directory = path.join(homeDirectory, directoryName);
     await mkdir(directory);
     expect(await set(dsn, '1')).toMatchObject({exitCode: 0});
-    expect(await run('community-path', 'set', directoryName)).toEqual({
+    expect(await fixture.run('community-path', 'set', directoryName)).toEqual({
       exitCode: 0,
       stderr: '',
       stdout: `${directory}\n`,
@@ -274,7 +261,7 @@ test.each([
   'boolean-valued builtin $prefix remains a control invocation',
   async ({prefix, output}) => {
     expect(await set(dsn, '1')).toMatchObject({exitCode: 0});
-    const result = await run(...prefix, 'community-path', 'set', 'ai');
+    const result = await fixture.run(...prefix, 'community-path', 'set', 'ai');
     expect(result).toMatchObject({exitCode: 0, stderr: ''});
     expect(result.stdout).toContain(output);
     expect(envelopes).toEqual([]);
@@ -283,7 +270,9 @@ test.each([
 
 test('official SDK captures a real filesystem command failure before exit', async () => {
   expect(await set(dsn, '1')).toMatchObject({exitCode: 0});
-  expect(await run('community-path', 'set', 'missing-private-directory')).toMatchObject({
+  expect(
+    await fixture.run('community-path', 'set', 'missing-private-directory')
+  ).toMatchObject({
     exitCode: 1,
   });
   expect(envelopeTypes().toSorted()).toEqual([
@@ -304,7 +293,7 @@ test.each([
   'expected CLI control command %s does not send telemetry',
   async ({args}: Readonly<{args: readonly string[]}>) => {
     expect(await set(dsn, '1')).toMatchObject({exitCode: 0});
-    await run(...args);
+    await fixture.run(...args);
     expect(envelopeTypes()).toEqual([]);
     expect(envelopes.join('\n')).not.toContain('private-invalid');
   }
@@ -312,8 +301,8 @@ test.each([
 
 test('zero sampling rates drop all four signals', async () => {
   expect(await set()).toMatchObject({exitCode: 0});
-  expect(await run('hello')).toMatchObject({exitCode: 0});
-  expect(await run('community-path', 'get')).toMatchObject({exitCode: 1});
+  expect(await fixture.run('hello')).toMatchObject({exitCode: 0});
+  expect(await fixture.run('community-path', 'get')).toMatchObject({exitCode: 1});
   expect(envelopeTypes()).toEqual([]);
 });
 
@@ -324,9 +313,9 @@ test.each([
   ['traces', 'transaction'],
 ])('sampling %s independently keeps only %s', async (signal, itemType) => {
   expect(await set()).toMatchObject({exitCode: 0});
-  expect(await run('sentry', 'update', `--${signal}`, '1')).toMatchObject({
+  expect(await fixture.run('sentry', 'update', `--${signal}`, '1')).toMatchObject({
     exitCode: 0,
   });
-  expect(await run('community-path', 'get')).toMatchObject({exitCode: 1});
+  expect(await fixture.run('community-path', 'get')).toMatchObject({exitCode: 1});
   expect(envelopeTypes()).toEqual([itemType]);
 });

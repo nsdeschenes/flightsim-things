@@ -4,6 +4,8 @@ import {homedir} from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
+const failureExitCode = 1;
+
 const releaseScript = fileURLToPath(new URL('../scripts/release.ts', import.meta.url));
 const testDirectory = path.join(
   homedir(),
@@ -27,19 +29,25 @@ afterEach(async () => {
   await rm(directory, {force: true, recursive: true});
 });
 
-function run(...args: readonly string[]): {exitCode: number; stderr: string} {
-  const result = Bun.spawnSync([process.execPath, releaseScript, ...args], {
+async function run(
+  ...args: readonly string[]
+): Promise<{exitCode: number; stderr: string}> {
+  const child = Bun.spawn([process.execPath, releaseScript, ...args], {
     stderr: 'pipe',
-    stdout: 'pipe',
+    stdout: 'ignore',
   });
-  return {exitCode: result.exitCode, stderr: new TextDecoder().decode(result.stderr)};
+  const [exitCode, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stderr).text(),
+  ]);
+  return {exitCode, stderr};
 }
 
 test.each(['v1.2.3', '01.2.3', '1.2', '1.2.3-beta', '1.2.3\n', '1.2.3;echo bad'])(
   'rejects invalid stable version %s before file operations',
-  input => {
-    const result = run('validate-version', input);
-    expect(result.exitCode).toBe(1);
+  async input => {
+    const result = await run('validate-version', input);
+    expect(result.exitCode).toBe(failureExitCode);
     expect(result.stderr).toContain('Expected a stable version');
   }
 );
@@ -50,22 +58,22 @@ test('stages and verifies exact binary filenames and literal checksums', async (
       await writeFile(path.join(directory, name), 'hello');
     })
   );
-  expect(run('stage', directory, '1.2.3').exitCode).toBe(0);
+  expect(await run('stage', directory, '1.2.3')).toMatchObject({exitCode: 0});
   expect(await readFile(path.join(directory, 'SHA256SUMS'), 'utf8')).toBe(
     names.map(name => `${helloChecksum}  ${name}\n`).join('')
   );
-  expect(run('verify-assets', directory, '1.2.3').exitCode).toBe(0);
+  expect(await run('verify-assets', directory, '1.2.3')).toMatchObject({exitCode: 0});
   await writeFile(path.join(directory, 'flightsim-things-1.2.3-linux-x64'), 'corrupted');
-  const corrupted = run('verify-assets', directory, '1.2.3');
-  expect(corrupted.exitCode).toBe(1);
+  const corrupted = await run('verify-assets', directory, '1.2.3');
+  expect(corrupted.exitCode).toBe(failureExitCode);
   expect(corrupted.stderr).toContain('Release checksums do not match');
-  expect(run('stage', directory, '1.2.3').exitCode).toBe(0);
-  expect(run('verify-assets', directory, '1.2.3').exitCode).toBe(0);
+  expect(await run('stage', directory, '1.2.3')).toMatchObject({exitCode: 0});
+  expect(await run('verify-assets', directory, '1.2.3')).toMatchObject({exitCode: 0});
 });
 
 test('rejects missing and unexpected binaries', async () => {
-  const missing = run('stage', directory, '1.2.3');
-  expect(missing.exitCode).toBe(1);
+  const missing = await run('stage', directory, '1.2.3');
+  expect(missing.exitCode).toBe(failureExitCode);
   expect(missing.stderr).toContain('Release asset set');
   await Promise.all(
     names.map(async name => {
@@ -73,5 +81,5 @@ test('rejects missing and unexpected binaries', async () => {
     })
   );
   await writeFile(path.join(directory, 'flightsim-things-9.9.9-linux-x64'), 'hello');
-  expect(run('stage', directory, '1.2.3').exitCode).toBe(1);
+  expect(await run('stage', directory, '1.2.3')).toMatchObject({exitCode: 1});
 });

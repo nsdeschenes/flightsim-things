@@ -1,14 +1,13 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test';
-import {mkdir, mkdtemp, readFile, readdir, rm, writeFile} from 'node:fs/promises';
-import {homedir} from 'node:os';
+import {mkdir, readFile, readdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
 
-const cli = fileURLToPath(new URL('index.ts', import.meta.url));
-const testDirectory = path.join(
-  homedir(),
-  '.cache/agent-work/flightsim-things/shared-config/context'
-);
+import createCliFixture from '#acceptance-cli';
+
+const successExitCode = 0;
+
+let fixture: Awaited<ReturnType<typeof createCliFixture>>;
+
 const dsn = 'https://publickey@localhost/123';
 const sentry = {dsn, sampleRates: {errors: 0, logs: 0, metrics: 0, traces: 0}};
 let homeDirectory: string;
@@ -16,44 +15,21 @@ let configurationDirectory: string;
 let configurationFile: string;
 
 beforeEach(async () => {
-  await mkdir(testDirectory, {recursive: true});
-  homeDirectory = await mkdtemp(path.join(testDirectory, 'shared-cli-test-'));
+  fixture = await createCliFixture();
+  homeDirectory = fixture.home;
   configurationDirectory = path.join(homeDirectory, '.flightsim-things');
   configurationFile = path.join(configurationDirectory, 'config.json');
   await mkdir(configurationDirectory);
 });
 
 afterEach(async () => {
-  await rm(homeDirectory, {force: true, recursive: true});
+  await fixture.dispose();
 });
-
-async function run(
-  ...args: readonly string[]
-): Promise<Readonly<{exitCode: number; stdout: string; stderr: string}>> {
-  let executable = [process.execPath, cli];
-  const binary = process.env.FLIGHTSIM_TEST_BINARY;
-  if (typeof binary === 'string' && binary !== '') {
-    executable = [binary];
-  }
-
-  const child = Bun.spawn([...executable, ...args], {
-    cwd: homeDirectory,
-    env: {...process.env, HOME: homeDirectory, USERPROFILE: homeDirectory},
-    stderr: 'pipe',
-    stdout: 'pipe',
-  });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ]);
-  return {exitCode, stderr, stdout};
-}
 
 async function set(): Promise<
   Readonly<{exitCode: number; stdout: string; stderr: string}>
 > {
-  const result = await run(
+  const result = await fixture.run(
     'sentry',
     'set',
     '--dsn',
@@ -75,7 +51,7 @@ test('Sentry set repairs an invalid section and preserves unrelated settings', a
     configurationFile,
     JSON.stringify({communityPath: homeDirectory, future: true, sentry: 'invalid'})
   );
-  expect(await run('sentry', 'get')).toMatchObject({exitCode: 1});
+  expect(await fixture.run('sentry', 'get')).toMatchObject({exitCode: 1});
   expect(await set()).toMatchObject({exitCode: 0});
   expect(JSON.parse(await readFile(configurationFile, 'utf8'))).toEqual({
     communityPath: homeDirectory,
@@ -84,7 +60,7 @@ test('Sentry set repairs an invalid section and preserves unrelated settings', a
   });
 });
 
-test('concurrent Community and partial Sentry saves retain all values', async () => {
+test('concurrent configuration commands retain replacements and partial updates', async () => {
   await writeFile(
     configurationFile,
     JSON.stringify({
@@ -97,14 +73,33 @@ test('concurrent Community and partial Sentry saves retain all values', async ()
     })
   );
   const results = await Promise.all([
-    run('community-path', 'set', homeDirectory),
-    run('sentry', 'update', '--logs', '0.2'),
-    run('sentry', 'update', '--traces', '0.4'),
+    fixture.run('community-path', 'set', homeDirectory),
+    fixture.run(
+      'ai',
+      'set',
+      '--provider',
+      'openai',
+      '--model',
+      'opaque/model:v1',
+      '--api-key',
+      'private-saved-key'
+    ),
+    fixture.run('openaip-key', 'set', 'private-openaip-key'),
+    fixture.run('sentry', 'update', '--logs', '0.2'),
+    fixture.run('sentry', 'update', '--traces', '0.4'),
   ]);
-  expect(results.map(result => result.exitCode)).toEqual([0, 0, 0]);
+  expect(results.map(result => result.exitCode)).toEqual([
+    successExitCode,
+    successExitCode,
+    successExitCode,
+    successExitCode,
+    successExitCode,
+  ]);
   expect(JSON.parse(await readFile(configurationFile, 'utf8'))).toEqual({
+    ai: {apiKey: 'private-saved-key', model: 'opaque/model:v1', provider: 'openai'},
     communityPath: homeDirectory,
     future: {enabled: true},
+    openaipApiKey: 'private-openaip-key',
     sentry: {
       dsn,
       metadata: 'retained',

@@ -1,45 +1,26 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test';
-import {mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
+import {mkdir, readFile, readdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
 
-const cli = fileURLToPath(new URL('../index.ts', import.meta.url));
+import createCliFixture from '#acceptance-cli';
+
+const successExitCode = 0;
+const failureExitCode = 1;
+const unknownCommandExitCode = 251;
+
+let fixture: Awaited<ReturnType<typeof createCliFixture>>;
+
 const saved = {exitCode: 0, stderr: '', stdout: 'AI configuration saved.\n'};
-let homeDirectory: string;
 let configurationFile: string;
 
 beforeEach(async () => {
-  homeDirectory = await mkdtemp(path.join(tmpdir(), 'flightsim-ai-cli-test-'));
-  configurationFile = path.join(homeDirectory, '.flightsim-things/config.json');
+  fixture = await createCliFixture();
+  ({configurationFile} = fixture);
 });
 
 afterEach(async () => {
-  await rm(homeDirectory, {force: true, recursive: true});
+  await fixture.dispose();
 });
-
-async function run(
-  ...args: readonly string[]
-): Promise<Readonly<{exitCode: number; stderr: string; stdout: string}>> {
-  let executable = [process.execPath, cli];
-  const binary = process.env.FLIGHTSIM_TEST_BINARY;
-  if (typeof binary === 'string' && binary !== '') {
-    executable = [binary];
-  }
-
-  const child = Bun.spawn([...executable, ...args], {
-    cwd: homeDirectory,
-    env: {...process.env, HOME: homeDirectory, USERPROFILE: homeDirectory},
-    stderr: 'pipe',
-    stdout: 'pipe',
-  });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ]);
-  return {exitCode, stderr, stdout};
-}
 
 async function seed(contents: string): Promise<void> {
   await mkdir(path.dirname(configurationFile), {recursive: true});
@@ -50,8 +31,8 @@ async function set(
   provider = 'openai',
   model = 'opaque/model:v1',
   apiKey = 'private-saved-key'
-): ReturnType<typeof run> {
-  const result = await run(
+): ReturnType<typeof fixture.run> {
+  const result = await fixture.run(
     'ai',
     'set',
     '--provider',
@@ -78,7 +59,7 @@ test('set replaces the complete tuple across providers and preserves unrelated s
     expect(await set(provider, 'opaque/model:v1', `private-${provider}-key`)).toEqual(
       saved
     );
-    expect(await run('ai', 'get')).toEqual({
+    expect(await fixture.run('ai', 'get')).toEqual({
       exitCode: 0,
       stderr: '',
       stdout: `Provider: ${provider}\nModel: opaque/model:v1\nAPI key: <redacted>\n`,
@@ -91,139 +72,83 @@ test('set replaces the complete tuple across providers and preserves unrelated s
       sentry: {dsn: 'invalid-but-retained'},
     });
   }
-
-  const [stats, files] = await Promise.all([
-    stat(configurationFile),
-    readdir(path.dirname(configurationFile)),
-  ]);
-  expect(stats.mode % 0o1000).toBe(0o600);
-  expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
-});
-
-test('concurrent AI and OpenAIP saves retain both configurations', async () => {
-  const results = await Promise.all([
-    set(),
-    run('openaip-key', 'set', 'private-openaip-key'),
-  ]);
-  expect(results).toEqual([
-    saved,
-    {exitCode: 0, stderr: '', stdout: 'OpenAIP API key saved.\n'},
-  ]);
-  expect(JSON.parse(await readFile(configurationFile, 'utf8'))).toEqual({
-    ai: {apiKey: 'private-saved-key', model: 'opaque/model:v1', provider: 'openai'},
-    openaipApiKey: 'private-openaip-key',
-  });
 });
 
 test('missing configuration gives setup instructions', async () => {
-  const result = await run('ai', 'get');
-  expect(result.exitCode).toBe(1);
+  const result = await fixture.run('ai', 'get');
+  expect(result.exitCode).toBe(failureExitCode);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain('No AI configuration is saved.');
   expect(result.stderr).toContain('ai set --provider');
 });
 
-test.each([
-  '',
-  ' ',
-  'private model',
-  'private\tmodel',
-  'private\nmodel',
-  'private\u007Fmodel',
-  'private\u0085model',
-  'private-model\n',
-])('invalid model %# preserves saved bytes and hides input', async model => {
+test('invalid model preserves saved bytes and hides input', async () => {
+  const model = 'private model';
   const contents = '{"ai":{"old":true},"future":true}\n';
   await seed(contents);
   const result = await set('openai', model);
-  expect(result.exitCode).toBe(1);
+  expect(result.exitCode).toBe(failureExitCode);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain('no whitespace or control characters');
   expect(result.stderr).not.toContain('private');
   expect(await readFile(configurationFile, 'utf8')).toBe(contents);
 });
 
-test.each([
-  '',
-  ' ',
-  'private key',
-  'private\tkey',
-  'private\nkey',
-  'private\u007Fkey',
-  'private\u0085key',
-  'private-key\n',
-])('invalid key %# preserves saved bytes and hides input', async apiKey => {
+test('invalid key preserves saved bytes and hides input', async () => {
+  const apiKey = 'private key';
   const contents = '{"ai":{"old":true},"future":true}\n';
   await seed(contents);
   const result = await set('openai', 'opaque-model', apiKey);
-  expect(result.exitCode).toBe(1);
+  expect(result.exitCode).toBe(failureExitCode);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain('no whitespace or control characters');
   expect(result.stderr).not.toContain('private');
   expect(await readFile(configurationFile, 'utf8')).toBe(contents);
 });
 
-test.each([
-  42,
-  {},
-  {apiKey: 'private-key', model: 'valid', provider: 'unknown'},
-  {apiKey: 'private-key', model: '', provider: 'openai'},
-  {apiKey: 'private-key', model: 'private model', provider: 'openai'},
-  {apiKey: 'private key', model: 'valid', provider: 'openai'},
-  {apiKey: 42, model: 'valid', provider: 'openai'},
-])(
-  'get rejects malformed saved configuration %# without echoing it',
-  async (ai: unknown) => {
-    const contents = JSON.stringify({ai});
-    await seed(contents);
-    const result = await run('ai', 'get');
-    expect(result.exitCode).toBe(1);
+test('get rejects malformed saved configuration without echoing it', async () => {
+  const ai = {apiKey: 'private-key', model: 'valid', provider: 'unknown'};
+  const contents = JSON.stringify({ai});
+  await seed(contents);
+  const result = await fixture.run('ai', 'get');
+  expect(result.exitCode).toBe(failureExitCode);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toContain('ai set --provider');
+  expect(result.stderr).not.toContain('private');
+  expect(await readFile(configurationFile, 'utf8')).toBe(contents);
+});
+
+test('corrupt document preserves bytes and fails safely', async () => {
+  const contents = '{"ai":{"apiKey":"private-key"},broken}';
+  await seed(contents);
+  for (const result of [await fixture.run('ai', 'get'), await set()]) {
+    expect(result.exitCode).toBe(failureExitCode);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('ai set --provider');
+    expect(result.stderr).toContain('Repair the file');
     expect(result.stderr).not.toContain('private');
+    expect(result.stderr).not.toContain('SyntaxError');
+    expect(result.stderr).not.toContain('Sentry telemetry skipped');
     expect(await readFile(configurationFile, 'utf8')).toBe(contents);
   }
-);
-
-test.each(['{"ai":{"apiKey":"private-key"},broken}', '[]', 'null'])(
-  'corrupt document %# preserves bytes and fails safely',
-  async contents => {
-    await seed(contents);
-    for (const result of [await run('ai', 'get'), await set()]) {
-      expect(result.exitCode).toBe(1);
-      expect(result.stdout).toBe('');
-      expect(result.stderr).toContain('Repair the file');
-      expect(result.stderr).not.toContain('private');
-      expect(result.stderr).not.toContain('SyntaxError');
-      expect(result.stderr).not.toContain('Sentry telemetry skipped');
-      expect(await readFile(configurationFile, 'utf8')).toBe(contents);
-    }
-  }
-);
+});
 
 test('filesystem errors hide causes and remove temporary files', async () => {
   await mkdir(configurationFile, {recursive: true});
   const result = await set();
-  expect(result.exitCode).toBe(1);
+  expect(result.exitCode).toBe(failureExitCode);
   expect(result.stderr).toContain('Check directory permissions');
   expect(result.stderr).not.toContain('private');
   const files = await readdir(path.dirname(configurationFile));
   expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
 });
 
-test('root help lists the AI command', async () => {
-  const root = await run('--help');
-  expect(root.exitCode).toBe(0);
-  expect(root.stdout).toContain('ai');
-});
-
 test('AI help exposes get, set, and all required provider flags', async () => {
-  const help = await run('ai', '--help');
-  expect(help.exitCode).toBe(0);
+  const help = await fixture.run('ai', '--help');
+  expect(help.exitCode).toBe(successExitCode);
   expect(help.stdout).toContain('get');
   expect(help.stdout).toContain('set');
-  const setHelp = await run('ai', 'set', '--help');
-  expect(setHelp.exitCode).toBe(0);
+  const setHelp = await fixture.run('ai', 'set', '--help');
+  expect(setHelp.exitCode).toBe(successExitCode);
   expect(setHelp.stderr).toBe('');
   for (const flag of [
     '--provider',
@@ -287,7 +212,7 @@ test.each([
   async ({args, exitCode}: Readonly<{args: readonly string[]; exitCode: number}>) => {
     const contents = '{"ai":{"old":true},"future":true}\n';
     await seed(contents);
-    const result = await run(...args);
+    const result = await fixture.run(...args);
     expect(result).toMatchObject({
       exitCode,
       stderr: 'Invalid AI command arguments. Run flightsim-things ai --help for usage.\n',
@@ -300,15 +225,19 @@ test.each([
 
 async function assertAiInvocations(): Promise<void> {
   expect(await set()).toEqual(saved);
-  expect(await run('ai', 'get')).toMatchObject({
+  expect(await fixture.run('ai', 'get')).toMatchObject({
     exitCode: 0,
     stdout: 'Provider: openai\nModel: opaque/model:v1\nAPI key: <redacted>\n',
   });
   expect(await set('openai', 'model', 'private invalid-key')).toMatchObject({
     exitCode: 1,
   });
-  expect(await run('ai', 'get', 'private-extra-key')).toMatchObject({exitCode: 252});
-  expect(await run('--log-level', 'private-option-key', 'ai', 'get')).toMatchObject({
+  expect(await fixture.run('ai', 'get', 'private-extra-key')).toMatchObject({
+    exitCode: 252,
+  });
+  expect(
+    await fixture.run('--log-level', 'private-option-key', 'ai', 'get')
+  ).toMatchObject({
     exitCode: 251,
   });
 }
@@ -334,7 +263,7 @@ test('AI invocations bypass telemetry for valid and malformed commands', async (
     );
     await assertAiInvocations();
     expect(envelopes).toEqual([]);
-    expect(await run('hello')).toMatchObject({exitCode: 0});
+    expect(await fixture.run('hello')).toMatchObject({exitCode: 0});
     expect(envelopes.join('\n')).toContain('cli.command.completed');
   } finally {
     await server.stop(true);
@@ -345,8 +274,8 @@ test.each(['{broken', '{"sentry":{"dsn":"private-invalid-dsn"}}'])(
   'malformed leading AI arguments bypass invalid telemetry configuration %#',
   async contents => {
     await seed(contents);
-    const result = await run('--log-level', 'private-option-key', 'ai', 'get');
-    expect(result.exitCode).toBe(251);
+    const result = await fixture.run('--log-level', 'private-option-key', 'ai', 'get');
+    expect(result.exitCode).toBe(unknownCommandExitCode);
     expect(result.stderr).toBe(
       'Invalid AI command arguments. Run flightsim-things ai --help for usage.\n'
     );

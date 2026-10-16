@@ -2,7 +2,11 @@ import {afterEach, beforeEach, expect, test} from 'bun:test';
 import {mkdir, rm, symlink, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 
-import createFixture from './test-fixtures.ts';
+import createFixture from '#acceptance-scanner';
+
+const successExitCode = 0;
+const failureExitCode = 1;
+const packageCount = 17;
 
 const cliTimeout = 60_000;
 let fixture: Awaited<ReturnType<typeof createFixture>>;
@@ -25,7 +29,7 @@ async function mixedPackages(): Promise<string> {
     {'SimObjects/Airplanes/Variant/aircraft.cfg': liveryCfg},
     'LIVERY'
   );
-  for (let index = 0; index < 17; index += 1) {
+  for (const index of Array.from({length: packageCount}).keys()) {
     await fixture.addon(
       `livery-${index}`,
       {'SimObjects/Airplanes/Variant/aircraft.cfg': liveryCfg},
@@ -49,7 +53,7 @@ async function mixedPackages(): Promise<string> {
 }
 
 function verifyImported(result: Awaited<ReturnType<typeof fixture.run>>): void {
-  expect(result.exitCode).toBe(0);
+  expect(result.exitCode).toBe(successExitCode);
   expect(result.stdout).toContain(
     'Scanned 19 packages, 1 aircraft, 4 airports, and 38 liveries. 0 packages failed. 1 warnings.'
   );
@@ -187,7 +191,7 @@ test(
       exitCode: 0,
     });
     const result = await fixture.run('scan');
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(failureExitCode);
     expect(result.stdout).toContain('Scanned 2 packages');
     expect(result.stdout).toContain('4 packages failed');
     expect(result.stderr).toContain('Unsafe layout path');
@@ -200,7 +204,7 @@ test(
 
 async function expectScanError(message: string): Promise<void> {
   const result = await fixture.run('scan');
-  expect(result.exitCode).toBe(1);
+  expect(result.exitCode).toBe(failureExitCode);
   expect(result.stderr).toContain(message);
 }
 
