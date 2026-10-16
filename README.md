@@ -34,6 +34,28 @@ and scan again. Repeated scans update existing records but retain records for re
 Airport detection requires explicit airport XML or `AirportServices` entries.
 Compiled BGL scenery is not decoded, so airport coverage may be incomplete.
 
+## List Airports
+
+Show saved airport metadata in an ASCII table:
+
+```bash
+bun run start airports list
+```
+
+Find an airport by its exact ICAO or IATA code, ignoring case:
+
+```bash
+bun run start airports list --code KJFK
+```
+
+The table includes every airport database column and the package directory.
+Missing values are blank. Directories are clickable in terminals that support links.
+Use `--hyperlink always` to force links or `--hyperlink never` to disable them.
+The default, `--hyperlink auto`, uses links only in interactive terminals whose
+`TERM` is not `dumb`. Piped output stays plain text.
+Rows are sorted by ICAO code, name, and ID, with missing codes and names first.
+This command reads the saved inventory without scanning or fetching metadata.
+
 ## Enrich Airports
 
 Create an API client at [OpenAIP](https://www.openaip.net/) and copy its API key, then run:
