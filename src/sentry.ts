@@ -6,6 +6,7 @@ import {
   metrics,
   SentryEffectLogger,
   SentryEffectTracer,
+  vercelAIIntegration,
 } from '@sentry/effect/server';
 import {Cause, Effect, ErrorReporter, Logger, Option} from 'effect';
 import {CliError} from 'effect/cli';
@@ -16,7 +17,6 @@ import configurationStore from '#sentry-config';
 const fullSampleRate = 1;
 const zeroSampleRate = 0;
 const commandCount = 1;
-const noArguments = 0;
 const flushTimeoutMilliseconds = 2000;
 const shutdownTimeoutMilliseconds = 2500;
 
@@ -47,6 +47,7 @@ function makeSdkLayer(configuration: Configuration): ReturnType<typeof effectLay
     beforeSendMetric: (metric: DeepReadonly<Metric>) =>
       sample(metric, configuration.sampleRates.metrics),
     dsn: configuration.dsn,
+    integrations: [vercelAIIntegration({recordInputs: true, recordOutputs: true})],
     release: `flightsim-things@${version}`,
     sampleRate: configuration.sampleRates.errors,
     traceLifecycle: 'static',
@@ -117,13 +118,9 @@ function instrument<Result, Failure, Requirements>(
 
 function withSentry<Result, Failure, Requirements>(
   command: () => Effect.Effect<Result, Failure, Requirements>,
-  args: readonly string[]
+  invocation: Readonly<{skipTelemetry: boolean}>
 ): Effect.Effect<Result, Failure, Requirements> {
-  if (
-    args.length === noArguments ||
-    args.some(argument => ['--help', '-h', '--version'].includes(argument)) ||
-    args.some(argument => ['sentry', 'openaip-key'].includes(argument))
-  ) {
+  if (invocation.skipTelemetry) {
     return command();
   }
 

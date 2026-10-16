@@ -86,6 +86,21 @@ test.each([
     exitCode: 252,
     stderr: 'Unexpected positional argument: "extra"',
   },
+  {
+    args: ['hello', 'ai'],
+    exitCode: 252,
+    stderr: 'Unexpected positional argument: "ai"',
+  },
+  {
+    args: ['--unknown', 'community-path', 'set', 'ai'],
+    exitCode: 252,
+    stderr: 'Unrecognized flag: --unknown',
+  },
+  {
+    args: ['unknown', 'ai'],
+    exitCode: 251,
+    stderr: 'Unknown subcommand "unknown"',
+  },
 ])(
   'argument errors show Effect help and preserve exit code for $args',
   ({args, exitCode, stderr}) => {
