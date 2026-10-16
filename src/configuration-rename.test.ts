@@ -100,10 +100,8 @@ test('Windows replacement retries transient sharing errors while holding the loc
     future: {enabled: true},
     setting: 'replacement',
   });
-  expect(await readdir(path.dirname(configurationFile))).toEqual([
-    'config.json',
-    'config.json.lock.sqlite',
-  ]);
+  const files = await readdir(path.dirname(configurationFile));
+  expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
 });
 
 test('Windows retry exhaustion preserves bytes and releases the lock and removes the temporary file', async () => {
@@ -113,10 +111,8 @@ test('Windows retry exhaustion preserves bytes and releases the lock and removes
     stdout: 'EPERM\n5\n',
   });
   expect(await readFile(configurationFile, 'utf8')).toBe(original);
-  expect(await readdir(path.dirname(configurationFile))).toEqual([
-    'config.json',
-    'config.json.lock.sqlite',
-  ]);
+  const files = await readdir(path.dirname(configurationFile));
+  expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
 });
 
 test.each([
@@ -132,9 +128,7 @@ test.each([
       stdout: `${code}\n1\n`,
     });
     expect(await readFile(configurationFile, 'utf8')).toBe(original);
-    expect(await readdir(path.dirname(configurationFile))).toEqual([
-      'config.json',
-      'config.json.lock.sqlite',
-    ]);
+    const files = await readdir(path.dirname(configurationFile));
+    expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
   }
 );

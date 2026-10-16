@@ -223,10 +223,8 @@ test('malformed configuration skips telemetry and preserves bytes on set and upd
 test('failed atomic replacement removes temporary files', async () => {
   await mkdir(configurationFile, {recursive: true});
   expect(await set()).toMatchObject({exitCode: 1});
-  expect(await readdir(path.dirname(configurationFile))).toEqual([
-    'config.json',
-    'config.json.lock.sqlite',
-  ]);
+  const files = await readdir(path.dirname(configurationFile));
+  expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
 });
 
 test.each(['sentry', 'openaip-key'])(

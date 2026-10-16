@@ -112,10 +112,8 @@ test('concurrent processes serialize first creation and read-modify-write withou
     key4: 4,
     key5: 5,
   });
-  expect(await readdir(path.dirname(configurationFile))).toEqual([
-    'config.json',
-    'config.json.lock.sqlite',
-  ]);
+  const files = await readdir(path.dirname(configurationFile));
+  expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
 });
 
 test.each(['{broken', 'null', '[]', '42', '"text"'])(
@@ -133,10 +131,8 @@ test.each(['{broken', 'null', '[]', '42', '"text"'])(
     }
 
     expect(await readFile(configurationFile, 'utf8')).toBe(contents);
-    expect(await readdir(path.dirname(configurationFile))).toEqual([
-      'config.json',
-      'config.json.lock.sqlite',
-    ]);
+    const files = await readdir(path.dirname(configurationFile));
+    expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
   }
 );
 
@@ -155,10 +151,8 @@ test.each([
   expect(await readFile(configurationFile, 'utf8')).toBe(
     '{"setting":"saved","future":{"enabled":true}}\n'
   );
-  expect(await readdir(path.dirname(configurationFile))).toEqual([
-    'config.json',
-    'config.json.lock.sqlite',
-  ]);
+  const files = await readdir(path.dirname(configurationFile));
+  expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
 });
 
 test('updates preserve unknown keys, support pure callbacks, and release locks after validation failure', async () => {
@@ -180,10 +174,8 @@ test('updates preserve unknown keys, support pure callbacks, and release locks a
     future: {enabled: true},
     setting: 2,
   });
-  expect(await readdir(path.dirname(configurationFile))).toEqual([
-    'config.json',
-    'config.json.lock.sqlite',
-  ]);
+  const files = await readdir(path.dirname(configurationFile));
+  expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
 });
 
 test('nonenumerable serialization hooks cannot remove configuration values', async () => {
