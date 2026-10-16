@@ -1,6 +1,6 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test';
 
-import createFixture from './test-fixtures.ts';
+import createFixture from '#acceptance-scanner';
 
 let fixture: Awaited<ReturnType<typeof createFixture>>;
 const cliTimeout = 60_000;

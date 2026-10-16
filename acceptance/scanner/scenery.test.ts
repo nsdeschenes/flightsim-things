@@ -3,7 +3,11 @@ import {afterEach, beforeEach, expect, test} from 'bun:test';
 import {symlink, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 
-import createFixture from './test-fixtures.ts';
+import createFixture from '#acceptance-scanner';
+
+const successExitCode = 0;
+const failureExitCode = 1;
+const location = {elevationMeters: 35.5, latitude: -33.946111, longitude: 151.177222};
 
 let fixture: Awaited<ReturnType<typeof createFixture>>;
 const cliTimeout = 60_000;
@@ -18,10 +22,11 @@ afterEach(async () => {
 
 function enrichAirportLocation(): void {
   using db = new Database(path.join(fixture.home, '.flightsim-things/addons.sqlite'));
-  db.run(
-    'UPDATE airports SET elevation_meters = ?, latitude = ?, longitude = ?',
-    [35.5, -33.946111, 151.177222]
-  );
+  db.run('UPDATE airports SET elevation_meters = ?, latitude = ?, longitude = ?', [
+    location.elevationMeters,
+    location.latitude,
+    location.longitude,
+  ]);
 }
 
 test(
@@ -84,7 +89,7 @@ test.each([
       exitCode: 0,
     });
     const result = await fixture.run('scan');
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(successExitCode);
     expect(result.stdout).toContain(
       'Scanned 1 packages, 1 aircraft, 1 airports, and 1 liveries. 0 packages failed. 1 warnings.'
     );
@@ -129,7 +134,7 @@ test.each([
       exitCode: 0,
     });
     const result = await fixture.run('scan');
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(failureExitCode);
     expect(result.stdout).toContain('Scanned 0 packages');
     expect(result.stdout).toContain('1 packages failed');
     expect(fixture.query('SELECT count(*) AS total FROM packages')).toEqual([{total: 0}]);
@@ -155,7 +160,7 @@ test(
     ]);
     await writeFile(filename, Buffer.from('\uFEFF<Sound><broken', 'utf16le'));
     const result = await fixture.run('scan');
-    expect(result.exitCode).toBe(1);
+    expect(result.exitCode).toBe(failureExitCode);
     expect(result.stdout).toContain('Scanned 0 packages');
   },
   cliTimeout
@@ -172,7 +177,7 @@ test(
       exitCode: 0,
     });
     const result = await fixture.run('scan');
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode).toBe(successExitCode);
     expect(result.stdout).toContain('Scanned 1 packages');
     expect(result.stdout).toContain('0 packages failed');
   },

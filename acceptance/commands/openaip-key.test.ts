@@ -1,49 +1,30 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test';
-import {mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile} from 'node:fs/promises';
-import {homedir} from 'node:os';
+import {mkdir, readFile, readdir, stat, writeFile} from 'node:fs/promises';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
 
-const cli = fileURLToPath(new URL('../index.ts', import.meta.url));
-const testDirectory = path.join(
-  homedir(),
-  '.cache/agent-work/flightsim-things/openaip-key/context'
-);
+import createCliFixture from '#acceptance-cli';
+
+const successExitCode = 0;
+const failureExitCode = 1;
+const invalidArgumentsExitCode = 252;
+const permissionBits = 0o1000;
+const privateFileMode = 0o600;
+const invalidSavedValue = 42;
+
+let fixture: Awaited<ReturnType<typeof createCliFixture>>;
+
 let homeDirectory: string;
 let configurationFile: string;
 
 beforeEach(async () => {
-  await mkdir(testDirectory, {recursive: true});
-  homeDirectory = await mkdtemp(path.join(testDirectory, 'cli-test-'));
+  fixture = await createCliFixture();
+  homeDirectory = fixture.home;
   configurationFile = path.join(homeDirectory, '.flightsim-things/config.json');
 });
 
 afterEach(async () => {
-  await rm(homeDirectory, {force: true, recursive: true});
+  await fixture.dispose();
 });
-
-async function run(
-  ...args: readonly string[]
-): Promise<Readonly<{exitCode: number; stdout: string; stderr: string}>> {
-  let executable = [process.execPath, cli];
-  const binary = process.env.FLIGHTSIM_TEST_BINARY;
-  if (typeof binary === 'string' && binary !== '') {
-    executable = [binary];
-  }
-
-  const child = Bun.spawn([...executable, ...args], {
-    cwd: homeDirectory,
-    env: {...process.env, HOME: homeDirectory, USERPROFILE: homeDirectory},
-    stderr: 'pipe',
-    stdout: 'pipe',
-  });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ]);
-  return {exitCode, stderr, stdout};
-}
 
 async function seedConfiguration(contents: string): Promise<void> {
   await mkdir(path.dirname(configurationFile), {recursive: true});
@@ -53,8 +34,8 @@ async function seedConfiguration(contents: string): Promise<void> {
 test('set creates and replaces the exact key across CLI processes without echoing it', async () => {
   const firstKey = 'opaque/key+=?first';
   const saved = {exitCode: 0, stderr: '', stdout: 'OpenAIP API key saved.\n'};
-  expect(await run('openaip-key', 'set', firstKey)).toEqual(saved);
-  expect(await run('openaip-key', 'get')).toEqual({
+  expect(await fixture.run('openaip-key', 'set', firstKey)).toEqual(saved);
+  expect(await fixture.run('openaip-key', 'get')).toEqual({
     exitCode: 0,
     stderr: '',
     stdout: 'opaque/key+=?first\n',
@@ -62,8 +43,8 @@ test('set creates and replaces the exact key across CLI processes without echoin
   expect(JSON.parse(await readFile(configurationFile, 'utf8'))).toEqual({
     openaipApiKey: 'opaque/key+=?first',
   });
-  expect(await run('openaip-key', 'set', 'opaque-key:second')).toEqual(saved);
-  expect(await run('openaip-key', 'get')).toEqual({
+  expect(await fixture.run('openaip-key', 'set', 'opaque-key:second')).toEqual(saved);
+  expect(await fixture.run('openaip-key', 'get')).toEqual({
     exitCode: 0,
     stderr: '',
     stdout: 'opaque-key:second\n',
@@ -72,7 +53,7 @@ test('set creates and replaces the exact key across CLI processes without echoin
     stat(configurationFile),
     readdir(path.dirname(configurationFile)),
   ]);
-  expect(stats.mode % 0o1000).toBe(0o600);
+  expect(stats.mode % permissionBits).toBe(privateFileMode);
   expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
 });
 
@@ -85,7 +66,7 @@ test('set repairs an invalid saved key and preserves all other settings', async 
       sentry: {dsn: 'retained'},
     })
   );
-  expect(await run('openaip-key', 'set', 'replacement-key')).toEqual({
+  expect(await fixture.run('openaip-key', 'set', 'replacement-key')).toEqual({
     exitCode: 0,
     stderr: '',
     stdout: 'OpenAIP API key saved.\n',
@@ -99,8 +80,8 @@ test('set repairs an invalid saved key and preserves all other settings', async 
 });
 
 test('an unset key explains where to get a key and how to save it', async () => {
-  const result = await run('openaip-key', 'get');
-  expect(result.exitCode).toBe(1);
+  const result = await fixture.run('openaip-key', 'get');
+  expect(result.exitCode).toBe(failureExitCode);
   expect(result.stdout).toBe('');
   expect(result.stderr).toContain('No OpenAIP API key is saved.');
   expect(result.stderr).toContain('https://www.openaip.net/');
@@ -122,8 +103,8 @@ test.each([
   'invalid input %# preserves the saved bytes and does not print the key',
   async input => {
     await seedConfiguration('{"openaipApiKey":"previous-key","future":true}\n');
-    const result = await run('openaip-key', 'set', input);
-    expect(result.exitCode).toBe(1);
+    const result = await fixture.run('openaip-key', 'set', input);
+    expect(result.exitCode).toBe(failureExitCode);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain('contain no whitespace or control characters');
     expect(result.stderr).not.toContain('private');
@@ -133,12 +114,12 @@ test.each([
   }
 );
 
-test.each([42, {}, '', ' ', 'private key', 'private\u0000key'])(
+test.each([invalidSavedValue, {}, '', ' ', 'private key', 'private\u0000key'])(
   'get rejects invalid saved key %# without printing it',
   async input => {
     await seedConfiguration(JSON.stringify({openaipApiKey: input}));
-    const result = await run('openaip-key', 'get');
-    expect(result.exitCode).toBe(1);
+    const result = await fixture.run('openaip-key', 'get');
+    expect(result.exitCode).toBe(failureExitCode);
     expect(result.stdout).toBe('');
     expect(result.stderr).toContain('openaip-key set <key>');
     expect(result.stderr).not.toContain('private');
@@ -150,8 +131,8 @@ test.each(['{"openaipApiKey":"private-secret",broken}', '[]', 'null'])(
   async contents => {
     await seedConfiguration(contents);
     for (const args of [['get'], ['set', 'private-replacement']]) {
-      const result = await run('openaip-key', ...args);
-      expect(result.exitCode).toBe(1);
+      const result = await fixture.run('openaip-key', ...args);
+      expect(result.exitCode).toBe(failureExitCode);
       expect(result.stdout).toBe('');
       expect(result.stderr).toContain('Repair the file');
       expect(result.stderr).not.toContain('private');
@@ -164,8 +145,8 @@ test.each(['{"openaipApiKey":"private-secret",broken}', '[]', 'null'])(
 
 test('filesystem failure reports a safe error and preserves the configuration directory', async () => {
   await mkdir(configurationFile, {recursive: true});
-  const result = await run('openaip-key', 'set', 'private-replacement');
-  expect(result.exitCode).toBe(1);
+  const result = await fixture.run('openaip-key', 'set', 'private-replacement');
+  expect(result.exitCode).toBe(failureExitCode);
   expect(result.stderr).toContain('Check directory permissions');
   expect(result.stderr).not.toContain('private-replacement');
   const files = await readdir(path.dirname(configurationFile));
@@ -173,14 +154,14 @@ test('filesystem failure reports a safe error and preserves the configuration di
 });
 
 test('root help lists the OpenAIP key command', async () => {
-  const rootHelp = await run('--help');
-  expect(rootHelp.exitCode).toBe(0);
+  const rootHelp = await fixture.run('--help');
+  expect(rootHelp.exitCode).toBe(successExitCode);
   expect(rootHelp.stdout).toContain('openaip-key');
 });
 
 test('help lists get and set with the OpenAIP key instructions', async () => {
-  const help = await run('openaip-key', '--help');
-  expect(help.exitCode).toBe(0);
+  const help = await fixture.run('openaip-key', '--help');
+  expect(help.exitCode).toBe(successExitCode);
   expect(help.stderr).toBe('');
   expect(help.stdout).toContain('get');
   expect(help.stdout).toContain('set');
@@ -189,22 +170,22 @@ test('help lists get and set with the OpenAIP key instructions', async () => {
 });
 
 test('set help lists the key argument and OpenAIP link', async () => {
-  const setHelp = await run('openaip-key', 'set', '--help');
-  expect(setHelp.exitCode).toBe(0);
+  const setHelp = await fixture.run('openaip-key', 'set', '--help');
+  expect(setHelp.exitCode).toBe(successExitCode);
   expect(setHelp.stderr).toBe('');
   expect(setHelp.stdout).toContain('<key>');
   expect(setHelp.stdout).toContain('https://www.openaip.net/');
 });
 
 test('set requires a key argument', async () => {
-  const result = await run('openaip-key', 'set');
-  expect(result.exitCode).toBe(252);
+  const result = await fixture.run('openaip-key', 'set');
+  expect(result.exitCode).toBe(invalidArgumentsExitCode);
   expect(result.stderr).toContain('openaip-key --help');
 });
 
 test('an AI-named key keeps OpenAIP parser guidance and hides extra credentials', async () => {
-  const result = await run('openaip-key', 'set', 'ai', 'private-extra-key');
-  expect(result.exitCode).toBe(252);
+  const result = await fixture.run('openaip-key', 'set', 'ai', 'private-extra-key');
+  expect(result.exitCode).toBe(invalidArgumentsExitCode);
   expect(result.stderr).toBe(
     'Invalid OpenAIP key command arguments. Run flightsim-things openaip-key --help for usage.\n'
   );
@@ -226,7 +207,7 @@ test.each([
   async ({args, exitCode}: Readonly<{args: readonly string[]; exitCode: number}>) => {
     const contents = '{"openaipApiKey":"previous-key","future":true}\n';
     await seedConfiguration(contents);
-    const result = await run(...args);
+    const result = await fixture.run(...args);
     expect(result.exitCode).toBe(exitCode);
     expect(result.stdout).toContain('USAGE');
     expect(result.stdout).not.toContain('private');
@@ -268,11 +249,11 @@ test('OpenAIP key commands exclude credentials and failures from telemetry', asy
         expected: {exitCode: 252},
       },
     ]) {
-      expect(await run('openaip-key', ...args)).toMatchObject(expected);
+      expect(await fixture.run('openaip-key', ...args)).toMatchObject(expected);
     }
 
     expect(envelopes).toEqual([]);
-    expect(await run('hello')).toMatchObject({exitCode: 0});
+    expect(await fixture.run('hello')).toMatchObject({exitCode: 0});
     expect(envelopes.join('\n')).toContain('cli.command.completed');
   } finally {
     await server.stop(true);

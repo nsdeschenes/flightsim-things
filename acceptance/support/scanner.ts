@@ -1,8 +1,8 @@
 import {Database} from 'bun:sqlite';
-import {mkdir, mkdtemp, rm, writeFile} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
+import {mkdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+
+import createCliFixture from './cli.ts';
 
 type CommandResult = Readonly<{exitCode: number; stderr: string; stdout: string}>;
 type Fixture = Readonly<{
@@ -17,22 +17,6 @@ type Fixture = Readonly<{
   query: (sql: string) => unknown[];
   run: (...args: readonly string[]) => Promise<CommandResult>;
 }>;
-const cli = fileURLToPath(new URL('../index.ts', import.meta.url));
-
-async function run(home: string, args: readonly string[]): Promise<CommandResult> {
-  const result = Bun.spawn([process.execPath, cli, ...args], {
-    env: {...process.env, HOME: home, USERPROFILE: home},
-    stderr: 'pipe',
-    stdout: 'pipe',
-  });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    result.exited,
-    new Response(result.stdout).text(),
-    new Response(result.stderr).text(),
-  ]);
-  return {exitCode, stderr, stdout};
-}
-
 async function writeAddon(
   root: string,
   files: Readonly<Record<string, string>>,
@@ -72,7 +56,8 @@ function query(home: string, sql: string): unknown[] {
 }
 
 async function createFixture(): Promise<Fixture> {
-  const home = await mkdtemp(path.join(tmpdir(), 'flightsim-scan-test-'));
+  const cli = await createCliFixture();
+  const {home} = cli;
   const community = path.join(home, 'Community');
   await mkdir(community);
   return {
@@ -81,15 +66,10 @@ async function createFixture(): Promise<Fixture> {
       return root;
     },
     community,
-    dispose: async () => {
-      await rm(home, {force: true, recursive: true});
-    },
+    dispose: cli.dispose,
     home,
     query: sql => query(home, sql),
-    run: async (...args) => {
-      const result = await run(home, args);
-      return result;
-    },
+    run: cli.run,
   };
 }
 
