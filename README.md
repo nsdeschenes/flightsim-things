@@ -56,6 +56,26 @@ The default, `--hyperlink auto`, uses links only in interactive terminals whose
 Rows are sorted by ICAO code, name, and ID, with missing codes and names first.
 This command reads the saved inventory without scanning or fetching metadata.
 
+## List Aircraft
+
+Show saved aircraft metadata, or filter by aircraft ICAO type designator and airline ICAO code:
+
+```bash
+bun run start aircraft list
+bun run start aircraft list --code A320
+bun run start aircraft list --airline BAW
+bun run start aircraft list --code A320 --airline BAW
+```
+
+Both filters match exact codes, ignore case, and trim surrounding whitespace.
+Together they require both matches. Airline matches require a livery linked to the
+aircraft and airline in the saved inventory. Unresolved livery links do not match.
+Each aircraft record appears once, even with multiple matching liveries.
+The table includes every aircraft database column and the aircraft package directory.
+Missing values are blank. Rows are sorted by ICAO type designator, name, and ID.
+Use `--hyperlink auto`, `always`, or `never` as with `airports list`.
+Run `scan` first to populate the saved inventory.
+
 ## Enrich Airports
 
 Create an API client at [OpenAIP](https://www.openaip.net/) and copy its API key, then run:
