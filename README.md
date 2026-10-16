@@ -124,6 +124,25 @@ when you save or replace the configuration. `ai get` masks the API key.
 Configuration commands make no AI requests. SDK consumers can use `ai.model()` from
 `#ai` to resolve the saved model with its configured key.
 
+## Find Potential Flights
+
+Research flights from a departure ICAO or IATA code using your saved inventory:
+
+```bash
+bun run start find-flight EGLL
+```
+
+Run `scan` first and configure an AI model that supports its provider's web search
+and structured output. Destinations require saved airport codes. Aircraft and
+airlines require a livery linked to both. The departure airport need not be installed.
+Use `airports enrich` to fill missing airport codes.
+
+Each search makes two paid AI requests, one for web research and one to select
+flights from your inventory. Search sends airport, aircraft, airline, and livery
+identities to the configured provider. Results include source links and are
+potential flights, not confirmed schedules. The command uses the saved inventory
+without rescanning addons or changing their metadata. Saved records can include removed addons.
+
 ## Optional Telemetry
 
 Telemetry is disabled until you configure Sentry:
