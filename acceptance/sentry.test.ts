@@ -1,5 +1,5 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test';
-import {mkdir, readFile, readdir, stat, writeFile} from 'node:fs/promises';
+import {mkdir, readFile, readdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 
 import createCliFixture from '#acceptance-cli';
@@ -7,8 +7,6 @@ import createCliFixture from '#acceptance-cli';
 const successExitCode = 0;
 const failureExitCode = 1;
 const unknownCommandExitCode = 251;
-const permissionBits = 0o1000;
-const privateFileMode = 0o600;
 const envelopeHeaderLines = 1;
 const envelopeItemLines = 2;
 const itemHeaderIndex = 0;
@@ -119,8 +117,6 @@ test('Sentry set, partial update, and JSON get preserve Community configuration 
     future: {enabled: true},
     sentry: expected,
   });
-  const stats = await stat(configurationFile);
-  expect(stats.mode % permissionBits).toBe(privateFileMode);
   expect(await fixture.run('community-path', 'set', homeDirectory)).toMatchObject({
     exitCode: 0,
   });

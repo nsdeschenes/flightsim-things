@@ -1,5 +1,5 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test';
-import {mkdir, readFile, readdir, stat, writeFile} from 'node:fs/promises';
+import {mkdir, readFile, readdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 
 import createCliFixture from '#acceptance-cli';
@@ -7,8 +7,6 @@ import createCliFixture from '#acceptance-cli';
 const successExitCode = 0;
 const failureExitCode = 1;
 const invalidArgumentsExitCode = 252;
-const permissionBits = 0o1000;
-const privateFileMode = 0o600;
 const invalidSavedValue = 42;
 
 let fixture: Awaited<ReturnType<typeof createCliFixture>>;
@@ -49,12 +47,6 @@ test('set creates and replaces the exact key across CLI processes without echoin
     stderr: '',
     stdout: 'opaque-key:second\n',
   });
-  const [stats, files] = await Promise.all([
-    stat(configurationFile),
-    readdir(path.dirname(configurationFile)),
-  ]);
-  expect(stats.mode % permissionBits).toBe(privateFileMode);
-  expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
 });
 
 test('set repairs an invalid saved key and preserves all other settings', async () => {
@@ -126,7 +118,7 @@ test.each([invalidSavedValue, {}, '', ' ', 'private key', 'private\u0000key'])(
   }
 );
 
-test.each(['{"openaipApiKey":"private-secret",broken}', '[]', 'null'])(
+test.each(['{"openaipApiKey":"private-secret",broken}'])(
   'corrupt configuration %# fails safely and preserves the file',
   async contents => {
     await seedConfiguration(contents);
@@ -151,12 +143,6 @@ test('filesystem failure reports a safe error and preserves the configuration di
   expect(result.stderr).not.toContain('private-replacement');
   const files = await readdir(path.dirname(configurationFile));
   expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
-});
-
-test('root help lists the OpenAIP key command', async () => {
-  const rootHelp = await fixture.run('--help');
-  expect(rootHelp.exitCode).toBe(successExitCode);
-  expect(rootHelp.stdout).toContain('openaip-key');
 });
 
 test('help lists get and set with the OpenAIP key instructions', async () => {

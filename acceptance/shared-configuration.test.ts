@@ -60,7 +60,7 @@ test('Sentry set repairs an invalid section and preserves unrelated settings', a
   });
 });
 
-test('concurrent Community and partial Sentry saves retain all values', async () => {
+test('concurrent configuration commands retain replacements and partial updates', async () => {
   await writeFile(
     configurationFile,
     JSON.stringify({
@@ -74,6 +74,17 @@ test('concurrent Community and partial Sentry saves retain all values', async ()
   );
   const results = await Promise.all([
     fixture.run('community-path', 'set', homeDirectory),
+    fixture.run(
+      'ai',
+      'set',
+      '--provider',
+      'openai',
+      '--model',
+      'opaque/model:v1',
+      '--api-key',
+      'private-saved-key'
+    ),
+    fixture.run('openaip-key', 'set', 'private-openaip-key'),
     fixture.run('sentry', 'update', '--logs', '0.2'),
     fixture.run('sentry', 'update', '--traces', '0.4'),
   ]);
@@ -81,10 +92,14 @@ test('concurrent Community and partial Sentry saves retain all values', async ()
     successExitCode,
     successExitCode,
     successExitCode,
+    successExitCode,
+    successExitCode,
   ]);
   expect(JSON.parse(await readFile(configurationFile, 'utf8'))).toEqual({
+    ai: {apiKey: 'private-saved-key', model: 'opaque/model:v1', provider: 'openai'},
     communityPath: homeDirectory,
     future: {enabled: true},
+    openaipApiKey: 'private-openaip-key',
     sentry: {
       dsn,
       metadata: 'retained',

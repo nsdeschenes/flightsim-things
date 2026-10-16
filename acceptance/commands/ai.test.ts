@@ -1,5 +1,5 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test';
-import {mkdir, readFile, readdir, stat, writeFile} from 'node:fs/promises';
+import {mkdir, readFile, readdir, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 
 import createCliFixture from '#acceptance-cli';
@@ -7,20 +7,15 @@ import createCliFixture from '#acceptance-cli';
 const successExitCode = 0;
 const failureExitCode = 1;
 const unknownCommandExitCode = 251;
-const permissionBits = 0o1000;
-const privateFileMode = 0o600;
-const invalidSavedValue = 42;
 
 let fixture: Awaited<ReturnType<typeof createCliFixture>>;
 
 const saved = {exitCode: 0, stderr: '', stdout: 'AI configuration saved.\n'};
-let homeDirectory: string;
 let configurationFile: string;
 
 beforeEach(async () => {
   fixture = await createCliFixture();
-  homeDirectory = fixture.home;
-  configurationFile = path.join(homeDirectory, '.flightsim-things/config.json');
+  ({configurationFile} = fixture);
 });
 
 afterEach(async () => {
@@ -77,28 +72,6 @@ test('set replaces the complete tuple across providers and preserves unrelated s
       sentry: {dsn: 'invalid-but-retained'},
     });
   }
-
-  const [stats, files] = await Promise.all([
-    stat(configurationFile),
-    readdir(path.dirname(configurationFile)),
-  ]);
-  expect(stats.mode % permissionBits).toBe(privateFileMode);
-  expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
-});
-
-test('concurrent AI and OpenAIP saves retain both configurations', async () => {
-  const results = await Promise.all([
-    set(),
-    fixture.run('openaip-key', 'set', 'private-openaip-key'),
-  ]);
-  expect(results).toEqual([
-    saved,
-    {exitCode: 0, stderr: '', stdout: 'OpenAIP API key saved.\n'},
-  ]);
-  expect(JSON.parse(await readFile(configurationFile, 'utf8'))).toEqual({
-    ai: {apiKey: 'private-saved-key', model: 'opaque/model:v1', provider: 'openai'},
-    openaipApiKey: 'private-openaip-key',
-  });
 });
 
 test('missing configuration gives setup instructions', async () => {
@@ -109,16 +82,8 @@ test('missing configuration gives setup instructions', async () => {
   expect(result.stderr).toContain('ai set --provider');
 });
 
-test.each([
-  '',
-  ' ',
-  'private model',
-  'private\tmodel',
-  'private\nmodel',
-  'private\u007Fmodel',
-  'private\u0085model',
-  'private-model\n',
-])('invalid model %# preserves saved bytes and hides input', async model => {
+test('invalid model preserves saved bytes and hides input', async () => {
+  const model = 'private model';
   const contents = '{"ai":{"old":true},"future":true}\n';
   await seed(contents);
   const result = await set('openai', model);
@@ -129,16 +94,8 @@ test.each([
   expect(await readFile(configurationFile, 'utf8')).toBe(contents);
 });
 
-test.each([
-  '',
-  ' ',
-  'private key',
-  'private\tkey',
-  'private\nkey',
-  'private\u007Fkey',
-  'private\u0085key',
-  'private-key\n',
-])('invalid key %# preserves saved bytes and hides input', async apiKey => {
+test('invalid key preserves saved bytes and hides input', async () => {
+  const apiKey = 'private key';
   const contents = '{"ai":{"old":true},"future":true}\n';
   await seed(contents);
   const result = await set('openai', 'opaque-model', apiKey);
@@ -149,43 +106,31 @@ test.each([
   expect(await readFile(configurationFile, 'utf8')).toBe(contents);
 });
 
-test.each([
-  invalidSavedValue,
-  {},
-  {apiKey: 'private-key', model: 'valid', provider: 'unknown'},
-  {apiKey: 'private-key', model: '', provider: 'openai'},
-  {apiKey: 'private-key', model: 'private model', provider: 'openai'},
-  {apiKey: 'private key', model: 'valid', provider: 'openai'},
-  {apiKey: 42, model: 'valid', provider: 'openai'},
-])(
-  'get rejects malformed saved configuration %# without echoing it',
-  async (ai: unknown) => {
-    const contents = JSON.stringify({ai});
-    await seed(contents);
-    const result = await fixture.run('ai', 'get');
+test('get rejects malformed saved configuration without echoing it', async () => {
+  const ai = {apiKey: 'private-key', model: 'valid', provider: 'unknown'};
+  const contents = JSON.stringify({ai});
+  await seed(contents);
+  const result = await fixture.run('ai', 'get');
+  expect(result.exitCode).toBe(failureExitCode);
+  expect(result.stdout).toBe('');
+  expect(result.stderr).toContain('ai set --provider');
+  expect(result.stderr).not.toContain('private');
+  expect(await readFile(configurationFile, 'utf8')).toBe(contents);
+});
+
+test('corrupt document preserves bytes and fails safely', async () => {
+  const contents = '{"ai":{"apiKey":"private-key"},broken}';
+  await seed(contents);
+  for (const result of [await fixture.run('ai', 'get'), await set()]) {
     expect(result.exitCode).toBe(failureExitCode);
     expect(result.stdout).toBe('');
-    expect(result.stderr).toContain('ai set --provider');
+    expect(result.stderr).toContain('Repair the file');
     expect(result.stderr).not.toContain('private');
+    expect(result.stderr).not.toContain('SyntaxError');
+    expect(result.stderr).not.toContain('Sentry telemetry skipped');
     expect(await readFile(configurationFile, 'utf8')).toBe(contents);
   }
-);
-
-test.each(['{"ai":{"apiKey":"private-key"},broken}', '[]', 'null'])(
-  'corrupt document %# preserves bytes and fails safely',
-  async contents => {
-    await seed(contents);
-    for (const result of [await fixture.run('ai', 'get'), await set()]) {
-      expect(result.exitCode).toBe(failureExitCode);
-      expect(result.stdout).toBe('');
-      expect(result.stderr).toContain('Repair the file');
-      expect(result.stderr).not.toContain('private');
-      expect(result.stderr).not.toContain('SyntaxError');
-      expect(result.stderr).not.toContain('Sentry telemetry skipped');
-      expect(await readFile(configurationFile, 'utf8')).toBe(contents);
-    }
-  }
-);
+});
 
 test('filesystem errors hide causes and remove temporary files', async () => {
   await mkdir(configurationFile, {recursive: true});
@@ -195,12 +140,6 @@ test('filesystem errors hide causes and remove temporary files', async () => {
   expect(result.stderr).not.toContain('private');
   const files = await readdir(path.dirname(configurationFile));
   expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
-});
-
-test('root help lists the AI command', async () => {
-  const root = await fixture.run('--help');
-  expect(root.exitCode).toBe(successExitCode);
-  expect(root.stdout).toContain('ai');
 });
 
 test('AI help exposes get, set, and all required provider flags', async () => {

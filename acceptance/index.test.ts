@@ -18,9 +18,17 @@ afterEach(async () => {
 test('root help lists the available commands', async () => {
   const rootHelp = await fixture.run('--help');
   expect(rootHelp.exitCode).toBe(successExitCode);
-  expect(rootHelp.stdout).toContain('community-path');
-  expect(rootHelp.stdout).toContain('hello');
-  expect(rootHelp.stdout).toContain('scan');
+  for (const command of [
+    'ai',
+    'airports',
+    'community-path',
+    'hello',
+    'openaip-key',
+    'scan',
+    'sentry',
+  ]) {
+    expect(rootHelp.stdout).toContain(command);
+  }
 });
 
 test('hello still prints the greeting', async () => {
