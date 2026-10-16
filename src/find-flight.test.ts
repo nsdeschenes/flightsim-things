@@ -24,10 +24,14 @@ type TestQuery = Readonly<{
   airport: string;
   endpoint: 'departure' | 'destination';
   destination?: string;
+  aircraft?: string;
+  airline?: string;
 }>;
 type RouteConstraint = Readonly<{
   destination?: string;
   airports?: readonly TestAirport[];
+  aircraft?: string;
+  airline?: string;
 }>;
 const directions: TestDirection[] = [
   {
@@ -114,6 +118,14 @@ async function seed(): Promise<void> {
   await configure();
 }
 
+async function seedFiltered(): Promise<void> {
+  await seed();
+  using db = new Database(path.join(fixture.home, '.flightsim-things/addons.sqlite'));
+  db.run(
+    "INSERT INTO liveries (package_id, source_key, name, aircraft_id, airline_id) VALUES (1, 'excluded', 'Excluded Boeing AFR', 2, 2)"
+  );
+}
+
 function snapshot(): unknown {
   return ['airports', 'aircraft', 'airlines', 'liveries', 'packages'].map(table =>
     fixture.query(`SELECT * FROM ${table}`)
@@ -146,24 +158,27 @@ const promptDirections = {
   },
 };
 
+const defaultLiveryCodes = {aircraft: 'A320', airline: 'BAW'};
+
 function expectedInventory(
   fixed: TestQuery,
-  airports: readonly TestAirport[] = promptDirections[fixed.endpoint].airports
+  airports: readonly TestAirport[] = promptDirections[fixed.endpoint].airports,
+  codes: Readonly<{aircraft: string; airline: string}> = defaultLiveryCodes
 ): Readonly<Record<string, unknown>> {
   return {
-    fixed,
+    fixed: {...fixed, mode: 'endpoint'},
     inventory: {
       airports,
       liveries: [
         {
           aircraft: {
-            icaoTypeDesignator: 'A320',
+            icaoTypeDesignator: codes.aircraft,
             id: 1,
             manufacturer: noValue,
             model: 'A320',
             name: noValue,
           },
-          airline: {iataCode: noValue, icaoCode: 'BAW', id: 1, name: noValue},
+          airline: {iataCode: noValue, icaoCode: codes.airline, id: 1, name: noValue},
           id: 1,
           name: 'BA livery',
         },
@@ -212,16 +227,15 @@ function verifyPrompts(
   verifyPromptData(prompts, expectedInventory(fixed, airports));
 }
 
-async function verifyRequests(
-  endpoint: 'departure' | 'destination' = 'departure',
-  airport = 'LHR',
-  constraints: RouteConstraint = {}
-): Promise<void> {
+async function capturedRequests(): Promise<readonly CapturedRequest[]> {
   const report: unknown = JSON.parse(
     await readFile(path.join(fixture.home, 'ai-requests.json'), 'utf8')
   );
-  const requests = z.array(captured).parse(report);
-  const prompts = requests.map((request: CapturedRequest) =>
+  return z.array(captured).parse(report);
+}
+
+function requestPrompts(requests: readonly CapturedRequest[]): readonly string[] {
+  return requests.map(request =>
     request.body.input
       .flatMap(
         (value: Readonly<{content: readonly Readonly<{text: string}>[]}>) => value.content
@@ -229,6 +243,15 @@ async function verifyRequests(
       .map(value => value.text)
       .join('')
   );
+}
+
+async function verifyRequests(
+  endpoint: 'departure' | 'destination' = 'departure',
+  airport = 'LHR',
+  constraints: RouteConstraint = {}
+): Promise<void> {
+  const requests = await capturedRequests();
+  const prompts = requestPrompts(requests);
   const {airports, ...route} = constraints;
   verifyPrompts(prompts, {airport, endpoint, ...route}, airports);
   expect(requests.map((request: CapturedRequest) => request.body.tools ?? [])).toEqual([
@@ -514,11 +537,20 @@ test(
   async () => {
     const help = await fixture.run('find-flight', '--help');
     expect(help).toMatchObject({exitCode: 0, stderr: ''});
-    expect(help.stdout).toContain('--dep');
-    expect(help.stdout).toContain('Departure ICAO or IATA code');
-    expect(help.stdout).toContain('--arr');
-    expect(help.stdout).toContain('Destination ICAO or IATA code');
-    expect(help.stdout).toContain('Specify --dep, --arr, or both.');
+    for (const text of [
+      '--dep',
+      'Departure ICAO or IATA code',
+      '--arr',
+      'Destination ICAO or IATA code',
+      'Specify --dep, --arr, or both.',
+      '--aircraft',
+      'Aircraft ICAO type designator',
+      '--airline',
+      'Airline ICAO code',
+    ]) {
+      expect(help.stdout).toContain(text);
+    }
+
     const rootHelp = await fixture.run('--help');
     expect(rootHelp).toMatchObject({exitCode: 0, stderr: ''});
     expect(rootHelp.stdout).not.toContain('find-flight-to');
@@ -531,7 +563,8 @@ test(
   async () => {
     expect(await run('network')).toEqual({
       exitCode: 1,
-      stderr: 'Command failed, Specify --dep, --arr, or both.\n',
+      stderr:
+        'Command failed, Specify --dep, --arr, or both, or supply both --aircraft and --airline.\n',
       stdout: '',
     });
     expect(
@@ -666,6 +699,357 @@ test.each(directions)(
     expect(result).toMatchObject({exitCode: 0, stderr: ''});
     expect(result.stdout.match(/BA123/gu)).toHaveLength(1);
     expect(result.stdout.match(/Route source:/gu)).toHaveLength(1);
+  },
+  cliTimeout
+);
+
+const discoveryFlags = ['--aircraft', 'A320', '--airline', 'BAW'];
+const discoveryAirports = [
+  {codes: ['LFPG', 'CDG'], id: 1, name: 'Paris'},
+  {codes: ['EGLL', 'LHR'], id: 3, name: 'London'},
+];
+const discoveryOutput = `Potential flights between saved airports for A320 and BAW. These are suggestions, not confirmed schedules.
++-----------------+----------------+---------+----------+-----------+--------+
+| Departure       | Destination    | Airline | Aircraft | Livery    | Flight |
++-----------------+----------------+---------+----------+-----------+--------+
+| EGLL/LHR London | LFPG/CDG Paris | BAW     | A320     | BA livery | BA123  |
++-----------------+----------------+---------+----------+-----------+--------+
+EGLL/LHR to LFPG/CDG - Route and A320 operation supported.
+  Route source: https://example.com/routes
+`;
+
+async function verifyDiscoveryRequests(): Promise<void> {
+  const requests = await capturedRequests();
+  const prompts = requestPrompts(requests);
+  verifyPromptData(prompts, {
+    ...expectedInventory({airport: 'EGLL', endpoint: 'departure'}, discoveryAirports),
+    fixed: {aircraft: 'A320', airline: 'BAW', mode: 'inventory'},
+  });
+  expect(requests.map(request => request.body.tools ?? [])).toEqual([
+    [{external_web_access: true, type: 'web_search'}],
+    [],
+  ]);
+}
+
+test(
+  'aircraft and airline discovery displays both saved endpoints and filters both paid inventories',
+  async () => {
+    await seedFiltered();
+    const before = snapshot();
+    expect(await run('success', '--aircraft', ' a320 ', '--airline', ' baw ')).toEqual({
+      exitCode: 0,
+      stderr: '',
+      stdout: discoveryOutput,
+    });
+    await verifyDiscoveryRequests();
+    expect(snapshot()).toEqual(before);
+  },
+  cliTimeout
+);
+
+type FilteredEndpointCase = Readonly<{
+  args: readonly string[];
+  airport: string;
+  endpoint: 'departure' | 'destination';
+  filters: RouteConstraint;
+  summary: string;
+}>;
+test.each([
+  {
+    airport: 'EGLL',
+    args: ['--dep', 'EGLL', '--aircraft', ' a320 '],
+    endpoint: 'departure',
+    filters: {aircraft: 'A320'},
+    summary: 'Potential flights from EGLL.',
+  },
+  {
+    airport: 'EGLL',
+    args: ['--dep', 'EGLL', '--airline', ' baw '],
+    endpoint: 'departure',
+    filters: {airline: 'BAW'},
+    summary: 'Potential flights from EGLL.',
+  },
+  {
+    airport: 'LFPG',
+    args: ['--arr', 'LFPG', '--airline', ' baw '],
+    endpoint: 'destination',
+    filters: {airline: 'BAW'},
+    summary: 'Potential flights to LFPG.',
+  },
+  {
+    airport: 'KJFK',
+    args: ['--dep', 'KJFK', '--arr', 'LFPG', ...discoveryFlags],
+    endpoint: 'departure',
+    filters: {aircraft: 'A320', airline: 'BAW', destination: 'LFPG'},
+    summary: 'Potential flights from KJFK to LFPG.',
+  },
+])(
+  'endpoint searches accept optional ICAO livery filters $args',
+  async ({args, airport, endpoint, filters, summary}: FilteredEndpointCase) => {
+    await seedFiltered();
+    const result = await run('success', ...args);
+    expect(result).toMatchObject({exitCode: 0, stderr: ''});
+    expect(result.stdout).toContain('| BAW     | A320     | BA livery | BA123  |');
+    expect(result.stdout).toContain(summary);
+    await verifyRequests(endpoint, airport, filters);
+  },
+  cliTimeout
+);
+
+test(
+  'ICAO filters normalize stored identity codes as well as command inputs',
+  async () => {
+    await seedFiltered();
+    using db = new Database(path.join(fixture.home, '.flightsim-things/addons.sqlite'));
+    db.run("UPDATE aircraft SET icao_type_designator = ' a320 ' WHERE id = 1");
+    db.run("UPDATE airlines SET icao_code = ' baw ' WHERE id = 1");
+    const result = await run('success', ...discoveryFlags);
+    expect(result).toMatchObject({exitCode: 0, stderr: ''});
+    expect(result.stdout).toContain(
+      'EGLL/LHR to LFPG/CDG - Route and A320 operation supported.'
+    );
+    const prompts = requestPrompts(await capturedRequests());
+    verifyPromptData(prompts, {
+      ...expectedInventory({airport: 'EGLL', endpoint: 'departure'}, discoveryAirports, {
+        aircraft: ' a320 ',
+        airline: ' baw ',
+      }),
+      fixed: {aircraft: 'A320', airline: 'BAW', mode: 'inventory'},
+    });
+  },
+  cliTimeout
+);
+
+test.each([
+  {args: ['--aircraft', 'A320'], label: 'airline'},
+  {args: ['--airline', 'BAW'], label: 'aircraft'},
+])(
+  'discovery requires its missing $label filter before database access',
+  async ({args}) => {
+    expect(await run('network', ...args)).toEqual({
+      exitCode: 1,
+      stderr:
+        'Command failed, Specify --dep, --arr, or both, or supply both --aircraft and --airline.\n',
+      stdout: '',
+    });
+    expect(
+      await Bun.file(path.join(fixture.home, '.flightsim-things/addons.sqlite')).exists()
+    ).toBe(false);
+    expect(await Bun.file(path.join(fixture.home, 'ai-requests.json')).exists()).toBe(
+      false
+    );
+  },
+  cliTimeout
+);
+
+test.each([
+  {args: ['--aircraft', ' ', '--airline', 'BAW'], flag: 'aircraft'},
+  {args: ['--aircraft', 'A320', '--airline', ' '], flag: 'airline'},
+  {args: ['--dep', 'EGLL', '--aircraft', ' '], flag: 'aircraft'},
+  {args: ['--arr', 'LFPG', '--airline', ' '], flag: 'airline'},
+])(
+  'an explicitly blank $flag filter fails before database access',
+  async ({args, flag}) => {
+    expect(await run('network', ...args)).toEqual({
+      exitCode: 1,
+      stderr: `Command failed, Enter a non-empty ${flag} ICAO code for --${flag}.\n`,
+      stdout: '',
+    });
+    expect(
+      await Bun.file(path.join(fixture.home, '.flightsim-things/addons.sqlite')).exists()
+    ).toBe(false);
+    expect(await Bun.file(path.join(fixture.home, 'ai-requests.json')).exists()).toBe(
+      false
+    );
+  },
+  cliTimeout
+);
+
+test.each([
+  {args: ['--aircraft', 'A320', '--airline', 'AFR']},
+  {args: ['--aircraft', 'B738', '--airline', 'BAW']},
+  {args: ['--aircraft', 'Airbus A320', '--airline', 'BAW']},
+  {args: ['--aircraft', 'A320', '--airline', 'BA']},
+  {args: ['--dep', 'EGLL', '--aircraft', 'B739']},
+  {args: ['--arr', 'LFPG', '--airline', 'ZZZ']},
+])(
+  'unmatched ICAO filters fail before paid requests $args',
+  async ({args}: Readonly<{args: readonly string[]}>) => {
+    await seedFiltered();
+    const result = await run('network', ...args);
+    expect(result).toEqual({
+      exitCode: 1,
+      stderr:
+        'Command failed, No saved liveries match the requested aircraft and airline ICAO filters. Install matching aircraft and airline liveries, then run scan.\n',
+      stdout: '',
+    });
+    expect(await Bun.file(path.join(fixture.home, 'ai-requests.json')).exists()).toBe(
+      false
+    );
+  },
+  cliTimeout
+);
+
+test.each(['empty', 'unidentified', 'aliases'])(
+  'discovery requires two distinct identified airports with %s inventory',
+  async scenario => {
+    await seedFiltered();
+    using db = new Database(path.join(fixture.home, '.flightsim-things/addons.sqlite'));
+    if (scenario === 'empty') {
+      db.run('DELETE FROM airports');
+    } else if (scenario === 'unidentified') {
+      db.run('UPDATE airports SET icao_code = NULL, iata_code = NULL');
+    } else {
+      db.run('DELETE FROM airports WHERE id = 3');
+    }
+
+    expect(await run('network', ...discoveryFlags)).toEqual({
+      exitCode: 1,
+      stderr:
+        'Command failed, At least two distinct identified airports must be saved. Run scan and airports enrich to populate airport codes.\n',
+      stdout: '',
+    });
+    expect(await Bun.file(path.join(fixture.home, 'ai-requests.json')).exists()).toBe(
+      false
+    );
+  },
+  cliTimeout
+);
+
+test.each([
+  'malformed',
+  'unknown-departure',
+  'unknown-destination',
+  'missing-departure',
+  'missing-destination',
+  'unknown-livery',
+  'excluded-livery',
+  'fabricated-source',
+  'partial-alias',
+  'same-endpoints',
+  'mixed-invalid',
+])(
+  'discovery rejects the complete %s batch without emitting routes',
+  async scenario => {
+    await seedFiltered();
+    const result = await run(scenario, ...discoveryFlags);
+    expect(result).toMatchObject({exitCode: 1, stdout: ''});
+    expect(result.stderr).toContain('Could not validate flight suggestions');
+  },
+  cliTimeout
+);
+
+test(
+  'endpoint filtering rejects an excluded but saved linked livery',
+  async () => {
+    await seedFiltered();
+    const result = await run('excluded-livery', '--dep', 'EGLL', ...discoveryFlags);
+    expect(result).toMatchObject({exitCode: 1, stdout: ''});
+    expect(result.stderr).toContain('Could not validate flight suggestions');
+    await verifyRequests('departure', 'EGLL', {aircraft: 'A320', airline: 'BAW'});
+  },
+  cliTimeout
+);
+
+test(
+  'discovery keeps reverse routes and deduplicates identical ordered routes',
+  async () => {
+    await seedFiltered();
+    expect(await run('reverse-duplicate', ...discoveryFlags)).toEqual({
+      exitCode: 0,
+      stderr: '',
+      stdout: `Potential flights between saved airports for A320 and BAW. These are suggestions, not confirmed schedules.
++-----------------+-----------------+---------+----------+-----------+--------+
+| Departure       | Destination     | Airline | Aircraft | Livery    | Flight |
++-----------------+-----------------+---------+----------+-----------+--------+
+| EGLL/LHR London | LFPG/CDG Paris  | BAW     | A320     | BA livery | BA123  |
+| LFPG/CDG Paris  | EGLL/LHR London | BAW     | A320     | BA livery | BA123  |
++-----------------+-----------------+---------+----------+-----------+--------+
+EGLL/LHR to LFPG/CDG - Route and A320 operation supported.
+  Route source: https://example.com/routes
+LFPG/CDG to EGLL/LHR - Route and A320 operation supported.
+  Route source: https://example.com/routes
+`,
+    });
+    await verifyDiscoveryRequests();
+  },
+  cliTimeout
+);
+
+test(
+  'discovery reports no supported flights with its normalized selectors',
+  async () => {
+    await seedFiltered();
+    expect(await run('no-results', ...discoveryFlags)).toEqual({
+      exitCode: 0,
+      stderr: '',
+      stdout:
+        'No supported potential flights found between saved airports for A320 and BAW with your saved inventory.\n',
+    });
+    await verifyDiscoveryRequests();
+  },
+  cliTimeout
+);
+
+test(
+  'discovery strips terminal controls from selector text in the summary',
+  async () => {
+    await seedFiltered();
+    using db = new Database(path.join(fixture.home, '.flightsim-things/addons.sqlite'));
+    const selector = '\u001B[31mA320\u001B[0m';
+    db.run('UPDATE aircraft SET icao_type_designator = ? WHERE id = 1', [selector]);
+    expect(await run('success', '--aircraft', selector, '--airline', 'BAW')).toEqual({
+      exitCode: 0,
+      stderr: '',
+      stdout: discoveryOutput,
+    });
+  },
+  cliTimeout
+);
+
+test.each([
+  {
+    order: 'middle',
+    rows: [
+      {iata: 'CDG', icao: noValue},
+      {iata: 'CDG', icao: 'LFPG'},
+      {iata: noValue, icao: 'LFPG'},
+    ],
+  },
+  {
+    order: 'last',
+    rows: [
+      {iata: 'CDG', icao: noValue},
+      {iata: noValue, icao: 'LFPG'},
+      {iata: 'CDG', icao: 'LFPG'},
+    ],
+  },
+])(
+  'discovery merges airport identities when the alias bridge is $order',
+  async ({
+    rows,
+  }: Readonly<{
+    rows: readonly Readonly<{iata: string | null; icao: string | null}>[];
+  }>) => {
+    await seedFiltered();
+    using db = new Database(path.join(fixture.home, '.flightsim-things/addons.sqlite'));
+    db.run('DELETE FROM airports');
+    for (const [index, row] of rows.entries()) {
+      db.run(
+        'INSERT INTO airports (package_id, source_key, icao_code, iata_code, name) VALUES (1, ?, ?, ?, ?)',
+        [`alias-${index}`, row.icao, row.iata, 'Paris']
+      );
+    }
+
+    expect(await run('network', ...discoveryFlags)).toEqual({
+      exitCode: 1,
+      stderr:
+        'Command failed, At least two distinct identified airports must be saved. Run scan and airports enrich to populate airport codes.\n',
+      stdout: '',
+    });
+    expect(await Bun.file(path.join(fixture.home, 'ai-requests.json')).exists()).toBe(
+      false
+    );
   },
   cliTimeout
 );

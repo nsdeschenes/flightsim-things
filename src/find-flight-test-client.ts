@@ -23,8 +23,13 @@ const textPart = z.object({text: z.string()});
 const message = z.object({content: z.array(textPart)});
 const requestSchema = z.object({input: z.array(message)});
 const source = z.object({id: z.string()});
+const inventoryQuery = z.object({mode: z.literal('inventory')});
+const endpointQuery = z.object({
+  endpoint: z.enum(['departure', 'destination']),
+  mode: z.literal('endpoint'),
+});
 const extractionSchema = z.object({
-  fixed: z.object({endpoint: z.enum(['departure', 'destination'])}),
+  fixed: z.discriminatedUnion('mode', [inventoryQuery, endpointQuery]),
   sources: z.array(source),
 });
 type TestRequest = Readonly<{
@@ -37,6 +42,17 @@ const unknownId = 999;
 const londonId = 3;
 const duplicateParisId = 2;
 const otherSavedAirportId = 5;
+const excludedLiveryId = 4;
+type TestFlight = Readonly<{
+  flightNumber: string;
+  liveryId: number;
+  reason: string;
+  sourceIds: readonly string[];
+}> &
+  (
+    | Readonly<{airportId: number}>
+    | Readonly<{departureAirportId: number; destinationAirportId: number}>
+  );
 const routeAirports = {
   departure: {counterpart: one, fixed: londonId},
   destination: {counterpart: londonId, fixed: one},
@@ -88,21 +104,85 @@ function proposedAirport(endpoint: 'departure' | 'destination'): number {
   return selectedId('unknown-id', routeAirports[endpoint].counterpart);
 }
 
-function suggestedFlight(body: unknown): Readonly<{
-  airportId: number;
-  flightNumber: string;
-  liveryId: number;
-  reason: string;
-  sourceIds: readonly string[];
+function selectedLivery(): number {
+  if (scenario === 'excluded-livery') {
+    return excludedLiveryId;
+  }
+
+  return selectedId('unknown-livery', one);
+}
+
+function proposedInventoryAirports(): Readonly<{
+  departureAirportId: number;
+  destinationAirportId: number;
 }> {
+  let departureAirportId = selectedId('unknown-departure', londonId);
+  if (scenario === 'partial-alias') {
+    departureAirportId = duplicateParisId;
+  }
+
+  let destinationAirportId = selectedId('unknown-destination', one);
+  if (scenario === 'same-endpoints') {
+    destinationAirportId = departureAirportId;
+  }
+
+  return {departureAirportId, destinationAirportId};
+}
+
+function suggestedFlight(body: unknown): TestFlight {
   const data = researchData(body);
-  return {
-    airportId: proposedAirport(data.fixed.endpoint),
+  const evidence = {
     flightNumber: 'BA123',
-    liveryId: selectedId('unknown-livery', one),
+    liveryId: selectedLivery(),
     reason: 'Route and A320 operation supported.\u001B[31m\n',
     sourceIds: selectedSources(data.sources),
   };
+  if (data.fixed.mode === 'inventory') {
+    return {...evidence, ...proposedInventoryAirports()};
+  }
+
+  return {...evidence, airportId: proposedAirport(data.fixed.endpoint)};
+}
+
+function missingEndpoint(flight: TestFlight): Readonly<Record<string, unknown>> {
+  const incomplete: Record<string, unknown> = {...flight};
+  if (scenario === 'missing-departure') {
+    delete incomplete.departureAirportId;
+  } else {
+    delete incomplete.destinationAirportId;
+  }
+
+  return incomplete;
+}
+
+function scenarioFlights(
+  flight: TestFlight
+): readonly Readonly<Record<string, unknown>>[] {
+  if (scenario === 'missing-departure' || scenario === 'missing-destination') {
+    return [missingEndpoint(flight)];
+  }
+
+  if (scenario === 'reverse-duplicate' && 'departureAirportId' in flight) {
+    return [
+      flight,
+      flight,
+      {
+        ...flight,
+        departureAirportId: flight.destinationAirportId,
+        destinationAirportId: flight.departureAirportId,
+      },
+    ];
+  }
+
+  if (scenario === 'mixed-invalid') {
+    return [flight, {...flight, sourceIds: ['invented']}];
+  }
+
+  if (scenario === 'duplicate') {
+    return [flight, flight];
+  }
+
+  return [flight];
 }
 
 function extraction(body: unknown): string {
@@ -114,16 +194,7 @@ function extraction(body: unknown): string {
     return JSON.stringify({flights: []});
   }
 
-  const flight = suggestedFlight(body);
-  if (scenario === 'mixed-invalid') {
-    return JSON.stringify({flights: [flight, {...flight, sourceIds: ['invented']}]});
-  }
-
-  if (scenario === 'duplicate') {
-    return JSON.stringify({flights: [flight, flight]});
-  }
-
-  return JSON.stringify({flights: [flight]});
+  return JSON.stringify({flights: scenarioFlights(suggestedFlight(body))});
 }
 
 function openaiResponse(
