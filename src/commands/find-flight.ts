@@ -29,21 +29,37 @@ function parseQuery({
   dep,
   arr,
 }: FindOptions): Effect.Effect<FlightQuery, FindFlightOptionsError> {
-  if (Option.isSome(dep) && Option.isNone(arr)) {
+  if (Option.isSome(dep) && Option.isSome(arr)) {
+    return Effect.succeed({
+      airport: dep.value,
+      destination: arr.value,
+      endpoint: 'departure',
+    });
+  }
+
+  if (Option.isSome(dep)) {
     return Effect.succeed({airport: dep.value, endpoint: 'departure'});
   }
 
-  if (Option.isSome(arr) && Option.isNone(dep)) {
+  if (Option.isSome(arr)) {
     return Effect.succeed({airport: arr.value, endpoint: 'destination'});
   }
 
   return Effect.fail(
-    new FindFlightOptionsError({message: 'Specify exactly one of --dep or --arr.'})
+    new FindFlightOptionsError({message: 'Specify --dep, --arr, or both.'})
   );
 }
 
 function plain(value: string): string {
   return Bun.stripANSI(value).replaceAll(controlCharacters, ' ');
+}
+
+function describeRoute(fixed: FlightQuery): string {
+  if (fixed.endpoint === 'departure' && typeof fixed.destination === 'string') {
+    return `from ${fixed.airport} to ${fixed.destination}`;
+  }
+
+  return `${directions[fixed.endpoint].preposition} ${fixed.airport}`;
 }
 
 function details(
@@ -66,14 +82,12 @@ const command = Command.make(
   {
     arr: Flag.String('arr').pipe(
       Flag.withDescription(
-        'Destination ICAO or IATA code. Specify exactly one of --dep or --arr.'
+        'Destination ICAO or IATA code. Specify --dep, --arr, or both.'
       ),
       Flag.optional
     ),
     dep: Flag.String('dep').pipe(
-      Flag.withDescription(
-        'Departure ICAO or IATA code. Specify exactly one of --dep or --arr.'
-      ),
+      Flag.withDescription('Departure ICAO or IATA code. Specify --dep, --arr, or both.'),
       Flag.optional
     ),
   },
@@ -82,14 +96,15 @@ const command = Command.make(
       const query = yield* parseQuery(options);
       const direction = directions[query.endpoint];
       const result = yield* findFlight(query);
+      const route = describeRoute(result.fixed);
       if (result.flights.length === noFlights) {
         return yield* Console.log(
-          `No supported potential flights found ${direction.preposition} ${result.fixed.airport} with your saved inventory.`
+          `No supported potential flights found ${route} with your saved inventory.`
         );
       }
 
       yield* Console.log(
-        `Potential flights ${direction.preposition} ${result.fixed.airport}. These are suggestions, not confirmed schedules.`
+        `Potential flights ${route}. These are suggestions, not confirmed schedules.`
       );
       yield* Console.log(
         formatTable(

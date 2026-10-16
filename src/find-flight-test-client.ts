@@ -35,6 +35,8 @@ const firstIndex = 0;
 const one = 1;
 const unknownId = 999;
 const londonId = 3;
+const duplicateParisId = 2;
+const otherSavedAirportId = 5;
 const routeAirports = {
   departure: {counterpart: one, fixed: londonId},
   destination: {counterpart: londonId, fixed: one},
@@ -71,6 +73,14 @@ function researchData(body: unknown): z.infer<typeof extractionSchema> {
 }
 
 function proposedAirport(endpoint: 'departure' | 'destination'): number {
+  if (scenario === 'other-saved-airport') {
+    return otherSavedAirportId;
+  }
+
+  if (scenario === 'partial-alias') {
+    return duplicateParisId;
+  }
+
   if (scenario === 'fixed-id') {
     return routeAirports[endpoint].fixed;
   }
