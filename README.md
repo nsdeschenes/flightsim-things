@@ -74,8 +74,8 @@ bun run start sentry set --dsn 'https://publickey@o0.ingest.sentry.io/123456' \
 Sample rates range from `0` (off) to `1` (all events).
 Use `sentry update` to change selected values or `sentry get` to view the configuration.
 Help, version, argument errors, and Sentry, OpenAIP key, and AI configuration commands do not send telemetry.
-With Sentry tracing enabled, AI SDK calls record model and token usage through the
-Vercel AI integration. Prompts and generated outputs are not captured.
+With Sentry tracing enabled, AI SDK calls record model and token usage, prompts,
+and generated outputs through the Vercel AI integration.
 
 ## Local Data
 

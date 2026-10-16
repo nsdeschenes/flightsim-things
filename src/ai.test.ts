@@ -214,6 +214,15 @@ function expectAiSpans(items: readonly EnvelopeItem[]): void {
       spans.find(span => span.name === 'generate_content gpt-4.1-mini')
     ).toMatchObject({
       attributes: {
+        'gen_ai.input.messages': {
+          type: 'string',
+          value: '[{"role":"user","content":"private-prompt-sentinel"}]',
+        },
+        'gen_ai.output.messages': {
+          type: 'string',
+          value:
+            '[{"role":"assistant","parts":[{"type":"text","content":"OpenAI response"}],"finish_reason":"stop"}]',
+        },
         'gen_ai.request.model': {type: 'string', value: 'gpt-4.1-mini'},
         'gen_ai.usage.input_tokens': {type: 'integer', value: 1},
         'gen_ai.usage.output_tokens': {type: 'integer', value: 1},
@@ -238,21 +247,12 @@ function expectTelemetry(envelopes: readonly string[], traces: string | number):
   }
 
   const payload = envelopes.join('\n');
-  for (const forbidden of [
-    'private-prompt-sentinel',
-    'OpenAI response',
-    'private-api-key-sentinel',
-    'gen_ai.input.messages',
-    'gen_ai.output.messages',
-  ]) {
-    expect(payload).not.toContain(forbidden);
-  }
-
+  expect(payload).not.toContain('private-api-key-sentinel');
   expectAiSpans(items);
 }
 
 test.each([1, 0, 'unconfigured'])(
-  'real AI SDK calls respect Sentry tracing %s without capturing content or credentials',
+  'real AI SDK calls respect Sentry tracing %s and capture content without credentials',
   async traces => {
     const envelopes: string[] = [];
     const server = Bun.serve({

@@ -48,7 +48,7 @@ function makeSdkLayer(configuration: Configuration): ReturnType<typeof effectLay
     beforeSendMetric: (metric: DeepReadonly<Metric>) =>
       sample(metric, configuration.sampleRates.metrics),
     dsn: configuration.dsn,
-    integrations: [vercelAIIntegration({recordInputs: false, recordOutputs: false})],
+    integrations: [vercelAIIntegration({recordInputs: true, recordOutputs: true})],
     release: `flightsim-things@${version}`,
     sampleRate: configuration.sampleRates.errors,
     traceLifecycle: 'static',
