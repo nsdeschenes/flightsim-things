@@ -9,6 +9,7 @@
     "#acceptance-cli": "./acceptance/support/cli.ts",
     "#acceptance-scanner": "./acceptance/support/scanner.ts",
     "#ai": "./src/ai.ts",
+    "#find-flight": "./src/find-flight.ts",
     "#airport-enrichment": "./src/airport-enrichment.ts",
     "#package": "./package.json",
     "#sentry-config": "./src/sentry-config.ts",

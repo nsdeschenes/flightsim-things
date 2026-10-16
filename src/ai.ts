@@ -1,7 +1,7 @@
 import {createAnthropic} from '@ai-sdk/anthropic';
 import {createGoogle} from '@ai-sdk/google';
 import {createOpenAI} from '@ai-sdk/openai';
-import type {LanguageModel} from 'ai';
+import type {LanguageModel, ToolSet} from 'ai';
 import {Effect, Option, Record, Redacted, Schema} from 'effect';
 import {TaggedError as taggedError} from 'effect/Data';
 import {
@@ -12,13 +12,32 @@ import {
 
 import configuration from '#configuration';
 
+type ProviderClient = Readonly<{model: LanguageModel; tools: ToolSet}>;
+type SearchSource = Readonly<{id: string; title: string; url: string}>;
+type SearchResult = Readonly<{text: string; sources: readonly SearchSource[]}>;
+
 const providers = {
-  anthropic: (modelId: string, apiKey: string): LanguageModel =>
-    createAnthropic({apiKey})(modelId),
-  google: (modelId: string, apiKey: string): LanguageModel =>
-    createGoogle({apiKey})(modelId),
-  openai: (modelId: string, apiKey: string): LanguageModel =>
-    createOpenAI({apiKey})(modelId),
+  anthropic: (modelId: string, apiKey: string): ProviderClient => {
+    const client = createAnthropic({apiKey});
+    return {
+      model: client(modelId),
+      tools: {web_search: client.tools.webSearch_20250305({maxUses: 5})},
+    };
+  },
+  google: (modelId: string, apiKey: string): ProviderClient => {
+    const client = createGoogle({apiKey});
+    return {
+      model: client(modelId),
+      tools: {google_search: client.tools.googleSearch({})},
+    };
+  },
+  openai: (modelId: string, apiKey: string): ProviderClient => {
+    const client = createOpenAI({apiKey});
+    return {
+      model: client(modelId),
+      tools: {web_search: client.tools.webSearch({externalWebAccess: true})},
+    };
+  },
 };
 const providerIds = Record.keys(providers);
 const invalidCharacters = /[\s\p{Cc}]/u;
@@ -99,11 +118,84 @@ function model(): Effect.Effect<LanguageModel, AiConfigurationError> {
           message:
             'Could not create the AI model. Run ai set with your provider settings.',
         }),
-      try: () => providers[value.provider](value.model, Redacted.value(value.apiKey)),
+      try: () =>
+        providers[value.provider](value.model, Redacted.value(value.apiKey)).model,
     });
   });
 }
 
-const ai = {get, model, providerIds, set};
+const AiSearchError = taggedError('AiSearchError')<{readonly message: string}>;
+
+function searchError(): InstanceType<typeof AiSearchError> {
+  return new AiSearchError({
+    message:
+      'Could not research flights with cited web sources. Check your connection and AI credentials, and run ai set with a model that supports provider web search.',
+  });
+}
+
+const webUrl = /^https?:\/\//iu;
+const noSources = 0;
+
+function searchSources(
+  sources: readonly Readonly<{
+    sourceType: string;
+    id: string;
+    url?: string;
+    title?: string;
+  }>[]
+): readonly SearchSource[] {
+  const urls = new Set<string>();
+  return sources.flatMap(source => {
+    if (
+      source.sourceType !== 'url' ||
+      typeof source.url !== 'string' ||
+      !webUrl.test(source.url) ||
+      !URL.canParse(source.url) ||
+      urls.has(source.url)
+    ) {
+      return [];
+    }
+
+    urls.add(source.url);
+    return [{id: source.id, title: source.title ?? source.url, url: source.url}];
+  });
+}
+
+function search(
+  prompt: string
+): Effect.Effect<
+  SearchResult,
+  AiConfigurationError | InstanceType<typeof AiSearchError>
+> {
+  return Effect.gen(function* searchWeb() {
+    const value = yield* get();
+    return yield* Effect.tryPromise({
+      catch: searchError,
+      try: async (signal: Readonly<AbortSignal>) => {
+        const {generateText} = await import('ai');
+        const client = providers[value.provider](
+          value.model,
+          Redacted.value(value.apiKey)
+        );
+        const result = await generateText({
+          ...client,
+          abortSignal: signal,
+          maxRetries: 0,
+          prompt,
+          timeout: 60_000,
+        });
+        const sources = searchSources(result.sources);
+
+        if (!result.text.trim() || sources.length === noSources) {
+          throw searchError();
+        }
+
+        return {sources, text: result.text};
+      },
+    });
+  });
+}
+
+const ai = {get, model, providerIds, search, set};
 
 export default ai;
