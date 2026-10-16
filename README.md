@@ -34,6 +34,18 @@ and scan again. Repeated scans update existing records but retain records for re
 Airport detection requires explicit airport XML or `AirportServices` entries.
 Compiled BGL scenery is not decoded, so airport coverage may be incomplete.
 
+## List Airports
+
+Show saved airport metadata in an ASCII table:
+
+```bash
+bun run start airports list
+```
+
+The table includes every airport database column and leaves missing values blank.
+Rows are sorted by ICAO code, name, and ID, with missing codes and names first.
+This command reads the saved inventory without scanning or fetching metadata.
+
 ## Enrich Airports
 
 Create an API client at [OpenAIP](https://www.openaip.net/) and copy its API key, then run:
