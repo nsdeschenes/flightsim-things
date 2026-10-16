@@ -26,19 +26,20 @@ afterEach(async () => {
   await rm(homeDirectory, {force: true, recursive: true});
 });
 
-async function run(
+function renameProgram(
   platform: string,
   failures: readonly string[],
   repeatFailure = false
-): Promise<Readonly<{exitCode: number; stdout: string; stderr: string}>> {
+): string {
   let failureCode = 'failures[attempts - 1]';
   if (repeatFailure) {
     failureCode = 'failures[0]';
   }
 
-  const program = `
+  return `
     import configuration from ${JSON.stringify(moduleFile)};
     import fs from 'node:fs/promises';
+    import {Database} from 'bun:sqlite';
     import {Effect} from 'effect';
     Object.defineProperty(process, 'platform', {value: ${JSON.stringify(platform)}});
     const failures = ${JSON.stringify(failures)};
@@ -46,7 +47,15 @@ async function run(
     let attempts = 0;
     fs.rename = async (source, destination) => {
       attempts += 1;
-      if (!(await fs.stat(destination + '.lock')).isDirectory()) throw new Error('Lock was released before rename');
+      const contender = new Database(destination + '.lock.sqlite');
+      try {
+        contender.run('BEGIN IMMEDIATE');
+        throw new Error('Lock was released before rename');
+      } catch (error) {
+        if (error.code !== 'SQLITE_BUSY') throw error;
+      } finally {
+        contender.close(true);
+      }
       const code = ${failureCode};
       if (code) throw Object.assign(new Error('Injected rename failure'), {code});
       return rename(source, destination);
@@ -59,6 +68,14 @@ async function run(
     }
     console.log(attempts);
   `;
+}
+
+async function run(
+  platform: string,
+  failures: readonly string[],
+  repeatFailure = false
+): Promise<Readonly<{exitCode: number; stdout: string; stderr: string}>> {
+  const program = renameProgram(platform, failures, repeatFailure);
   const child = Bun.spawn([process.execPath, '-e', program], {
     cwd: repository,
     env: {...process.env, HOME: homeDirectory, USERPROFILE: homeDirectory},
@@ -83,17 +100,19 @@ test('Windows replacement retries transient sharing errors while holding the loc
     future: {enabled: true},
     setting: 'replacement',
   });
-  expect(await readdir(path.dirname(configurationFile))).toEqual(['config.json']);
+  const files = await readdir(path.dirname(configurationFile));
+  expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
 });
 
-test('Windows retry exhaustion preserves bytes and removes the lock and temporary file', async () => {
+test('Windows retry exhaustion preserves bytes and releases the lock and removes the temporary file', async () => {
   expect(await run('win32', ['EPERM'], true)).toEqual({
     exitCode: 0,
     stderr: '',
     stdout: 'EPERM\n5\n',
   });
   expect(await readFile(configurationFile, 'utf8')).toBe(original);
-  expect(await readdir(path.dirname(configurationFile))).toEqual(['config.json']);
+  const files = await readdir(path.dirname(configurationFile));
+  expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
 });
 
 test.each([
@@ -109,6 +128,7 @@ test.each([
       stdout: `${code}\n1\n`,
     });
     expect(await readFile(configurationFile, 'utf8')).toBe(original);
-    expect(await readdir(path.dirname(configurationFile))).toEqual(['config.json']);
+    const files = await readdir(path.dirname(configurationFile));
+    expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
   }
 );

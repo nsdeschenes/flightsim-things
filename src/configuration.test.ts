@@ -112,7 +112,8 @@ test('concurrent processes serialize first creation and read-modify-write withou
     key4: 4,
     key5: 5,
   });
-  expect(await readdir(path.dirname(configurationFile))).toEqual(['config.json']);
+  const files = await readdir(path.dirname(configurationFile));
+  expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
 });
 
 test.each(['{broken', 'null', '[]', '42', '"text"'])(
@@ -130,7 +131,8 @@ test.each(['{broken', 'null', '[]', '42', '"text"'])(
     }
 
     expect(await readFile(configurationFile, 'utf8')).toBe(contents);
-    expect(await readdir(path.dirname(configurationFile))).toEqual(['config.json']);
+    const files = await readdir(path.dirname(configurationFile));
+    expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
   }
 );
 
@@ -149,7 +151,8 @@ test.each([
   expect(await readFile(configurationFile, 'utf8')).toBe(
     '{"setting":"saved","future":{"enabled":true}}\n'
   );
-  expect(await readdir(path.dirname(configurationFile))).toEqual(['config.json']);
+  const files = await readdir(path.dirname(configurationFile));
+  expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
 });
 
 test('updates preserve unknown keys, support pure callbacks, and release locks after validation failure', async () => {
@@ -171,7 +174,8 @@ test('updates preserve unknown keys, support pure callbacks, and release locks a
     future: {enabled: true},
     setting: 2,
   });
-  expect(await readdir(path.dirname(configurationFile))).toEqual(['config.json']);
+  const files = await readdir(path.dirname(configurationFile));
+  expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
 });
 
 test('nonenumerable serialization hooks cannot remove configuration values', async () => {
@@ -182,6 +186,22 @@ test('nonenumerable serialization hooks cannot remove configuration values', asy
   ).toMatchObject({exitCode: 0});
   expect(JSON.parse(await readFile(configurationFile, 'utf8'))).toEqual({
     setting: {hello: 1},
+  });
+});
+
+test('a process exiting during an update releases the lock and preserves saved settings', async () => {
+  await seed('{"setting":"saved"}\n');
+  expect(
+    await run(
+      `await Effect.runPromise(configuration.update('setting', () => process.exit(0)));`
+    )
+  ).toMatchObject({exitCode: 0});
+  expect(
+    await run(`await Effect.runPromise(configuration.set('next', 'reopened'));`)
+  ).toMatchObject({exitCode: 0});
+  expect(JSON.parse(await readFile(configurationFile, 'utf8'))).toEqual({
+    next: 'reopened',
+    setting: 'saved',
   });
 });
 

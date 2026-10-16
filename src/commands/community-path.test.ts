@@ -42,8 +42,7 @@ function run(...args: readonly string[]): {
 test('set, get, and update persist between CLI processes', async () => {
   const firstDirectory = path.join(homeDirectory, 'MSFS 2024 Community');
   const nextDirectory = path.join(homeDirectory, 'New Community');
-  await mkdir(firstDirectory);
-  await mkdir(nextDirectory);
+  await Promise.all([mkdir(firstDirectory), mkdir(nextDirectory)]);
 
   expect(run('community-path', 'set', firstDirectory)).toEqual({
     exitCode: 0,
@@ -68,9 +67,8 @@ test('set, get, and update persist between CLI processes', async () => {
   expect(
     await readFile(path.join(homeDirectory, '.flightsim-things/config.json'), 'utf8')
   ).toBe(`${JSON.stringify({communityPath: nextDirectory})}\n`);
-  expect(await readdir(path.join(homeDirectory, '.flightsim-things'))).toEqual([
-    'config.json',
-  ]);
+  const files = await readdir(path.join(homeDirectory, '.flightsim-things'));
+  expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
 });
 
 test('saved configurations remain private after replacement', async () => {
@@ -185,7 +183,8 @@ test('a failed replacement reports the filesystem error and removes its temporar
   const result = run('community-path', 'set', homeDirectory);
   expect(result.exitCode).toBe(1);
   expect(result.stderr).toContain('read');
-  expect(await readdir(configurationDirectory)).toEqual(['config.json']);
+  const files = await readdir(configurationDirectory);
+  expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
 });
 
 test('community-path help lists the directory commands', () => {

@@ -39,7 +39,6 @@
     "@sentry/effect": "11.7.0",
     "drizzle-orm": "1.0.0-rc.4",
     "effect": "^4.0.2",
-    "proper-lockfile": "^4.1.2",
     "zod": "^4.6.7"
   },
   "devDependencies": {
@@ -48,7 +47,6 @@
     "@j178/prek": "^0.5.5",
     "@stylistic/eslint-plugin": "^5.10.0",
     "@types/bun": "latest",
-    "@types/proper-lockfile": "^4.1.4",
     "drizzle-kit": "1.0.0-rc.4",
     "msw": "2.15.0",
     "oxfmt": "^0.72.0",
