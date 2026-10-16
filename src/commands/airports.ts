@@ -1,6 +1,3 @@
-import path from 'node:path';
-import {pathToFileURL} from 'node:url';
-
 import {eq, getColumns, or, sql} from 'drizzle-orm';
 import {Console, Effect, Option} from 'effect';
 import {Command, Flag} from 'effect/cli';
@@ -10,9 +7,10 @@ import airportEnrichment from '#airport-enrichment';
 import database from '#database';
 import schema from '#database-schema';
 
+import formatTable from './terminal-table.ts';
+
 type Airport = typeof schema.airports.$inferSelect &
   Pick<typeof schema.packages.$inferSelect, 'sourcePath'>;
-type Cell = Readonly<{text: string; url?: string}>;
 type DeepReadonly<Value> = Value extends object
   ? Value extends (...args: readonly never[]) => unknown
     ? Value
@@ -23,7 +21,7 @@ type ListOptions = Readonly<{
   hyperlink: 'auto' | 'always' | 'never';
 }>;
 
-const columns: readonly Readonly<{header: string; key: keyof Airport}>[] = [
+const columns = [
   {header: 'ID', key: 'id'},
   {header: 'ICAO code', key: 'icaoCode'},
   {header: 'IATA code', key: 'iataCode'},
@@ -33,69 +31,9 @@ const columns: readonly Readonly<{header: string; key: keyof Airport}>[] = [
   {header: 'Elevation meters', key: 'elevationMeters'},
   {header: 'Package ID', key: 'packageId'},
   {header: 'Source key', key: 'sourceKey'},
-  {header: 'Directory', key: 'sourcePath'},
-];
-const cellPadding = 2;
-const firstRowIndex = 0;
-const headerRowCount = 1;
+  {directory: (row: Readonly<Airport>): string => row.sourcePath, header: 'Directory'},
+] as const;
 const noAirports = 0;
-const controlCharacters = /\p{Cc}/gu;
-
-function formatCell({text, url}: Cell, width: number): string {
-  let content = text;
-  if (typeof url === 'string') {
-    content = `\u001B]8;;${url}\u001B\\${text}\u001B]8;;\u001B\\`;
-  }
-
-  return content + ' '.repeat(width - Bun.stringWidth(text));
-}
-
-function formatAirports(
-  airports: readonly Readonly<Airport>[],
-  hyperlinks: boolean
-): string {
-  const tableColumns: readonly Readonly<{cells: readonly Cell[]; width: number}>[] =
-    columns.map(column => {
-      const cells: readonly Cell[] = [
-        {text: column.header},
-        ...airports.map((airport): Cell => {
-          const text = Bun.stripANSI(String(airport[column.key] ?? '')).replaceAll(
-            controlCharacters,
-            ' '
-          );
-          if (hyperlinks && column.key === 'sourcePath') {
-            return {
-              text,
-              url: pathToFileURL(path.join(airport.sourcePath, path.sep)).href,
-            };
-          }
-
-          return {text};
-        }),
-      ];
-      let width = Bun.stringWidth(column.header);
-      for (const cell of cells) {
-        width = Math.max(width, Bun.stringWidth(cell.text));
-      }
-
-      return {cells, width};
-    });
-  const border = `+${tableColumns.map(column => '-'.repeat(column.width + cellPadding)).join('+')}+`;
-  const lines = Array.from(
-    {length: airports.length + headerRowCount},
-    (_value, rowIndex) => {
-      const line = `| ${tableColumns
-        .map(column => formatCell(column.cells[rowIndex] ?? {text: ''}, column.width))
-        .join(' | ')} |`;
-      if (rowIndex === firstRowIndex) {
-        return `${line}\n${border}`;
-      }
-
-      return line;
-    }
-  );
-  return [border, ...lines, border].join('\n');
-}
 
 const listCommand = Command.make(
   'list',
@@ -147,7 +85,7 @@ const listCommand = Command.make(
       const hyperlinks =
         hyperlink === 'always' ||
         (hyperlink === 'auto' && process.stdout.isTTY && process.env.TERM !== 'dumb');
-      return yield* Console.log(formatAirports(airports, hyperlinks));
+      return yield* Console.log(formatTable(airports, columns, hyperlinks));
     })
 ).pipe(Command.withDescription('List installed airports from the saved addon database'));
 

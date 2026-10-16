@@ -2,6 +2,7 @@ import {Console} from 'effect';
 import {Command} from 'effect/cli';
 
 import aiCommand from './ai.ts';
+import aircraftCommand from './aircraft.ts';
 import airportsCommand from './airports.ts';
 import communityPathCommand from './community-path.ts';
 import openaipKeyCommand from './openaip-key.ts';
@@ -15,6 +16,7 @@ const command = Command.make('flightsim-things').pipe(
   Command.withDescription('Flight simulator tools'),
   Command.withSubcommands([
     aiCommand,
+    aircraftCommand,
     airportsCommand,
     communityPathCommand,
     hello,
