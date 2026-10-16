@@ -48,6 +48,20 @@ using exact ICAO or IATA matches. Unmatched or ambiguous airports stay unchanged
 The command reports enriched, unmatched, ambiguous, and skipped counts.
 If any lookup fails, no airport updates are saved.
 
+## Configure AI
+
+Save an OpenAI, Anthropic, or Google provider, model ID, and API key:
+
+```bash
+bun run start ai set --provider openai --model 'your-model-id' --api-key 'your-api-key'
+bun run start ai get
+```
+
+Use `openai`, `anthropic`, or `google` for the provider. All three flags are required
+when you save or replace the configuration. `ai get` masks the API key.
+Configuration commands make no AI requests. SDK consumers can use `ai.model()` from
+`#ai` to resolve the saved model with its configured key.
+
 ## Optional Telemetry
 
 Telemetry is disabled until you configure Sentry:
@@ -59,14 +73,17 @@ bun run start sentry set --dsn 'https://publickey@o0.ingest.sentry.io/123456' \
 
 Sample rates range from `0` (off) to `1` (all events).
 Use `sentry update` to change selected values or `sentry get` to view the configuration.
-Help, version, argument errors, and Sentry and OpenAIP key configuration commands do not send telemetry.
+Help, version, argument errors, and Sentry, OpenAIP key, and AI configuration commands do not send telemetry.
 
 ## Local Data
 
 Files are stored in `~/.flightsim-things/`:
 
-- `config.json`: Community path, OpenAIP API key, and Sentry settings, saved with private file permissions.
+- `config.json`: Community path, OpenAIP API key, AI provider settings, and Sentry settings, saved with private file permissions.
 - `addons.sqlite`: scanned addon metadata and enriched airports.
+
+API keys are stored as plaintext in `config.json`. AI keys are redacted in runtime
+configuration values and in `ai get` output.
 
 ## Development
 
