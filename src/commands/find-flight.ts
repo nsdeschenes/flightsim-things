@@ -18,7 +18,7 @@ function details(
   return Effect.gen(function* showDetails() {
     for (const flight of flights) {
       yield* Console.log(
-        plain(`${flight.destination.codes.join('/')} - ${flight.reason}`)
+        plain(`${flight.counterpart.codes.join('/')} - ${flight.reason}`)
       );
       for (const source of flight.sources) {
         yield* Console.log(plain(`  ${source.title}: ${source.url}`));
@@ -36,15 +36,15 @@ const command = Command.make(
   },
   ({airport}: Readonly<{airport: string}>) =>
     Effect.gen(function* showPotentialFlights() {
-      const result = yield* findFlight(airport);
+      const result = yield* findFlight({airport, endpoint: 'departure'});
       if (result.flights.length === noFlights) {
         return yield* Console.log(
-          `No supported potential flights found from ${result.departure} with your saved inventory.`
+          `No supported potential flights found from ${result.fixed.airport} with your saved inventory.`
         );
       }
 
       yield* Console.log(
-        `Potential flights from ${result.departure}. These are suggestions, not confirmed schedules.`
+        `Potential flights from ${result.fixed.airport}. These are suggestions, not confirmed schedules.`
       );
       yield* Console.log(
         formatTable(
@@ -60,7 +60,7 @@ const command = Command.make(
               flight.livery.airline.iataCode ??
               '',
             destination:
-              `${flight.destination.codes.join('/')} ${flight.destination.name ?? ''}`.trim(),
+              `${flight.counterpart.codes.join('/')} ${flight.counterpart.name ?? ''}`.trim(),
             flight: flight.flightNumber ?? '',
             livery: flight.livery.name ?? String(flight.livery.id),
           })),

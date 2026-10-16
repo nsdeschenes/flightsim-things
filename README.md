@@ -132,9 +132,16 @@ Research flights from a departure ICAO or IATA code using your saved inventory:
 bun run start find-flight EGLL
 ```
 
+Research flights to a destination ICAO or IATA code from your saved airports:
+
+```bash
+bun run start find-flight-to LFPG
+```
+
 Run `scan` first and configure an AI model that supports its provider's web search
-and structured output. Destinations require saved airport codes. Aircraft and
-airlines require a livery linked to both. The departure airport need not be installed.
+and structured output. The other end of the route requires saved airport codes.
+Aircraft and airlines require a livery linked to both. The airport you enter need
+not be installed.
 Use `airports enrich` to fill missing airport codes.
 
 Each search makes two paid AI requests, one for web research and one to select
