@@ -144,7 +144,27 @@ Supply both flags to constrain the full route:
 bun run start find-flight --dep EGLL --arr LFPG
 ```
 
-Specify `--dep`, `--arr`, or both. With both flags, the destination must match an
+Discover routes between your saved airports for an installed aircraft type and airline:
+
+```bash
+bun run start find-flight --aircraft A320 --airline BAW
+```
+
+Without `--dep` or `--arr`, supply both `--aircraft` and `--airline`.
+Discovery requires at least two distinct identified saved airports and shows both
+endpoints. Add either filter to an endpoint search to restrict its eligible liveries:
+
+```bash
+bun run start find-flight --dep EGLL --aircraft A320 --airline BAW
+bun run start find-flight --arr LFPG --aircraft A320
+```
+
+Filters match exact aircraft ICAO type designators and airline ICAO codes on the
+same saved livery. Codes ignore case and surrounding whitespace. Names, airline
+IATA codes, and related aircraft variants do not match. No matching livery stops
+the command before paid AI requests.
+
+With both endpoint flags, the destination must match an
 identified saved airport outside the departure airport. The departure need not be
 installed.
 
