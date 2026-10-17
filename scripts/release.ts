@@ -312,11 +312,11 @@ async function verifyCommands(directories: SmokeDirectory): Promise<void> {
   });
   const help = await runBinary(directories, ['--help']);
   assert.equal(help.exitCode, successExitCode);
-  assert.ok(help.stdout.includes('community-path') && help.stdout.includes('hello'));
-  assert.deepEqual(await runBinary(directories, ['hello']), {
+  assert.ok(help.stdout.includes('community-path') && help.stdout.includes('airlines'));
+  assert.deepEqual(await runBinary(directories, ['airlines', 'list']), {
     exitCode: successExitCode,
     stderr: '',
-    stdout: 'Hello via Bun!\n',
+    stdout: 'No saved airlines found. Run scan to populate the list.\n',
   });
   const unknown = await runBinary(directories, ['unknown']);
   assert.equal(unknown.exitCode, unknownCommandExitCode);

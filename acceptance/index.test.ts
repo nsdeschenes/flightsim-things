@@ -22,21 +22,12 @@ test('root help lists the available commands', async () => {
     'ai',
     'airports',
     'community-path',
-    'hello',
     'openaip-key',
     'scan',
     'sentry',
   ]) {
     expect(rootHelp.stdout).toContain(command);
   }
-});
-
-test('hello still prints the greeting', async () => {
-  expect(await fixture.run('hello')).toEqual({
-    exitCode: 0,
-    stderr: '',
-    stdout: 'Hello via Bun!\n',
-  });
 });
 
 test('command failures print a concise message', async () => {
@@ -59,17 +50,17 @@ test('version reports the manifest version', async () => {
 test.each([
   {args: ['unknown'], exitCode: 251, stderr: 'Unknown subcommand "unknown"'},
   {
-    args: ['hello', '--unknown'],
+    args: ['airlines', 'list', '--unknown'],
     exitCode: 252,
     stderr: 'Unrecognized flag: --unknown',
   },
   {
-    args: ['hello', 'extra'],
+    args: ['airlines', 'list', 'extra'],
     exitCode: 252,
     stderr: 'Unexpected positional argument: "extra"',
   },
   {
-    args: ['hello', 'ai'],
+    args: ['airlines', 'list', 'ai'],
     exitCode: 252,
     stderr: 'Unexpected positional argument: "ai"',
   },

@@ -239,7 +239,7 @@ test('OpenAIP key commands exclude credentials and failures from telemetry', asy
     }
 
     expect(envelopes).toEqual([]);
-    expect(await fixture.run('hello')).toMatchObject({exitCode: 0});
+    expect(await fixture.run('airlines', 'list')).toMatchObject({exitCode: 0});
     expect(envelopes.join('\n')).toContain('cli.command.completed');
   } finally {
     await server.stop(true);
