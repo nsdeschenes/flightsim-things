@@ -3,6 +3,7 @@ import {fileURLToPath} from 'node:url';
 import {BunTerminal} from '@effect/platform-bun';
 import {Console, Effect, Terminal} from 'effect';
 import {Command} from 'effect/cli';
+import type {CliError} from 'effect/cli/CliError';
 import {Select as select} from 'effect/cli/Prompt';
 import {TaggedError as taggedError} from 'effect/Data';
 
@@ -18,14 +19,20 @@ type PromptServices = Exclude<Command.Environment, Terminal.Terminal>;
 const {catch: catchEffect} = Effect;
 
 type Selection =
+  | Readonly<{kind: 'Back'}>
   | Readonly<{kind: 'Exit'}>
   | Readonly<{kind: 'Command'; command: CommandTree}>;
 type PreparedCommand = Readonly<{kind: 'Prepared'; args: readonly string[]}>;
+type PreparationOutcome = PreparedCommand | Readonly<{kind: 'Exit' | 'Retry'}>;
+type Cancellation =
+  | Readonly<{kind: 'Root' | 'Nested'}>
+  | Readonly<{kind: 'Cancelled'; outcome: Readonly<{kind: 'Exit' | 'Retry'}>}>;
 class InteractiveError extends taggedError('InteractiveError')<{
   readonly message: string;
 }> {}
 
 const exit = {kind: 'Exit'} as const;
+const navigationOutcomes = {Back: {kind: 'Retry'}, Exit: exit} as const;
 const successExitCode = 0;
 
 function relaunchCommand(args: readonly string[]): string[] {
@@ -77,13 +84,6 @@ function runChild(args: readonly string[]): Effect.Effect<void, InteractiveError
   );
 }
 
-function shouldQuit(input: DeepReadonly<Terminal.UserInput>): boolean {
-  return (
-    input.key.name === 'escape' ||
-    (input.key.ctrl && (input.key.name === 'c' || input.key.name === 'd'))
-  );
-}
-
 function prepareArguments(
   args: readonly string[]
 ): Effect.Effect<PreparedCommand | Readonly<{kind: 'Retry'}>> {
@@ -96,46 +96,106 @@ function prepareArguments(
   return Effect.succeed({args, kind: 'Prepared'});
 }
 
+function cancelInput(
+  input: DeepReadonly<Terminal.UserInput>,
+  cancellation: Cancellation
+): Cancellation {
+  if (input.key.name === 'escape') {
+    let outcome: Readonly<{kind: 'Exit' | 'Retry'}> = exit;
+    if (cancellation.kind === 'Nested') {
+      outcome = {kind: 'Retry'};
+    }
+
+    return {kind: 'Cancelled', outcome};
+  }
+
+  if (input.key.ctrl && (input.key.name === 'c' || input.key.name === 'd')) {
+    return {kind: 'Cancelled', outcome: exit};
+  }
+
+  return cancellation;
+}
+
+function selectCommand(
+  command: CommandTree,
+  menu: 'Root' | 'Nested'
+): Effect.Effect<Selection, Terminal.QuitError, Command.Environment> {
+  const choices: Readonly<{
+    title: string;
+    description?: string | undefined;
+    value: Selection;
+  }>[] = command.subcommands.flatMap((group: CommandTree['subcommands'][number]) =>
+    group.commands
+      .filter((child: CommandTree) => !child.unlisted)
+      .map((child: CommandTree) => ({
+        description: child.shortDescription ?? child.description,
+        title: child.name,
+        value: {command: child, kind: 'Command'},
+      }))
+  );
+  let message = 'Command';
+  if (menu === 'Root') {
+    message = 'Choose a command';
+    choices.push({title: 'Exit', value: exit});
+  } else {
+    choices.push({title: 'Back to menu', value: {kind: 'Back'}});
+  }
+
+  return select({choices, maxPerPage: choices.length, message});
+}
+
+function collectSelection(
+  selection: Selection,
+  prefix: readonly string[]
+): Effect.Effect<PreparationOutcome, Terminal.QuitError | CliError, Command.Environment> {
+  return Effect.gen(function* collectSelectedCommand() {
+    if (selection.kind !== 'Command') {
+      return navigationOutcomes[selection.kind];
+    }
+
+    const {command} = selection;
+    const path = [...prefix, command.name];
+    if (
+      command.subcommands.some(group => group.commands.some(child => !child.unlisted))
+    ) {
+      const child = yield* selectCommand(command, 'Nested');
+      return yield* collectSelection(child, path);
+    }
+
+    yield* Console.log('Escape returns to the menu. Ctrl+C or Ctrl+D exits.');
+    const args = yield* Command.wizard(command, {prefix: path});
+    return yield* prepareArguments(args);
+  });
+}
+
 function prepareCommand(
   root: CommandTree
-): Effect.Effect<
-  PreparedCommand | Readonly<{kind: 'Exit' | 'Retry'}>,
-  never,
-  PromptServices
-> {
+): Effect.Effect<PreparationOutcome, never, PromptServices> {
   return Effect.scoped(
     Effect.gen(function* collectCommand() {
-      const terminal = yield* BunTerminal.make(shouldQuit);
-      return yield* Effect.gen(function* promptForCommand() {
-        const choices: Readonly<{
-          title: string;
-          description?: string | undefined;
-          value: Selection;
-        }>[] = root.subcommands.flatMap((group: CommandTree['subcommands'][number]) =>
-          group.commands
-            .filter((command: CommandTree) => !command.unlisted)
-            .map((command: CommandTree) => ({
-              description: command.shortDescription ?? command.description,
-              title: command.name,
-              value: {command, kind: 'Command'},
-            }))
-        );
-        choices.push({title: 'Exit', value: exit});
-        const selection = yield* select({
-          choices,
-          maxPerPage: choices.length,
-          message: 'Choose a command',
-        });
-        if (selection.kind === 'Exit') {
-          return exit;
+      let cancellation: Cancellation = {kind: 'Root'};
+      const terminal = yield* BunTerminal.make(
+        (input: DeepReadonly<Terminal.UserInput>) => {
+          cancellation = cancelInput(input, cancellation);
+          return cancellation.kind === 'Cancelled';
         }
+      );
+      return yield* Effect.gen(function* promptForCommand() {
+        const selection = yield* selectCommand(root, 'Root');
+        cancellation = {kind: 'Nested'};
+        return yield* collectSelection(selection, []);
+      }).pipe(
+        Effect.provideService(Terminal.Terminal, terminal),
+        Effect.catchTag('QuitError', () => {
+          if (cancellation.kind === 'Cancelled') {
+            return Effect.succeed(cancellation.outcome);
+          }
 
-        const args = yield* Command.wizard(selection.command);
-        return yield* prepareArguments(args);
-      }).pipe(Effect.provideService(Terminal.Terminal, terminal));
+          return Effect.succeed(exit);
+        })
+      );
     })
   ).pipe(
-    Effect.catchTag('QuitError', () => Effect.succeed(exit)),
     catchEffect(() =>
       Console.error('Could not prepare the command. Please try again.').pipe(
         Effect.as({kind: 'Retry'} as const)

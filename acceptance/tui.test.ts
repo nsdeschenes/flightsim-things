@@ -1,5 +1,6 @@
 import {afterEach, beforeEach, expect, setDefaultTimeout, test} from 'bun:test';
-import {readFile} from 'node:fs/promises';
+import {mkdir, readFile} from 'node:fs/promises';
+import path from 'node:path';
 import {stripVTControlCharacters} from 'node:util';
 
 import createCliFixture from '#acceptance-cli';
@@ -26,6 +27,15 @@ const expectedCommands = [
   'scan',
   'sentry',
   'hello',
+];
+const commandGroups = [
+  {commands: 2, name: 'ai'},
+  {commands: 1, name: 'aircraft'},
+  {commands: 1, name: 'airlines'},
+  {commands: 2, name: 'airports'},
+  {commands: 3, name: 'community-path'},
+  {commands: 2, name: 'openaip-key'},
+  {commands: 3, name: 'sentry'},
 ];
 const down = '\u001B[B';
 const enter = '\r';
@@ -81,6 +91,19 @@ async function saveKey(
   await session.waitFor('Choose a command');
 }
 
+async function openKeyPrompt(
+  session: Readonly<Omit<Session, 'exited'>>,
+  prompt: string
+): Promise<void> {
+  session.send(choose('openaip-key'));
+  await session.waitFor('Back to menu');
+  if (prompt === 'argument') {
+    session.send(down + enter);
+    await session.waitFor('Key');
+    session.send('discard-this-key');
+  }
+}
+
 test('ordinary command metadata supplies the menu without a recursive tui entry', async () => {
   const session = await startSession();
   const firstMenu = stripVTControlCharacters(session.output()).split(lineBreak);
@@ -115,6 +138,72 @@ test('collects a masked credential and passes it intact to the command child', a
   });
   session.send(controlD);
 });
+
+test('saves a literal navigation label as a directory argument', async () => {
+  await mkdir(path.join(fixture.home, 'Back to menu'));
+  const session = await startSession();
+  session.send(choose('community-path'));
+  await session.waitFor('Back to menu');
+  session.send(down + enter);
+  await session.waitFor('Path');
+  session.send(`Back to menu${enter}`);
+  await session.waitFor('Command completed.');
+  expect(JSON.parse(await readFile(fixture.configurationFile, 'utf8'))).toMatchObject({
+    communityPath: path.join(fixture.home, 'Back to menu'),
+  });
+});
+
+test.each(commandGroups)(
+  'returns from $name to the main menu with Back to menu',
+  async (group: Readonly<{name: string; commands: number}>) => {
+    const session = await startSession();
+    session.send(choose(group.name));
+    await session.waitFor('Back to menu');
+    session.send(down.repeat(group.commands) + enter);
+    await session.waitFor('Choose a command');
+    expect(await Bun.file(fixture.configurationFile).exists()).toBe(false);
+    await greet(session);
+  }
+);
+
+test('runs a settings get command with its complete submenu path', async () => {
+  const saved = await fixture.run('community-path', 'set', fixture.home);
+  expect(saved.exitCode).toBe(successExitCode);
+  const session = await startSession();
+  session.send(choose('community-path'));
+  await session.waitFor('Back to menu');
+  session.send(enter);
+  await session.waitFor(fixture.home);
+  await session.waitFor('Command completed.');
+  await session.waitFor('Choose a command');
+});
+
+test.each(['submenu', 'argument'])(
+  'Escape abandons the %s and returns to the main menu',
+  async prompt => {
+    const session = await startSession();
+    await openKeyPrompt(session, prompt);
+    session.send(escape);
+    await session.waitFor('Choose a command');
+    expect(await Bun.file(fixture.configurationFile).exists()).toBe(false);
+    expect(session.output()).not.toContain('Command completed.');
+    expect(session.output()).not.toContain('discard-this-key');
+    await greet(session);
+  }
+);
+
+test.each([controlC, controlD])(
+  'exits on %j in submenus and argument prompts',
+  async input => {
+    for (const prompt of ['submenu', 'argument']) {
+      const session = await startSession();
+      await openKeyPrompt(session, prompt);
+      session.send(input);
+      expect(await session.exited).toBe(successExitCode);
+      expect(await Bun.file(fixture.configurationFile).exists()).toBe(false);
+    }
+  }
+);
 
 test.each(['--help', '--h', '--v', '-h'])(
   'refuses credential control token %s',
