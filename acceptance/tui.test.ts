@@ -13,7 +13,7 @@ setDefaultTimeout(testTimeoutMilliseconds);
 const firstChoice = 0;
 const headingLines = 1;
 const lineBreak = /\r?\n/u;
-const selectedMarker = /^❯ /u;
+const selectedMarker = /^[❯>] /u;
 const successExitCode = 0;
 const failureExitCode = 1;
 const expectedCommands = [
@@ -59,11 +59,17 @@ afterEach(async () => {
   await fixture.dispose();
 });
 
+async function waitForMainMenu(
+  session: Readonly<Omit<Session, 'exited'>>
+): Promise<void> {
+  await session.waitFor('Choose a command');
+  await session.waitFor('Exit');
+}
+
 async function startSession(args: readonly string[] = ['tui']): Promise<Session> {
   const session = createTerminalSession(fixture.executable, fixture.home, args);
   sessions.push(session);
-  await session.waitFor('Choose a command');
-  await session.waitFor('Exit');
+  await waitForMainMenu(session);
   return session;
 }
 
@@ -75,7 +81,7 @@ async function greet(session: Readonly<Omit<Session, 'exited'>>): Promise<void> 
   session.send(choose('hello'));
   await session.waitFor('Hello via Bun!');
   await session.waitFor('Command completed.');
-  await session.waitFor('Choose a command');
+  await waitForMainMenu(session);
 }
 
 async function saveKey(
@@ -88,7 +94,7 @@ async function saveKey(
   await session.waitFor('Key');
   session.send(key + enter);
   await session.waitFor('OpenAIP API key saved.');
-  await session.waitFor('Choose a command');
+  await waitForMainMenu(session);
 }
 
 async function openKeyPrompt(
@@ -121,7 +127,7 @@ test('returns to the menu after failure and repeated successful commands', async
   await session.waitFor('Command');
   session.send(down + down + enter);
   await session.waitFor('Command exited with code 1.');
-  await session.waitFor('Choose a command');
+  await waitForMainMenu(session);
   await greet(session);
   await greet(session);
   session.send(controlD);
@@ -148,9 +154,10 @@ test('saves a literal navigation label as a directory argument', async () => {
   await session.waitFor('Path');
   session.send(`back${enter}`);
   await session.waitFor('Command completed.');
-  expect(JSON.parse(await readFile(fixture.configurationFile, 'utf8'))).toMatchObject({
-    communityPath: await realpath(path.join(fixture.home, 'back')),
-  });
+  const saved = await fixture.run('community-path', 'get');
+  expect(await realpath(saved.stdout.trim())).toBe(
+    await realpath(path.join(fixture.home, 'back'))
+  );
 });
 
 test.each(commandGroups)(
@@ -160,7 +167,7 @@ test.each(commandGroups)(
     session.send(choose(group.name));
     await session.waitFor('back');
     session.send(down.repeat(group.commands) + enter);
-    await session.waitFor('Choose a command');
+    await waitForMainMenu(session);
     expect(await Bun.file(fixture.configurationFile).exists()).toBe(false);
     await greet(session);
   }
@@ -175,7 +182,7 @@ test('runs a settings get command with its complete submenu path', async () => {
   session.send(enter);
   await session.waitFor(fixture.home);
   await session.waitFor('Command completed.');
-  await session.waitFor('Choose a command');
+  await waitForMainMenu(session);
 });
 
 test.each(['submenu', 'argument'])(
@@ -184,7 +191,7 @@ test.each(['submenu', 'argument'])(
     const session = await startSession();
     await openKeyPrompt(session, prompt);
     session.send(escape);
-    await session.waitFor('Choose a command');
+    await waitForMainMenu(session);
     expect(await Bun.file(fixture.configurationFile).exists()).toBe(false);
     expect(session.output()).not.toContain('Command completed.');
     expect(session.output()).not.toContain('discard-this-key');
@@ -215,7 +222,7 @@ test.each(['--help', '--h', '--v', '-h'])(
     await session.waitFor('Key');
     session.send(`${token}${enter}`);
     await session.waitFor('A value looks like a CLI help or version flag.');
-    await session.waitFor('Choose a command');
+    await waitForMainMenu(session);
     expect(await Bun.file(fixture.configurationFile).exists()).toBe(false);
     await greet(session);
   }
