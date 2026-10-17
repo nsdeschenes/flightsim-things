@@ -57,7 +57,7 @@ function runChild(args: readonly string[]): Effect.Effect<void, InteractiveError
           try: () =>
             Bun.spawn(relaunchCommand(args), {
               stderr: 'inherit',
-              stdin: 'inherit',
+              stdin: 'ignore',
               stdout: 'inherit',
             }),
         }),
@@ -223,7 +223,7 @@ function makeTuiCommand(
       }
 
       while (true) {
-        // Close the prompt terminal before the child inherits stdin and restores its own input mode.
+        // Close the prompt terminal before the command runs and the next menu restores raw input.
         const prepared = yield* prepareCommand(root);
         if (prepared.kind === 'Exit') {
           return yield* Effect.void;
