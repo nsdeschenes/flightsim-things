@@ -60,7 +60,6 @@ Replace placeholders with your values and omit the brackets.
 ```text
 flightsim-things
 flightsim-things tui
-flightsim-things hello
 flightsim-things community-path get
 flightsim-things community-path set <path>
 flightsim-things community-path update <path>
@@ -93,8 +92,6 @@ flightsim-things --version
 flightsim-things airports --help
 flightsim-things aircraft list --help
 ```
-
-`flightsim-things hello` prints `Hello via Bun!` as a basic installation check.
 
 ### Interactive menu
 

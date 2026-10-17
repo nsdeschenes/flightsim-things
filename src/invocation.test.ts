@@ -11,7 +11,6 @@ const rootCommands = [
   {name: 'openaip-key'},
   {name: 'sentry'},
   {name: 'community-path'},
-  {name: 'hello'},
   {name: 'generate'},
   {name: 'tui'},
 ];
@@ -95,7 +94,9 @@ test('interactive parent skips telemetry while ordinary child commands retain cl
     sensitiveCommand: Option.none(),
     skipTelemetry: true,
   });
-  expect(classifyInvocation(['hello'], rootCommands).skipTelemetry).toBe(false);
+  expect(classifyInvocation(['community-path', 'get'], rootCommands).skipTelemetry).toBe(
+    false
+  );
   expect(
     classifyInvocation(['openaip-key', 'set', 'private'], rootCommands).skipTelemetry
   ).toBe(true);

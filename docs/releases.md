@@ -80,7 +80,7 @@ Run the smoke check on the matching native host:
 bun run verify:binary dist/flightsim-things-0.1.0-linux-x64
 ```
 
-The check runs version, help, greeting, argument-error, and Community directory persistence commands in isolated user storage.
+The check runs version, help, airline listing, argument-error, and Community directory persistence commands in isolated user storage.
 It also extracts the desktop bundle into a path with spaces, verifies its files, and runs the bundled executable.
 The smoke check opens the native launcher in a terminal and selects Exit from its menu.
 Native CI runs the interactive acceptance suite against each compiled executable.

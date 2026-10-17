@@ -26,7 +26,6 @@ const expectedCommands = [
   'openaip-key',
   'scan',
   'sentry',
-  'hello',
 ];
 const commandGroups = [
   {commands: 2, name: 'ai'},
@@ -80,9 +79,15 @@ function choose(name: string): string {
   return down.repeat(expectedCommands.indexOf(name)) + enter;
 }
 
-async function greet(session: Readonly<Omit<Session, 'exited'>>): Promise<void> {
-  session.send(choose('hello'));
-  await session.waitFor('Hello via Bun!');
+async function listAirlines(session: Readonly<Omit<Session, 'exited'>>): Promise<void> {
+  session.send(choose('airlines'));
+  await session.waitFor('Command');
+  session.send(enter);
+  await session.waitFor('Set Aircraft (--aircraft)?');
+  session.send(enter);
+  await session.waitFor('Set Code (--code)?');
+  session.send(enter);
+  await session.waitFor('No saved airlines found. Run scan to populate the list.');
   await session.waitFor('Command completed.');
   await waitForMainMenu(session);
 }
@@ -131,8 +136,8 @@ test('returns to the menu after failure and repeated successful commands', async
   session.send(down + down + enter);
   await session.waitFor('Command exited with code 1.');
   await waitForMainMenu(session);
-  await greet(session);
-  await greet(session);
+  await listAirlines(session);
+  await listAirlines(session);
   session.send(controlD);
   expect(await session.exited).toBe(successExitCode);
 });
@@ -198,7 +203,7 @@ test.each(commandGroups)(
     session.send(down.repeat(group.commands) + enter);
     await waitForMainMenu(session);
     expect(await Bun.file(fixture.configurationFile).exists()).toBe(false);
-    await greet(session);
+    await listAirlines(session);
   }
 );
 
@@ -224,7 +229,7 @@ test.each(['submenu', 'argument'])(
     expect(await Bun.file(fixture.configurationFile).exists()).toBe(false);
     expect(session.output()).not.toContain('Command completed.');
     expect(session.output()).not.toContain('discard-this-key');
-    await greet(session);
+    await listAirlines(session);
   }
 );
 
@@ -253,7 +258,7 @@ test.each(['--help', '--h', '--v', '-h'])(
     await session.waitFor('A value looks like a CLI help or version flag.');
     await waitForMainMenu(session);
     expect(await Bun.file(fixture.configurationFile).exists()).toBe(false);
-    await greet(session);
+    await listAirlines(session);
   }
 );
 
@@ -268,7 +273,7 @@ test.each([escape, controlC, controlD])(
 
 test('no arguments opens the menu and runs commands', async () => {
   const session = await startSession([]);
-  await greet(session);
+  await listAirlines(session);
   session.send(escape);
   expect(await session.exited).toBe(successExitCode);
 });

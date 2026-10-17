@@ -263,7 +263,7 @@ test('AI invocations bypass telemetry for valid and malformed commands', async (
     );
     await assertAiInvocations();
     expect(envelopes).toEqual([]);
-    expect(await fixture.run('hello')).toMatchObject({exitCode: 0});
+    expect(await fixture.run('airlines', 'list')).toMatchObject({exitCode: 0});
     expect(envelopes.join('\n')).toContain('cli.command.completed');
   } finally {
     await server.stop(true);

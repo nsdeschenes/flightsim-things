@@ -194,9 +194,12 @@ test('set requires all four sampling rates and help lists commands', async () =>
 
 test('malformed configuration skips telemetry and preserves bytes on set and update', async () => {
   await seedConfiguration('{broken');
-  const greeting = await fixture.run('hello');
-  expect(greeting).toMatchObject({exitCode: 0, stdout: 'Hello via Bun!\n'});
-  expect(greeting.stderr).toContain('Sentry telemetry skipped.');
+  const result = await fixture.run('airlines', 'list');
+  expect(result).toMatchObject({
+    exitCode: 0,
+    stdout: 'No saved airlines found. Run scan to populate the list.\n',
+  });
+  expect(result.stderr).toContain('Sentry telemetry skipped.');
   const get = await fixture.run('sentry', 'get');
   expect(get.exitCode).toBe(failureExitCode);
   expect(get.stderr).toContain('Repair the file');
@@ -228,10 +231,10 @@ test.each(['sentry', 'openaip-key'])(
 test('official SDK delivers logs, metrics, and traces before a successful command exits', async () => {
   expect(await set(dsn, '1')).toMatchObject({exitCode: 0});
   expect(envelopes).toEqual([]);
-  expect(await fixture.run('hello')).toEqual({
+  expect(await fixture.run('airlines', 'list')).toEqual({
     exitCode: 0,
     stderr: '',
-    stdout: 'Hello via Bun!\n',
+    stdout: 'No saved airlines found. Run scan to populate the list.\n',
   });
   expect(envelopeTypes().toSorted()).toEqual(['log', 'trace_metric', 'transaction']);
   expect(envelopes.join('\n')).toContain('cli.command.completed');
@@ -284,7 +287,7 @@ test('official SDK captures a real filesystem command failure before exit', asyn
 });
 
 test.each([
-  {args: ['hello', '--private-invalid-flag']},
+  {args: ['airlines', 'list', '--private-invalid-flag']},
   {args: ['--help']},
   {args: ['unknown-private-command']},
   {args: ['sentry', 'get']},
@@ -301,7 +304,7 @@ test.each([
 
 test('zero sampling rates drop all four signals', async () => {
   expect(await set()).toMatchObject({exitCode: 0});
-  expect(await fixture.run('hello')).toMatchObject({exitCode: 0});
+  expect(await fixture.run('airlines', 'list')).toMatchObject({exitCode: 0});
   expect(await fixture.run('community-path', 'get')).toMatchObject({exitCode: 1});
   expect(envelopeTypes()).toEqual([]);
 });
