@@ -57,7 +57,7 @@ function runChild(args: readonly string[]): Effect.Effect<void, InteractiveError
           try: () =>
             Bun.spawn(relaunchCommand(args), {
               stderr: 'inherit',
-              stdin: 'ignore',
+              stdin: 'inherit',
               stdout: 'inherit',
             }),
         }),
@@ -176,6 +176,16 @@ function prepareCommand(
       let cancellation: Cancellation = {kind: 'Root'};
       const terminal = yield* BunTerminal.make(
         (input: DeepReadonly<Terminal.UserInput>) => {
+          if (
+            process.platform === 'win32' &&
+            cancellation.kind === 'Root' &&
+            ['up', 'down', 'escape', 'return'].includes(input.key.name)
+          ) {
+            process.stderr.write(
+              `[DEBUG-tui-input] key=${input.key.name} raw=${process.stdin.isRaw} paused=${process.stdin.isPaused()} readers=${process.stdin.listenerCount('keypress')}\n`
+            );
+          }
+
           cancellation = cancelInput(input, cancellation);
           return cancellation.kind === 'Cancelled';
         }
@@ -223,7 +233,7 @@ function makeTuiCommand(
       }
 
       while (true) {
-        // Close the prompt terminal before the command runs and the next menu restores raw input.
+        // Close the prompt terminal before the child inherits stdin and restores its own input mode.
         const prepared = yield* prepareCommand(root);
         if (prepared.kind === 'Exit') {
           return yield* Effect.void;
