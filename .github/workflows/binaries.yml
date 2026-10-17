@@ -46,10 +46,14 @@ jobs:
       - name: Build and run the native executable
         env:
           TARGET: ${{ matrix.id }}
+          EXTENSION: ${{ matrix.extension }}
         run: |
           set -euo pipefail
           bun run build "$TARGET"
-          bun run verify:binary dist/*
+          VERSION=$(bun -p 'require("./package.json").version')
+          BINARY="dist/flightsim-things-$VERSION-$TARGET$EXTENSION"
+          bun run verify:binary "$BINARY"
+          FLIGHTSIM_TEST_BINARY="$BINARY" bun test --cwd acceptance tui.test.ts
       - uses: actions/upload-artifact@v7
         with:
           name: binary-${{ matrix.id }}

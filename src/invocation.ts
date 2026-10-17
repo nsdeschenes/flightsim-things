@@ -155,8 +155,17 @@ function classifyInvocation(
       Option.filter(name => name !== 'sentry')
     ),
     skipTelemetry:
-      args.length === noArguments || scan.controlInvocation || privateCommand !== missing,
+      args.length === noArguments ||
+      scan.controlInvocation ||
+      privateCommand !== missing ||
+      command === 'tui',
   };
 }
 
-export default classifyInvocation;
+function isCliControlArgument(argument: string): boolean {
+  return argument.startsWith('-') && builtInArgument(argument, '').present;
+}
+
+const invocationClassifier = {classify: classifyInvocation, isCliControlArgument};
+
+export default invocationClassifier;

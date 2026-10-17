@@ -2,7 +2,9 @@ import {expect, test} from 'bun:test';
 
 import {Option} from 'effect';
 
-import classifyInvocation from './invocation.ts';
+import invocationClassifier from './invocation.ts';
+
+const {classify: classifyInvocation} = invocationClassifier;
 
 const rootCommands = [
   {alias: 'assistant', name: 'ai'},
@@ -11,6 +13,7 @@ const rootCommands = [
   {name: 'community-path'},
   {name: 'hello'},
   {name: 'generate'},
+  {name: 'tui'},
 ];
 
 test.each([
@@ -85,3 +88,15 @@ test.each(ordinaryInvocations)(
     });
   }
 );
+
+test('interactive parent skips telemetry while ordinary child commands retain classification', () => {
+  expect(classifyInvocation(['tui'], rootCommands)).toEqual({
+    command: Option.some('tui'),
+    sensitiveCommand: Option.none(),
+    skipTelemetry: true,
+  });
+  expect(classifyInvocation(['hello'], rootCommands).skipTelemetry).toBe(false);
+  expect(
+    classifyInvocation(['openaip-key', 'set', 'private'], rootCommands).skipTelemetry
+  ).toBe(true);
+});

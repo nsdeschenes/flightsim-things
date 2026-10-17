@@ -1,14 +1,15 @@
-import {Console} from 'effect';
 import {Command} from 'effect/cli';
 
-import commands from './registry.ts';
+import {version} from '#package';
 
-const hello = Command.make('hello', {}, () => Console.log('Hello via Bun!')).pipe(
-  Command.withDescription('Print a greeting')
-);
-const command = Command.make('flightsim-things').pipe(
-  Command.withDescription('Flight simulator tools'),
-  Command.withSubcommands([...commands, hello])
+import ordinary from './ordinary.ts';
+import makeTuiCommand from './tui.ts';
+
+const command = ordinary.command.pipe(
+  Command.withSubcommands([
+    ...ordinary.commands,
+    makeTuiCommand(ordinary.command, version),
+  ])
 );
 
 export default command;

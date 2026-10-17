@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 type CommandResult = Readonly<{exitCode: number; stderr: string; stdout: string}>;
 type CliFixture = Readonly<{
   home: string;
+  executable: readonly string[];
   configurationFile: string;
   run: (...args: readonly string[]) => Promise<CommandResult>;
   dispose: () => Promise<void>;
@@ -26,6 +27,7 @@ async function createCliFixture(): Promise<CliFixture> {
     dispose: async () => {
       await rm(home, {force: true, recursive: true});
     },
+    executable,
     home,
     run: async (...args) => {
       const child = Bun.spawn([...executable, ...args], {

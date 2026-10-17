@@ -15,6 +15,45 @@ Release executables are available from GitHub Releases for Windows x64, macOS ar
 Linux x64, and Linux arm64. They include the runtime. On macOS and Linux, run
 `chmod +x <executable>` first, then use the executable in place of `bun run start`.
 
+## Use the interactive menu
+
+Run the menu from a terminal:
+
+```bash
+bun run start tui
+```
+
+Use the arrow keys and Enter to choose a command and answer its prompts.
+Each command prints its output and returns to the menu, including after a command fails.
+Choose **back** in any submenu to return to the main menu.
+Escape in a submenu or an argument prompt discards the pending command and returns to the main menu.
+Choose **Exit**, press Escape at the main menu, or press Ctrl+C or Ctrl+D at any prompt to close the session.
+Ctrl+C during a running command ends the session and stops that command.
+With no arguments, the CLI opens the interactive menu. Use `--help` to print help.
+Piped input or output cannot run `tui`.
+
+API key prompts hide your input. The existing `openaip-key get` command prints your saved key when you select it.
+The menu refuses values that look like CLI help or version flags.
+To save such a positional value directly, use `bun run start openaip-key set -- --help`.
+
+For a desktop launch, download the `desktop.tar.gz` bundle for your operating system and architecture from GitHub Releases.
+Extract the entire bundle into a folder, then open its launcher:
+
+| Platform           | Launcher                          |
+| ------------------ | --------------------------------- |
+| Windows x64        | `Launch flightsim-things.cmd`     |
+| macOS arm64        | `Launch flightsim-things.command` |
+| Linux x64 or arm64 | `Launch flightsim-things.sh`      |
+
+Keep the launcher beside `flightsim-things` or `flightsim-things.exe`.
+The folder can move, and its path can contain spaces.
+If your archive manager cannot extract the bundle, use `tar -xzf <archive>` in an empty folder.
+
+On Linux, select **Run as a program** or **Run in terminal** if your file manager asks how to open the script.
+The launcher uses `x-terminal-emulator`, GNOME Terminal, Konsole, Xfce Terminal, or xterm.
+If none is installed, open a terminal in the extracted folder and run `./flightsim-things tui`.
+On macOS or Linux, if your extractor removes executable permissions, run `chmod +x flightsim-things 'Launch flightsim-things.command'` or use the `.sh` filename on Linux.
+
 ## Scan Addons
 
 Save your Community directory and scan its packages:

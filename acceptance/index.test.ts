@@ -93,7 +93,6 @@ test.each([
   }
 );
 
-test('no command and short help print the same root help', async () => {
-  expect(await fixture.run()).toEqual(await fixture.run('--help'));
+test('short help prints the same root help', async () => {
   expect(await fixture.run('-h')).toEqual(await fixture.run('--help'));
 });
