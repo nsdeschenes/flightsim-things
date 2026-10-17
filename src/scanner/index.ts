@@ -86,7 +86,7 @@ function reportDiagnostic(
   return Effect.sync(() => {
     const packageName = path.basename(sourcePath);
     const diagnostic: ScanDiagnostic = {
-      'diagnostic.message': safeXmlMessage(message.replaceAll(sourcePath, packageName)),
+      'diagnostic.message': message,
       'package.name': packageName,
     };
     if (level === 'warn') {
@@ -105,7 +105,8 @@ function reportWarnings(
   return Effect.gen(function* reportPackageWarnings() {
     yield* Effect.forEach(
       snapshot.warnings,
-      warning => reportDiagnostic(snapshot.metadata.sourcePath, warning, 'warn'),
+      warning =>
+        reportDiagnostic(snapshot.metadata.sourcePath, safeXmlMessage(warning), 'warn'),
       {discard: true}
     );
     yield* Effect.forEach(
@@ -133,7 +134,7 @@ function reportReads(
     for (const read of reads) {
       if (read.status === 'failure') {
         counts.failedPackages += nextIndex;
-        yield* reportDiagnostic(read.sourcePath, read.message, 'error').pipe(
+        yield* reportDiagnostic(read.sourcePath, read.diagnosticMessage, 'error').pipe(
           Effect.andThen(Console.error(`Skipped ${read.sourcePath}: ${read.message}`))
         );
       } else {

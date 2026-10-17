@@ -201,6 +201,9 @@ Sample rates range from `0` (off) to `1` (all events).
 Use `sentry update` to change selected values or `sentry get` to view the configuration.
 Scan diagnostics go to structured Sentry Logs at the saved log sampling rate.
 This includes warnings omitted from the console.
+Package failure logs contain a safe reason, with a relative filename or operating
+system error code when available. Raw configuration, JSON values, and private
+filesystem error details stay in the terminal.
 XML diagnostics include the Community package name, relative filename, parser or
 airport validation reason, root element, declared and detected byte encodings,
 and whether the file was skipped or the package rejected. Root and encoding hints

@@ -1,5 +1,5 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test';
-import {rm} from 'node:fs/promises';
+import {rename, rm, symlink, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 
 import {Option, Schema} from 'effect';
@@ -179,6 +179,80 @@ test(
     verifyOutput(result);
     verifyWarnings();
     verifyFailures();
+  },
+  cliTimeout
+);
+
+const privateValue = 'PRIVATE_CONFIGURATION_SENTINEL';
+
+async function addLinkedFailure(): Promise<string> {
+  const alias = await fixture.addon('linked-missing', {'aircraft.cfg': ''});
+  const target = path.join(fixture.home, 'PRIVATE_CANONICAL_TARGET');
+  await rename(alias, target);
+  await rm(path.join(target, 'aircraft.cfg'));
+  await symlink(target, alias);
+  return target;
+}
+
+async function addPrivateFailures(): Promise<string> {
+  await fixture.addon('malformed-config', {
+    'SimObjects/Airplanes/Example/aircraft.cfg': privateValue,
+  });
+  await fixture.addon('malformed-livery', {'livery.cfg': privateValue});
+  await fixture.addon('invalid-container', {
+    'SimObjects/Airplanes/Example/aircraft.cfg': `[LIVERY]\nbase_container=../../../../${privateValue}\n`,
+  });
+  const invalidJson = await fixture.addon('invalid-json', {});
+  await writeFile(path.join(invalidJson, 'manifest.json'), privateValue);
+  return addLinkedFailure();
+}
+
+function verifyPrivateOutput(
+  result: Awaited<ReturnType<typeof fixture.run>>,
+  target: string
+): void {
+  expect(result.exitCode).toBe(failureExitCode);
+  expect(result.stderr).toContain(`Invalid aircraft configuration line: ${privateValue}`);
+  expect(result.stderr).toContain(
+    `Invalid virtual aircraft container: ../../../../${privateValue}`
+  );
+  expect(result.stderr).toContain(
+    `JSON Parse error: Unexpected identifier "${privateValue}"`
+  );
+  expect(result.stderr).toContain(path.join(target, 'aircraft.cfg'));
+  expect(result.stderr).toContain(path.join(fixture.community, 'malformed-config'));
+  expect(envelopeItems().some(item => item.type === 'event')).toBe(false);
+  expect(envelopes.join('\n')).not.toContain(privateValue);
+  expect(envelopes.join('\n')).not.toContain(target);
+  expect(envelopes.join('\n')).not.toContain(fixture.home);
+}
+
+function verifyPrivateDiagnostics(): void {
+  const diagnostics = scanLogs().filter(item => item.body === 'Package scan failed');
+  expect(diagnostics.map(item => item.attributes['package.name'].value)).toContain(
+    'linked-missing'
+  );
+  const messages = diagnostics.map(item => item.attributes['diagnostic.message'].value);
+  expect(messages).toContain('ENOENT in aircraft.cfg');
+  expect(messages).toContain(
+    'Invalid aircraft configuration line in SimObjects/Airplanes/Example/aircraft.cfg'
+  );
+  expect(messages).toContain('Invalid aircraft configuration line in livery.cfg');
+  expect(messages).toContain(
+    'Invalid virtual aircraft container in SimObjects/Airplanes/Example/aircraft.cfg'
+  );
+  expect(messages).toContain('Invalid JSON in manifest.json');
+  expect(messages.some(message => message.endsWith(' in airport.xml'))).toBe(true);
+}
+
+test(
+  'package diagnostics keep linked paths and raw configuration and JSON values local',
+  async () => {
+    const target = await addPrivateFailures();
+    await configureTelemetry('1');
+    const result = await fixture.run('scan');
+    verifyPrivateOutput(result, target);
+    verifyPrivateDiagnostics();
   },
   cliTimeout
 );
