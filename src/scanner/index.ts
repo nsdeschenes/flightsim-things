@@ -9,6 +9,7 @@ import communityPath from '#community-path';
 import type PackageSnapshot from './model.ts';
 import packageReader from './package.ts';
 import persistence from './persistence.ts';
+import safeXmlMessage from './xml-message.ts';
 
 type PackageRead = Awaited<ReturnType<typeof packageReader.read>>;
 type ScanSummary = Readonly<{
@@ -85,7 +86,7 @@ function reportDiagnostic(
   return Effect.sync(() => {
     const packageName = path.basename(sourcePath);
     const diagnostic: ScanDiagnostic = {
-      'diagnostic.message': message.replaceAll(sourcePath, packageName),
+      'diagnostic.message': safeXmlMessage(message.replaceAll(sourcePath, packageName)),
       'package.name': packageName,
     };
     if (level === 'warn') {

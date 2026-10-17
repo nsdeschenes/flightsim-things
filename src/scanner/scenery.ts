@@ -1,6 +1,8 @@
 import {Option} from 'effect';
 
 import type PackageSnapshot from './model.ts';
+import type XmlContext from './xml-context.ts';
+import reportXmlDiagnostic from './xml-diagnostic.ts';
 
 type AirportObservation = PackageSnapshot['airports'][number];
 type SceneryRead = Pick<PackageSnapshot, 'airports' | 'warnings'>;
@@ -114,30 +116,81 @@ function airportObservations(
   return observations;
 }
 
-async function readAirports(key: string, contents: XmlContents): Promise<SceneryRead> {
-  let document: Bun.XML.Node;
+async function parseAirports(
+  key: string,
+  contents: XmlContents,
+  context: XmlContext
+): Promise<Readonly<{document: Bun.XML.Node | null; warnings: readonly string[]}>> {
   try {
-    document = Bun.XML.parse(contents, {compact: false});
+    return {document: Bun.XML.parse(contents, {compact: false}), warnings: []};
   } catch (error) {
-    if (!(await unrelatedRoot(contents))) {
+    const skipped = await unrelatedRoot(contents);
+    let recovery: 'skip-file' | 'reject-package' = 'reject-package';
+    if (skipped) {
+      recovery = 'skip-file';
+    }
+
+    await reportXmlDiagnostic(context, contents, {
+      category: 'xml.parse',
+      error,
+      recovery,
+    });
+    if (!skipped) {
       throw error;
     }
 
     return {
-      airports: [],
+      document: missing,
       warnings: [`Skipped malformed unrelated XML in ${key}: ${String(error)}`],
     };
   }
-
-  return {airports: airportObservations(key, document), warnings: []};
 }
 
-async function readScenery(key: string, contents: XmlContents): Promise<SceneryRead> {
+async function readAirports(
+  key: string,
+  contents: XmlContents,
+  context: XmlContext
+): Promise<SceneryRead> {
+  const {document, warnings} = await parseAirports(key, contents, context);
+  if (document === missing) {
+    return {airports: [], warnings};
+  }
+
+  try {
+    return {airports: airportObservations(key, document), warnings: []};
+  } catch (error) {
+    await reportXmlDiagnostic(context, contents, {
+      category: 'xml.airport-validation',
+      error,
+      recovery: 'reject-package',
+    });
+    throw error;
+  }
+}
+
+async function readServices(contents: XmlContents, context: XmlContext): Promise<void> {
+  try {
+    Bun.XML.parse(contents);
+  } catch (error) {
+    await reportXmlDiagnostic(context, contents, {
+      category: 'xml.parse',
+      error,
+      recovery: 'reject-package',
+    });
+    throw error;
+  }
+}
+
+async function readScenery(
+  key: string,
+  contents: XmlContents,
+  context: XmlContext
+): Promise<SceneryRead> {
   const service = airportServicePath.exec(key);
   const groups = service && service.groups;
   if (groups && typeof groups.code === 'string' && groups.code !== 'shared') {
     if (key.endsWith('.xml')) {
-      Bun.XML.parse(contents);
+      await readServices(contents, context);
     }
 
     return {
@@ -154,7 +207,7 @@ async function readScenery(key: string, contents: XmlContents): Promise<SceneryR
   }
 
   if (key.endsWith('.xml')) {
-    const result = await readAirports(key, contents);
+    const result = await readAirports(key, contents, context);
     return result;
   }
 

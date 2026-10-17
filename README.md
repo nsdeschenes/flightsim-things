@@ -201,6 +201,12 @@ Sample rates range from `0` (off) to `1` (all events).
 Use `sentry update` to change selected values or `sentry get` to view the configuration.
 Scan diagnostics go to structured Sentry Logs at the saved log sampling rate.
 This includes warnings omitted from the console.
+XML diagnostics include the Community package name, relative filename, parser or
+airport validation reason, root element, declared and detected byte encodings,
+and whether the file was skipped or the package rejected. Root and encoding hints
+use `unknown` when unavailable, and absent encoding declarations use `unspecified`.
+Reasons use fixed descriptions so source values embedded in parser errors stay
+out of telemetry. These diagnostics contain no XML source or absolute package paths.
 Expected package failures do not create Issues.
 Unexpected failures retain error reporting.
 Help, version, argument errors, and Sentry, OpenAIP key, and AI configuration commands do not send telemetry.

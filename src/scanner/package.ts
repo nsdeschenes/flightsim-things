@@ -125,7 +125,11 @@ function inventory(layout: Readonly<Record<string, unknown>>): Inventory {
   };
 }
 
-async function readMetadata(root: string, locator: FileLocator): Promise<Contents> {
+async function readMetadata(
+  root: string,
+  locator: FileLocator,
+  packageName: string
+): Promise<Contents> {
   const bytes = await readFile(root, locator.relative);
   if (locator.key.endsWith('aircraft.cfg')) {
     return {
@@ -141,13 +145,17 @@ async function readMetadata(root: string, locator: FileLocator): Promise<Content
     };
   }
 
-  const scenery = await readScenery(locator.key, new Blob([bytes]));
+  const scenery = await readScenery(locator.key, new Blob([bytes]), {
+    filePath: locator.relative,
+    packageName,
+  });
   return {aircraft: [], liveries: [], ...scenery};
 }
 
 async function readContents(
   root: string,
-  files: readonly FileLocator[]
+  files: readonly FileLocator[],
+  packageName: string
 ): Promise<Contents> {
   const contents: {
     aircraft: AircraftObservation[];
@@ -156,7 +164,7 @@ async function readContents(
     warnings: string[];
   } = {aircraft: [], airports: [], liveries: [], warnings: []};
   for (const locator of files) {
-    const rows = await readMetadata(root, locator);
+    const rows = await readMetadata(root, locator, packageName);
     contents.warnings.push(...rows.warnings);
     contents.aircraft.push(...rows.aircraft);
     for (const row of rows.airports) {
@@ -193,7 +201,7 @@ async function snapshot(sourcePath: string): Promise<PackageSnapshot> {
     json(root, 'layout.json'),
   ]);
   const {files, hasCompiledScenery} = inventory(layout);
-  let contents = await readContents(root, files);
+  let contents = await readContents(root, files, path.basename(sourcePath));
   if (contents.airports.length === firstIndex && hasCompiledScenery) {
     contents = {...contents, airports: airportFallback.infer(sourcePath)};
   }
