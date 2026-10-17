@@ -1,4 +1,3 @@
-import {createWriteStream} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 
 import {BunTerminal} from '@effect/platform-bun';
@@ -11,6 +10,7 @@ import {TaggedError as taggedError} from 'effect/Data';
 import invocationClassifier from '#invocation';
 
 import type ordinary from './ordinary.ts';
+import traceInput from './tui-input-trace.ts';
 
 type DeepReadonly<Value> = Value extends object
   ? Value extends (...args: readonly never[]) => unknown
@@ -20,7 +20,6 @@ type DeepReadonly<Value> = Value extends object
 type CommandTree = DeepReadonly<Command.Command.Any>;
 type RootCommand = DeepReadonly<typeof ordinary.command>;
 type PromptServices = Exclude<Command.Environment, Terminal.Terminal>;
-type TerminalScope = Effect.Services<ReturnType<typeof BunTerminal.make>>;
 const {catch: catchEffect} = Effect;
 
 type Selection =
@@ -39,31 +38,6 @@ class InteractiveError extends taggedError('InteractiveError')<{
 const exit = {kind: 'Exit'} as const;
 const navigationOutcomes = {Back: {kind: 'Retry'}, Exit: exit} as const;
 const successExitCode = 0;
-let inputTrace: ReturnType<typeof createWriteStream> | undefined;
-
-function traceInput(stage: string, key = ''): void {
-  const output = process.env.FLIGHTSIM_TUI_DIAGNOSTICS ?? '';
-  if (process.platform !== 'win32' || output === '') {
-    return;
-  }
-
-  inputTrace ??= createWriteStream(output, {flags: 'a'});
-
-  inputTrace.write(
-    `${JSON.stringify({
-      dataReaders: process.stdin.listenerCount('data'),
-      diagnostic: 'DEBUG-tui-input',
-      key,
-      paused: process.stdin.isPaused(),
-      pid: process.pid,
-      raw: process.stdin.isRaw,
-      readers: process.stdin.listenerCount('keypress'),
-      stage,
-      time: performance.now(),
-    })}\n`
-  );
-}
-
 function traceReaderReady(): void {
   traceInput('reader-ready');
 }
@@ -73,17 +47,6 @@ function traceTerminal(terminal: DeepReadonly<Terminal.Terminal>): Terminal.Term
     ...terminal,
     readInput: terminal.readInput.pipe(Effect.tap(() => Effect.sync(traceReaderReady))),
   });
-}
-
-function idleKeypress(): void {
-  // Keep readline's shared decoder attached while no prompt is reading.
-}
-
-function retainInputDecoder(): Effect.Effect<void, never, TerminalScope> {
-  return Effect.acquireRelease(
-    Effect.sync(() => process.stdin.on('keypress', idleKeypress)),
-    () => Effect.sync(() => process.stdin.off('keypress', idleKeypress))
-  ).pipe(Effect.asVoid);
 }
 
 function relaunchCommand(args: readonly string[]): string[] {
@@ -255,12 +218,13 @@ function prepareCommand(
       traceInput('prepare');
       const terminal = yield* BunTerminal.make(
         (input: DeepReadonly<Terminal.UserInput>) => {
-          if (
-            process.platform === 'win32' &&
-            cancellation.kind === 'Root' &&
-            ['up', 'down', 'escape', 'return'].includes(input.key.name)
-          ) {
-            traceInput('root-key', input.key.name);
+          if (process.platform === 'win32' && cancellation.kind === 'Root') {
+            let navigationKey = 'other';
+            if (['up', 'down', 'escape', 'return'].includes(input.key.name)) {
+              navigationKey = input.key.name;
+            }
+
+            traceInput('root-key', navigationKey);
           }
 
           cancellation = cancelInput(input, cancellation);
@@ -303,31 +267,28 @@ function makeTuiCommand(
   PromptServices
 > {
   return Command.make('tui', {}, () =>
-    Effect.scoped(
-      Effect.gen(function* runTui() {
-        if (!process.stdin.isTTY || !process.stdout.isTTY) {
-          return yield* new InteractiveError({
-            message:
-              'Interactive mode requires a terminal. Run flightsim-things --help for CLI usage.',
-          });
+    Effect.gen(function* runTui() {
+      if (!process.stdin.isTTY || !process.stdout.isTTY) {
+        return yield* new InteractiveError({
+          message:
+            'Interactive mode requires a terminal. Run flightsim-things --help for CLI usage.',
+        });
+      }
+
+      while (true) {
+        // Close the prompt terminal before the child inherits stdin and restores its own input mode.
+        const prepared = yield* prepareCommand(root);
+        if (prepared.kind === 'Exit') {
+          return yield* Effect.void;
         }
 
-        yield* retainInputDecoder();
-        while (true) {
-          // Close the prompt terminal before the child inherits stdin and restores its own input mode.
-          const prepared = yield* prepareCommand(root);
-          if (prepared.kind === 'Exit') {
-            return yield* Effect.void;
-          }
-
-          if (prepared.kind === 'Prepared') {
-            yield* runSelectedCommand(root, prepared.args, version).pipe(
-              catchEffect(() => Console.error('Could not run the selected command.'))
-            );
-          }
+        if (prepared.kind === 'Prepared') {
+          yield* runSelectedCommand(root, prepared.args, version).pipe(
+            catchEffect(() => Console.error('Could not run the selected command.'))
+          );
         }
-      })
-    )
+      }
+    })
   ).pipe(Command.withDescription('Run commands in an interactive terminal menu'));
 }
 
