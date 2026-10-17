@@ -28,7 +28,10 @@ gh workflow run publish-release.yml --ref main \
 Publication requires a merged release PR, the matching manifest version, and successful checks for that exact commit.
 The Binaries workflow builds and runs each executable on its native operating system and architecture.
 Publication downloads those tested bytes from the verified workflow run.
-The release contains four versioned executables and `SHA256SUMS`.
+The release contains four versioned executables, four `desktop.tar.gz` bundles, and `SHA256SUMS`.
+Each bundle contains a stable executable filename, a platform launcher, and a README.
+The launcher starts `tui`. The standalone executable still prints help with no arguments.
+The checksums cover both executables and bundles.
 Publication uploads and verifies the assets in a draft before making the release public.
 
 If publication fails after creating a draft, rerun it with the same version and SHA.
@@ -68,14 +71,24 @@ bun run build all
 ```
 
 The supported target IDs are `windows-x64`, `macos-arm64`, `linux-x64`, and `linux-arm64`.
-The files appear in `dist` with the version from `package.json`.
+The executable and desktop bundle appear in `dist` with the version from `package.json`.
+The build uses the host `tar` command to preserve Unix executable permissions.
 Run the smoke check on the matching native host:
 
 ```bash
-bun run verify:binary dist/flightsim-things-0.0.0-linux-x64
+bun run verify:binary dist/flightsim-things-0.1.0-linux-x64
 ```
 
 The check runs version, help, greeting, argument-error, and Community directory persistence commands in isolated user storage.
+It also extracts the desktop bundle into a path with spaces, verifies its files, and runs the bundled executable.
+The smoke check opens the native launcher in a terminal and selects Exit from its menu.
+Native CI runs the interactive acceptance suite against each compiled executable.
+To rerun that suite locally:
+
+```bash
+FLIGHTSIM_TEST_BINARY=dist/flightsim-things-0.1.0-linux-x64 bun test --cwd acceptance tui.test.ts
+```
+
 To generate checksums after building all four targets:
 
 ```bash

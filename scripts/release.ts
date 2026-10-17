@@ -1,10 +1,25 @@
 import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
-import {mkdir, mkdtemp, readdir, readFile, rm, writeFile} from 'node:fs/promises';
+import {
+  chmod,
+  copyFile,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rm,
+  writeFile,
+} from 'node:fs/promises';
 import {homedir} from 'node:os';
 import path from 'node:path';
 
 import {version} from '#package';
+
+type DeepReadonly<Value> = Value extends object
+  ? Value extends (...args: readonly never[]) => unknown
+    ? Value
+    : {readonly [Key in keyof Value]: DeepReadonly<Value[Key]>}
+  : Value;
 
 const targets = [
   {
@@ -44,6 +59,7 @@ const targets = [
 const argvOffset = 2;
 const stableVersion = /^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)$/u;
 const successExitCode = 0;
+const commandFailureExitCode = 1;
 const unknownCommandExitCode = 251;
 
 function validateVersion(input: string): void {
@@ -55,9 +71,10 @@ function validateVersion(input: string): void {
 
 function assetNames(releaseVersion: string): string[] {
   validateVersion(releaseVersion);
-  return targets.map(
-    target => `flightsim-things-${releaseVersion}-${target.id}${target.extension}`
-  );
+  return targets.flatMap(target => [
+    `flightsim-things-${releaseVersion}-${target.id}${target.extension}`,
+    `flightsim-things-${releaseVersion}-${target.id}-desktop.tar.gz`,
+  ]);
 }
 
 async function checksum(directory: string, name: string): Promise<string> {
@@ -71,30 +88,140 @@ async function validateAssets(
   releaseVersion: string,
   verifyChecksums: boolean
 ): Promise<void> {
-  const binaries = assetNames(releaseVersion).toSorted();
+  const assets = assetNames(releaseVersion).toSorted();
   const files = await readdir(directory);
-  let expected = binaries;
+  let expected = assets;
   if (verifyChecksums || files.includes('SHA256SUMS')) {
-    expected = [...binaries, 'SHA256SUMS'].toSorted();
+    expected = [...assets, 'SHA256SUMS'].toSorted();
   }
 
   assert.deepEqual(
     files.toSorted(),
     expected,
-    'Release asset set must contain exactly the four binaries and, when verified, SHA256SUMS'
+    'Release asset set must contain exactly the four binaries, four desktop bundles and, when verified, SHA256SUMS'
   );
   const lines = await Promise.all(
-    binaries.map(async name => `${await checksum(directory, name)}  ${name}\n`)
+    assets.map(async name => `${await checksum(directory, name)}  ${name}\n`)
   );
   if (verifyChecksums) {
     assert.equal(
       await readFile(path.join(directory, 'SHA256SUMS'), 'utf8'),
       lines.join(''),
-      'Release checksums do not match the binaries'
+      'Release checksums do not match the assets'
     );
   } else {
     await writeFile(path.join(directory, 'SHA256SUMS'), lines.join(''));
   }
+}
+
+const executableMode = 0o755;
+const launchers = {
+  darwin: {
+    contents:
+      '#!/bin/sh\nset -eu\napp_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)\nexec "$app_dir/flightsim-things" tui\n',
+    name: 'Launch flightsim-things.command',
+  },
+  linux: {
+    contents: `#!/bin/sh
+set -eu
+app_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+if [ -t 0 ] && [ -t 1 ]; then
+  exec "$app_dir/flightsim-things" tui
+fi
+if command -v x-terminal-emulator >/dev/null 2>&1; then
+  exec x-terminal-emulator -e "$app_dir/flightsim-things" tui
+fi
+if command -v gnome-terminal >/dev/null 2>&1; then
+  exec gnome-terminal -- "$app_dir/flightsim-things" tui
+fi
+if command -v konsole >/dev/null 2>&1; then
+  exec konsole -e "$app_dir/flightsim-things" tui
+fi
+if command -v xfce4-terminal >/dev/null 2>&1; then
+  exec xfce4-terminal --disable-server --execute "$app_dir/flightsim-things" tui
+fi
+if command -v xterm >/dev/null 2>&1; then
+  exec xterm -e "$app_dir/flightsim-things" tui
+fi
+printf '%s\\n' 'No supported terminal found. Open a terminal in this folder and run ./flightsim-things tui.' >&2
+exit 1
+`,
+    name: 'Launch flightsim-things.sh',
+  },
+  win32: {
+    contents: '@echo off\r\n"%~dp0flightsim-things.exe" tui\r\nif errorlevel 1 pause\r\n',
+    name: 'Launch flightsim-things.cmd',
+  },
+};
+
+async function writeDesktopFiles(
+  target: Readonly<(typeof targets)[number]>,
+  staging: string,
+  executable: string
+): Promise<void> {
+  const binary = path.join(staging, `flightsim-things${target.extension}`);
+  const launcher = launchers[target.platform];
+  await copyFile(executable, binary);
+  await writeFile(path.join(staging, launcher.name), launcher.contents);
+  await writeFile(
+    path.join(staging, 'README.txt'),
+    'Extract this entire archive before launching. Keep the launcher beside the executable.\n' +
+      'Open the Launch flightsim-things file to start the interactive menu.\n' +
+      'On Linux, your file manager may require Run as a program or Run in terminal.\n' +
+      'In a terminal, run ./flightsim-things tui, or flightsim-things.exe tui on Windows.\n' +
+      'Running the executable without arguments prints CLI help.\n'
+  );
+  await Promise.all([
+    chmod(binary, executableMode),
+    chmod(path.join(staging, launcher.name), executableMode),
+  ]);
+}
+
+async function archiveFiles(args: readonly string[]): Promise<void> {
+  const child = Bun.spawn(['tar', ...args], {stderr: 'inherit', stdout: 'inherit'});
+  assert.equal(
+    await child.exited,
+    successExitCode,
+    'Desktop bundle archive operation failed'
+  );
+}
+
+async function createDesktopBundle(
+  target: Readonly<(typeof targets)[number]>,
+  executable: string
+): Promise<void> {
+  const cache = path.join(
+    homedir(),
+    '.cache/agent-work/flightsim-things/tui-build/context'
+  );
+  await mkdir(cache, {recursive: true});
+  const staging = await mkdtemp(path.join(cache, 'desktop-bundle-'));
+  try {
+    await writeDesktopFiles(target, staging, executable);
+    const archive = path.resolve(
+      'dist',
+      `flightsim-things-${version}-${target.id}-desktop.tar.gz`
+    );
+    await archiveFiles(['-czf', archive, '-C', staging, '.']);
+    process.stdout.write(`${archive}\n`);
+  } finally {
+    await rm(staging, {force: true, recursive: true});
+  }
+}
+
+async function buildTarget(target: Readonly<(typeof targets)[number]>): Promise<void> {
+  const outfile = path.join(
+    'dist',
+    `flightsim-things-${version}-${target.id}${target.extension}`
+  );
+  const result = await Bun.build({
+    compile: {assets: ['./drizzle'], outfile, target: target.target},
+    entrypoints: ['src/index.ts'],
+    minify: true,
+  });
+  assert.ok(result.success, `Compilation failed for ${target.id}`);
+  process.stdout.write(`${outfile}\n`);
+  await createDesktopBundle(target, outfile);
 }
 
 async function build(targetId: string): Promise<void> {
@@ -106,17 +233,7 @@ async function build(targetId: string): Promise<void> {
   assert.ok(selected.length > successExitCode, `Unknown target ${targetId}`);
   await mkdir('dist', {recursive: true});
   for (const target of selected) {
-    const outfile = path.join(
-      'dist',
-      `flightsim-things-${version}-${target.id}${target.extension}`
-    );
-    const result = await Bun.build({
-      compile: {assets: ['./drizzle'], outfile, target: target.target},
-      entrypoints: ['src/index.ts'],
-      minify: true,
-    });
-    assert.ok(result.success, `Compilation failed for ${target.id}`);
-    process.stdout.write(`${outfile}\n`);
+    await buildTarget(target);
   }
 }
 
@@ -191,6 +308,9 @@ async function verifyCommands(directories: SmokeDirectory): Promise<void> {
   });
   const unknown = await runBinary(directories, ['unknown']);
   assert.equal(unknown.exitCode, unknownCommandExitCode);
+  const interactive = await runBinary(directories, ['tui']);
+  assert.equal(interactive.exitCode, commandFailureExitCode);
+  assert.ok(interactive.stderr.includes('requires a terminal'));
 }
 
 async function verifyPersistence(directories: SmokeDirectory): Promise<void> {
@@ -208,11 +328,126 @@ async function verifyPersistence(directories: SmokeDirectory): Promise<void> {
   assert.deepEqual(JSON.parse(contents), {communityPath: directories.community});
 }
 
+const executableExtension = /(?:\.exe)?$/u;
+
+async function verifyBundleFiles(
+  extracted: string,
+  target: Readonly<(typeof targets)[number]>
+): Promise<void> {
+  const launcher = launchers[target.platform];
+  const files = await readdir(extracted);
+  assert.deepEqual(
+    files.toSorted(),
+    ['README.txt', launcher.name, `flightsim-things${target.extension}`].toSorted()
+  );
+  assert.equal(
+    await readFile(path.join(extracted, launcher.name), 'utf8'),
+    launcher.contents
+  );
+}
+
+const launcherTimeoutMilliseconds = 15_000;
+const terminalColumns = 180;
+const terminalRows = 60;
+const selectExit = '\u001B[A\r';
+
+async function runLauncher(
+  launcher: string,
+  directories: SmokeDirectory,
+  terminal: DeepReadonly<Bun.Terminal>
+): Promise<void> {
+  let argv = [launcher];
+  if (process.platform === 'win32') {
+    argv = ['cmd.exe', '/d', '/c', launcher];
+  }
+
+  try {
+    const child = Bun.spawn(argv, {
+      cwd: directories.cwd,
+      env: {
+        ...process.env,
+        HOME: directories.home,
+        TERM: 'xterm-256color',
+        USERPROFILE: directories.home,
+      },
+      terminal,
+    });
+    const timeout = setTimeout(() => {
+      child.kill();
+    }, launcherTimeoutMilliseconds);
+    try {
+      assert.equal(
+        await child.exited,
+        successExitCode,
+        'Desktop launcher must open the menu and exit successfully'
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  } finally {
+    terminal.close();
+  }
+}
+
+async function verifyLauncher(
+  directories: SmokeDirectory,
+  extracted: string,
+  target: Readonly<(typeof targets)[number]>
+): Promise<void> {
+  let output = '';
+  let selectedExit = false;
+  const decoder = new TextDecoder();
+  const terminal = new Bun.Terminal({
+    cols: terminalColumns,
+    data(
+      input: Readonly<{write: (value: string) => number}>,
+      data: DeepReadonly<Uint8Array>
+    ): void {
+      output += decoder.decode(data);
+      if (
+        !selectedExit &&
+        output.includes('Choose a command') &&
+        output.includes('Exit')
+      ) {
+        selectedExit = true;
+        input.write(selectExit);
+      }
+    },
+    rows: terminalRows,
+  });
+  await runLauncher(
+    path.join(extracted, launchers[target.platform].name),
+    directories,
+    terminal
+  );
+  assert.ok(selectedExit, 'Desktop launcher must display the interactive menu');
+}
+
+async function verifyDesktopBundle(directories: SmokeDirectory): Promise<void> {
+  const archive = directories.binary.replace(executableExtension, '-desktop.tar.gz');
+  const extracted = path.join(directories.home, 'Extracted desktop bundle');
+  await mkdir(extracted);
+  await archiveFiles(['-xzf', archive, '-C', extracted]);
+  const target = targets.find(
+    candidate =>
+      candidate.platform === process.platform && candidate.arch === process.arch
+  );
+  assert.ok(target);
+  await verifyBundleFiles(extracted, target);
+  const bundled = {
+    ...directories,
+    binary: path.join(extracted, `flightsim-things${target.extension}`),
+  };
+  await verifyCommands(bundled);
+  await verifyLauncher(directories, extracted, target);
+}
+
 async function smoke(executable: string): Promise<void> {
   const directories = await smokeDirectory(executable);
   try {
     await verifyCommands(directories);
     await verifyPersistence(directories);
+    await verifyDesktopBundle(directories);
     process.stdout.write(`Verified ${path.basename(directories.binary)}\n`);
   } finally {
     await rm(directories.home, {force: true, recursive: true});
