@@ -20,6 +20,7 @@ type DeepReadonly<Value> = Value extends object
 type CommandTree = DeepReadonly<Command.Command.Any>;
 type RootCommand = DeepReadonly<typeof ordinary.command>;
 type PromptServices = Exclude<Command.Environment, Terminal.Terminal>;
+type TerminalScope = Effect.Services<ReturnType<typeof BunTerminal.make>>;
 const {catch: catchEffect} = Effect;
 
 type Selection =
@@ -50,6 +51,7 @@ function traceInput(stage: string, key = ''): void {
 
   inputTrace.write(
     `${JSON.stringify({
+      dataReaders: process.stdin.listenerCount('data'),
       diagnostic: 'DEBUG-tui-input',
       key,
       paused: process.stdin.isPaused(),
@@ -62,13 +64,26 @@ function traceInput(stage: string, key = ''): void {
   );
 }
 
-function resumeMenuInput(): void {
-  if (process.platform === 'win32') {
-    traceInput('reader-ready');
-    process.stdin.pause();
-    process.stdin.resume();
-    traceInput('reader-resumed');
-  }
+function traceReaderReady(): void {
+  traceInput('reader-ready');
+}
+
+function traceTerminal(terminal: DeepReadonly<Terminal.Terminal>): Terminal.Terminal {
+  return Terminal.make({
+    ...terminal,
+    readInput: terminal.readInput.pipe(Effect.tap(() => Effect.sync(traceReaderReady))),
+  });
+}
+
+function idleKeypress(): void {
+  // Keep readline's shared decoder attached while no prompt is reading.
+}
+
+function retainInputDecoder(): Effect.Effect<void, never, TerminalScope> {
+  return Effect.acquireRelease(
+    Effect.sync(() => process.stdin.on('keypress', idleKeypress)),
+    () => Effect.sync(() => process.stdin.off('keypress', idleKeypress))
+  ).pipe(Effect.asVoid);
 }
 
 function relaunchCommand(args: readonly string[]): string[] {
@@ -252,12 +267,7 @@ function prepareCommand(
           return cancellation.kind === 'Cancelled';
         }
       );
-      const promptTerminal = Terminal.make({
-        ...terminal,
-        readInput: terminal.readInput.pipe(
-          Effect.tap(() => Effect.sync(resumeMenuInput))
-        ),
-      });
+      const promptTerminal = traceTerminal(terminal);
       return yield* Effect.gen(function* promptForCommand() {
         const selection = yield* selectCommand(root, 'Root');
         cancellation = {kind: 'Nested'};
@@ -293,28 +303,31 @@ function makeTuiCommand(
   PromptServices
 > {
   return Command.make('tui', {}, () =>
-    Effect.gen(function* runTui() {
-      if (!process.stdin.isTTY || !process.stdout.isTTY) {
-        return yield* new InteractiveError({
-          message:
-            'Interactive mode requires a terminal. Run flightsim-things --help for CLI usage.',
-        });
-      }
-
-      while (true) {
-        // Close the prompt terminal before the child inherits stdin and restores its own input mode.
-        const prepared = yield* prepareCommand(root);
-        if (prepared.kind === 'Exit') {
-          return yield* Effect.void;
+    Effect.scoped(
+      Effect.gen(function* runTui() {
+        if (!process.stdin.isTTY || !process.stdout.isTTY) {
+          return yield* new InteractiveError({
+            message:
+              'Interactive mode requires a terminal. Run flightsim-things --help for CLI usage.',
+          });
         }
 
-        if (prepared.kind === 'Prepared') {
-          yield* runSelectedCommand(root, prepared.args, version).pipe(
-            catchEffect(() => Console.error('Could not run the selected command.'))
-          );
+        yield* retainInputDecoder();
+        while (true) {
+          // Close the prompt terminal before the child inherits stdin and restores its own input mode.
+          const prepared = yield* prepareCommand(root);
+          if (prepared.kind === 'Exit') {
+            return yield* Effect.void;
+          }
+
+          if (prepared.kind === 'Prepared') {
+            yield* runSelectedCommand(root, prepared.args, version).pipe(
+              catchEffect(() => Console.error('Could not run the selected command.'))
+            );
+          }
         }
-      }
-    })
+      })
+    )
   ).pipe(Command.withDescription('Run commands in an interactive terminal menu'));
 }
 
