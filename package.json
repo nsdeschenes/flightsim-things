@@ -8,6 +8,7 @@
   "imports": {
     "#acceptance-cli": "./acceptance/support/cli.ts",
     "#acceptance-scanner": "./acceptance/support/scanner.ts",
+    "#invocation": "./src/invocation.ts",
     "#ai": "./src/ai.ts",
     "#find-flight": "./src/find-flight.ts",
     "#airport-enrichment": "./src/airport-enrichment.ts",

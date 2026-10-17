@@ -13,8 +13,12 @@ const testDirectory = path.join(
 );
 const names = [
   'flightsim-things-1.2.3-linux-arm64',
+  'flightsim-things-1.2.3-linux-arm64-desktop.tar.gz',
   'flightsim-things-1.2.3-linux-x64',
+  'flightsim-things-1.2.3-linux-x64-desktop.tar.gz',
   'flightsim-things-1.2.3-macos-arm64',
+  'flightsim-things-1.2.3-macos-arm64-desktop.tar.gz',
+  'flightsim-things-1.2.3-windows-x64-desktop.tar.gz',
   'flightsim-things-1.2.3-windows-x64.exe',
 ];
 const helloChecksum = '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824';
@@ -52,7 +56,7 @@ test.each(['v1.2.3', '01.2.3', '1.2', '1.2.3-beta', '1.2.3\n', '1.2.3;echo bad']
   }
 );
 
-test('stages and verifies exact binary filenames and literal checksums', async () => {
+test('stages and verifies exact binary and desktop bundle filenames and literal checksums', async () => {
   await Promise.all(
     names.map(async name => {
       await writeFile(path.join(directory, name), 'hello');
@@ -71,7 +75,7 @@ test('stages and verifies exact binary filenames and literal checksums', async (
   expect(await run('verify-assets', directory, '1.2.3')).toMatchObject({exitCode: 0});
 });
 
-test('rejects missing and unexpected binaries', async () => {
+test('rejects missing and unexpected release assets', async () => {
   const missing = await run('stage', directory, '1.2.3');
   expect(missing.exitCode).toBe(failureExitCode);
   expect(missing.stderr).toContain('Release asset set');

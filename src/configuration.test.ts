@@ -19,6 +19,7 @@ const testDirectory = path.join(
   homedir(),
   '.cache/agent-work/flightsim-things/shared-config/context'
 );
+const concurrencyTestTimeoutMilliseconds = 15_000;
 let homeDirectory: string;
 let configurationFile: string;
 
@@ -80,41 +81,45 @@ test('missing values, inherited keys, and own special keys use document semantic
   expect(stats.mode % 0o1000).toBe(0o600);
 });
 
-test('concurrent processes serialize first creation and read-modify-write without losing keys', async () => {
-  const creationPrograms = Array.from(
-    {length: 6},
-    (unused, index) =>
-      `await Effect.runPromise(configuration.set('key${index}', ${index}));`
-  );
-  const creations = await Promise.all(
-    creationPrograms.map(async program => {
-      const result = await run(program);
-      return result;
-    })
-  );
-  expect(creations.map(result => result.exitCode)).toEqual([0, 0, 0, 0, 0, 0]);
-  const incrementProgram = `await Effect.runPromise(configuration.update('counter', current => Effect.succeed(Option.getOrElse(current, () => 0) + 1).pipe(Effect.delay('20 millis'))));`;
-  const increments = await Promise.all(
-    Array.from<string>({length: 6})
-      .fill(incrementProgram)
-      .map(async program => {
+test(
+  'concurrent processes serialize first creation and read-modify-write without losing keys',
+  async () => {
+    const creationPrograms = Array.from(
+      {length: 6},
+      (unused, index) =>
+        `await Effect.runPromise(configuration.set('key${index}', ${index}));`
+    );
+    const creations = await Promise.all(
+      creationPrograms.map(async program => {
         const result = await run(program);
         return result;
       })
-  );
-  expect(increments.map(result => result.exitCode)).toEqual([0, 0, 0, 0, 0, 0]);
-  expect(JSON.parse(await readFile(configurationFile, 'utf8'))).toEqual({
-    counter: 6,
-    key0: 0,
-    key1: 1,
-    key2: 2,
-    key3: 3,
-    key4: 4,
-    key5: 5,
-  });
-  const files = await readdir(path.dirname(configurationFile));
-  expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
-});
+    );
+    expect(creations.map(result => result.exitCode)).toEqual([0, 0, 0, 0, 0, 0]);
+    const incrementProgram = `await Effect.runPromise(configuration.update('counter', current => Effect.succeed(Option.getOrElse(current, () => 0) + 1).pipe(Effect.delay('20 millis'))));`;
+    const increments = await Promise.all(
+      Array.from<string>({length: 6})
+        .fill(incrementProgram)
+        .map(async program => {
+          const result = await run(program);
+          return result;
+        })
+    );
+    expect(increments.map(result => result.exitCode)).toEqual([0, 0, 0, 0, 0, 0]);
+    expect(JSON.parse(await readFile(configurationFile, 'utf8'))).toEqual({
+      counter: 6,
+      key0: 0,
+      key1: 1,
+      key2: 2,
+      key3: 3,
+      key4: 4,
+      key5: 5,
+    });
+    const files = await readdir(path.dirname(configurationFile));
+    expect(new Set(files)).toEqual(new Set(['config.json', 'config.json.lock.sqlite']));
+  },
+  concurrencyTestTimeoutMilliseconds
+);
 
 test.each(['{broken', 'null', '[]', '42', '"text"'])(
   'malformed document %s preserves bytes for get, set, and update',
