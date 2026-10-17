@@ -178,7 +178,16 @@ async function writeDesktopFiles(
 }
 
 async function archiveFiles(args: readonly string[], cwd: string): Promise<void> {
-  const child = Bun.spawn(['tar', ...args], {
+  let executable = 'tar';
+  if (process.platform === 'win32') {
+    executable = path.join(
+      process.env.SystemRoot ?? 'C:/Windows',
+      'System32',
+      'tar.exe'
+    );
+  }
+
+  const child = Bun.spawn([executable, ...args], {
     cwd,
     stderr: 'inherit',
     stdout: 'inherit',

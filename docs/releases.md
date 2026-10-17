@@ -30,7 +30,8 @@ The Binaries workflow builds and runs each executable on its native operating sy
 Publication downloads those tested bytes from the verified workflow run.
 The release contains four versioned executables, four `desktop.tar.gz` bundles, and `SHA256SUMS`.
 Each bundle contains a stable executable filename, a platform launcher, and a README.
-The launcher starts `tui`. The standalone executable still prints help with no arguments.
+The launcher starts `tui`. With no arguments, the standalone executable starts the interactive menu when a terminal is available.
+Without a terminal, it returns a `requires a terminal` error. Use `--help` for CLI help.
 The checksums cover both executables and bundles.
 Publication uploads and verifies the assets in a draft before making the release public.
 
