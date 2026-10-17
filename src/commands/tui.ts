@@ -1,7 +1,5 @@
-import {fileURLToPath} from 'node:url';
-
 import {BunTerminal} from '@effect/platform-bun';
-import {Console, Effect, Option, Terminal} from 'effect';
+import {Console, Effect, Terminal} from 'effect';
 import {Command} from 'effect/cli';
 import type {CliError} from 'effect/cli/CliError';
 import {Select as select} from 'effect/cli/Prompt';
@@ -10,7 +8,6 @@ import {TaggedError as taggedError} from 'effect/Data';
 import invocationClassifier from '#invocation';
 
 import type ordinary from './ordinary.ts';
-import traceInput from './tui-input-trace.ts';
 
 type DeepReadonly<Value> = Value extends object
   ? Value extends (...args: readonly never[]) => unknown
@@ -37,88 +34,17 @@ class InteractiveError extends taggedError('InteractiveError')<{
 
 const exit = {kind: 'Exit'} as const;
 const navigationOutcomes = {Back: {kind: 'Retry'}, Exit: exit} as const;
-const successExitCode = 0;
-function traceReaderReady(): void {
-  traceInput('reader-ready');
-}
-
-function traceTerminal(terminal: DeepReadonly<Terminal.Terminal>): Terminal.Terminal {
-  return Terminal.make({
-    ...terminal,
-    readInput: terminal.readInput.pipe(Effect.tap(() => Effect.sync(traceReaderReady))),
-  });
-}
-
-function relaunchCommand(args: readonly string[]): string[] {
-  if (Bun.isStandaloneExecutable) {
-    return [process.execPath, ...args];
-  }
-
-  return [
-    process.execPath,
-    fileURLToPath(new URL('../index.ts', import.meta.url)),
-    ...args,
-  ];
-}
-
-function runChild(args: readonly string[]): Effect.Effect<void, InteractiveError> {
-  return Effect.scoped(
-    Effect.gen(function* executeSelectedCommand() {
-      const child = yield* Effect.acquireRelease(
-        Effect.try({
-          catch: () =>
-            new InteractiveError({message: 'Could not start the selected command.'}),
-          try: () =>
-            Bun.spawn(relaunchCommand(args), {
-              stderr: 'inherit',
-              stdin: 'inherit',
-              stdout: 'inherit',
-            }),
-        }),
-        (running: DeepReadonly<Bun.Subprocess>) =>
-          Effect.promise(async () => {
-            if (running.exitCode === null) {
-              running.kill();
-            }
-
-            await running.exited;
-          })
-      );
-      const code = yield* Effect.promise(async () => {
-        const exitCode = await child.exited;
-        return exitCode;
-      });
-      let outcome = `\nCommand exited with code ${code}.\n`;
-      if (code === successExitCode) {
-        outcome = '\nCommand completed.\n';
-      }
-
-      traceInput('child-exit');
-      yield* Console.log(outcome);
-    })
-  );
-}
-
 function runSelectedCommand(
   root: RootCommand,
   args: readonly string[],
   version: string
-): Effect.Effect<void, InteractiveError, PromptServices> {
-  const invocation = invocationClassifier.classify(
-    args,
-    root.subcommands.flatMap(group => group.commands)
-  );
-  const [, operation] = args;
-  if (Option.isNone(invocation.sensitiveCommand) || operation !== 'set') {
-    return runChild(args);
-  }
-
+): Effect.Effect<void, never, PromptServices> {
   return Command.runWith(root, {renderErrors: false, version})(args).pipe(
     Effect.matchEffect({
       onFailure: () =>
-        Console.error(
-          'Could not save configuration. Check the values and try again.'
-        ).pipe(Effect.andThen(Console.log('\nCommand exited with code 1.\n'))),
+        Console.error('Could not run the command. Check the values and try again.').pipe(
+          Effect.andThen(Console.log('\nCommand exited with code 1.\n'))
+        ),
       onSuccess: () => Console.log('\nCommand completed.\n'),
     }),
     Effect.provide(BunTerminal.layer)
@@ -215,29 +141,18 @@ function prepareCommand(
   return Effect.scoped(
     Effect.gen(function* collectCommand() {
       let cancellation: Cancellation = {kind: 'Root'};
-      traceInput('prepare');
       const terminal = yield* BunTerminal.make(
         (input: DeepReadonly<Terminal.UserInput>) => {
-          if (process.platform === 'win32' && cancellation.kind === 'Root') {
-            let navigationKey = 'other';
-            if (['up', 'down', 'escape', 'return'].includes(input.key.name)) {
-              navigationKey = input.key.name;
-            }
-
-            traceInput('root-key', navigationKey);
-          }
-
           cancellation = cancelInput(input, cancellation);
           return cancellation.kind === 'Cancelled';
         }
       );
-      const promptTerminal = traceTerminal(terminal);
       return yield* Effect.gen(function* promptForCommand() {
         const selection = yield* selectCommand(root, 'Root');
         cancellation = {kind: 'Nested'};
         return yield* collectSelection(selection, []);
       }).pipe(
-        Effect.provideService(Terminal.Terminal, promptTerminal),
+        Effect.provideService(Terminal.Terminal, terminal),
         Effect.catchTag('QuitError', () => {
           if (cancellation.kind === 'Cancelled') {
             return Effect.succeed(cancellation.outcome);
@@ -276,16 +191,14 @@ function makeTuiCommand(
       }
 
       while (true) {
-        // Close the prompt terminal before the child inherits stdin and restores its own input mode.
+        // Release the wizard terminal before running the selected command.
         const prepared = yield* prepareCommand(root);
         if (prepared.kind === 'Exit') {
           return yield* Effect.void;
         }
 
         if (prepared.kind === 'Prepared') {
-          yield* runSelectedCommand(root, prepared.args, version).pipe(
-            catchEffect(() => Console.error('Could not run the selected command.'))
-          );
+          yield* runSelectedCommand(root, prepared.args, version);
         }
       }
     })

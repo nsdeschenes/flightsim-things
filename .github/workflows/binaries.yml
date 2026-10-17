@@ -47,7 +47,6 @@ jobs:
         env:
           TARGET: ${{ matrix.id }}
           EXTENSION: ${{ matrix.extension }}
-          FLIGHTSIM_TUI_DIAGNOSTICS: ${{ runner.temp }}/tui-input.jsonl
         run: |
           set -euo pipefail
           bun run build "$TARGET"
@@ -55,11 +54,6 @@ jobs:
           BINARY="dist/flightsim-things-$VERSION-$TARGET$EXTENSION"
           bun run verify:binary "$BINARY"
           FLIGHTSIM_TEST_BINARY="$BINARY" bun test --cwd acceptance tui.test.ts
-      - name: Show temporary Windows input diagnostics
-        if: failure() && matrix.id == 'windows-x64'
-        env:
-          FLIGHTSIM_TUI_DIAGNOSTICS: ${{ runner.temp }}/tui-input.jsonl
-        run: bun -e 'console.log(await Bun.file(process.env.FLIGHTSIM_TUI_DIAGNOSTICS).text())'
       - uses: actions/upload-artifact@v7
         with:
           name: binary-${{ matrix.id }}
