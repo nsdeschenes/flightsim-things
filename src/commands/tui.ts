@@ -1,3 +1,4 @@
+import {createWriteStream} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 
 import {BunTerminal} from '@effect/platform-bun';
@@ -34,6 +35,29 @@ class InteractiveError extends taggedError('InteractiveError')<{
 const exit = {kind: 'Exit'} as const;
 const navigationOutcomes = {Back: {kind: 'Retry'}, Exit: exit} as const;
 const successExitCode = 0;
+let inputTrace: ReturnType<typeof createWriteStream> | undefined;
+
+function traceInput(stage: string, key = ''): void {
+  const output = process.env.FLIGHTSIM_TUI_DIAGNOSTICS ?? '';
+  if (process.platform !== 'win32' || output === '') {
+    return;
+  }
+
+  inputTrace ??= createWriteStream(output, {flags: 'a'});
+
+  inputTrace.write(
+    `${JSON.stringify({
+      diagnostic: 'DEBUG-tui-input',
+      key,
+      paused: process.stdin.isPaused(),
+      pid: process.pid,
+      raw: process.stdin.isRaw,
+      readers: process.stdin.listenerCount('keypress'),
+      stage,
+      time: performance.now(),
+    })}\n`
+  );
+}
 
 function relaunchCommand(args: readonly string[]): string[] {
   if (Bun.isStandaloneExecutable) {
@@ -79,6 +103,7 @@ function runChild(args: readonly string[]): Effect.Effect<void, InteractiveError
         outcome = '\nCommand completed.\n';
       }
 
+      traceInput('child-exit');
       yield* Console.log(outcome);
     })
   );
@@ -174,6 +199,7 @@ function prepareCommand(
   return Effect.scoped(
     Effect.gen(function* collectCommand() {
       let cancellation: Cancellation = {kind: 'Root'};
+      traceInput('prepare');
       const terminal = yield* BunTerminal.make(
         (input: DeepReadonly<Terminal.UserInput>) => {
           if (
@@ -181,9 +207,7 @@ function prepareCommand(
             cancellation.kind === 'Root' &&
             ['up', 'down', 'escape', 'return'].includes(input.key.name)
           ) {
-            process.stderr.write(
-              `[DEBUG-tui-input] key=${input.key.name} raw=${process.stdin.isRaw} paused=${process.stdin.isPaused()} readers=${process.stdin.listenerCount('keypress')}\n`
-            );
+            traceInput('root-key', input.key.name);
           }
 
           cancellation = cancelInput(input, cancellation);
