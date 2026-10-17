@@ -62,6 +62,15 @@ function traceInput(stage: string, key = ''): void {
   );
 }
 
+function resumeMenuInput(): void {
+  if (process.platform === 'win32') {
+    traceInput('reader-ready');
+    process.stdin.pause();
+    process.stdin.resume();
+    traceInput('reader-resumed');
+  }
+}
+
 function relaunchCommand(args: readonly string[]): string[] {
   if (Bun.isStandaloneExecutable) {
     return [process.execPath, ...args];
@@ -243,12 +252,18 @@ function prepareCommand(
           return cancellation.kind === 'Cancelled';
         }
       );
+      const promptTerminal = Terminal.make({
+        ...terminal,
+        readInput: terminal.readInput.pipe(
+          Effect.tap(() => Effect.sync(resumeMenuInput))
+        ),
+      });
       return yield* Effect.gen(function* promptForCommand() {
         const selection = yield* selectCommand(root, 'Root');
         cancellation = {kind: 'Nested'};
         return yield* collectSelection(selection, []);
       }).pipe(
-        Effect.provideService(Terminal.Terminal, terminal),
+        Effect.provideService(Terminal.Terminal, promptTerminal),
         Effect.catchTag('QuitError', () => {
           if (cancellation.kind === 'Cancelled') {
             return Effect.succeed(cancellation.outcome);
