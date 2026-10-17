@@ -154,17 +154,18 @@ metadata interpretation and transactional upserts.
 
 ## Initial source mapping
 
-| Source                                                                     | Stored result                                                                    |
-| -------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Package directory                                                          | `packages.sourcePath`; normalize its absolute path                               |
-| `manifest.json`: `title`, `creator`, `manufacturer`                        | Matching package columns                                                         |
-| `manifest.json`: `package_version`, `content_type`, `minimum_game_version` | `version`, `contentType`, `minimumGameVersion`                                   |
-| `layout.json`: indexed paths                                               | Discover relevant metadata files and source locators; discard the full inventory |
-| `aircraft.cfg`: `GENERAL` and `FLTSIM.n` sections                          | Aircraft metadata, livery names, registrations, and explicit ICAO airline codes  |
-| `aircraft.cfg`: `LIVERY.base_container` or `VARIATION.base_container`      | Normalized virtual aircraft target, resolved after all package batches           |
-| `livery.cfg`: `GENERAL.name` and optional `FLTSIM.n` overrides             | One livery per file, with explicit airline code and registration where known     |
-| `FSData` XML: `Airport` elements with `ident`, `name`, and optional `iata` | Airport names and explicit codes, keyed by source file and airport ident         |
-| `AirportServices/<ICAO>/Services.xml` or `Services.spb`                    | Explicit airport code; name and IATA code remain null                            |
+| Source                                                                                   | Stored result                                                                      |
+| ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Package directory                                                                        | `packages.sourcePath`; normalize its absolute path                                 |
+| `manifest.json`: `title`, `creator`, `manufacturer`                                      | Matching package columns                                                           |
+| `manifest.json`: `package_version`, `content_type`, `minimum_game_version`               | `version`, `contentType`, `minimumGameVersion`                                     |
+| `layout.json`: indexed paths                                                             | Discover relevant metadata files and source locators; discard the full inventory   |
+| `aircraft.cfg`: `GENERAL` and `FLTSIM.n` sections                                        | Aircraft metadata, livery names, registrations, and explicit ICAO airline codes    |
+| `aircraft.cfg`: `LIVERY.base_container` or `VARIATION.base_container`                    | Normalized virtual aircraft target, resolved after all package batches             |
+| `livery.cfg`: `GENERAL.name` and optional `FLTSIM.n` overrides                           | One livery per file, with explicit airline code and registration where known       |
+| `FSData` XML: `Airport` elements with `ident`, `name`, and optional `iata`               | Airport names and explicit codes, keyed by source file and airport ident           |
+| `AirportServices/<ICAO>/Services.xml` or `Services.spb`                                  | Explicit airport code; name and IATA code remain null                              |
+| `vendor-airport-CODE-name` Community directory with BGL scenery and no explicit airports | One inferred four-character alphanumeric airport code; other metadata remains null |
 
 Store the original content type string, including unfamiliar values. It describes the
 package; it does not limit the number or kinds of child records.
@@ -173,7 +174,8 @@ The `scan` command reads the saved Community directory and imports this metadata
 The two JSON files alone cannot reliably supply airline identity or airport codes. Aircraft configuration provides
 variation and airline fields, including `ui_variation` and `icao_airline`, according to
 the [MSFS 2024 aircraft configuration documentation](https://docs.flightsimulator.com/msfs2024/html/5_Content_Configuration/CFG_Files/aircraft_cfg.htm).
-Leave unknown fields and links null until there is explicit evidence.
+Leave unknown fields and links null. The package-directory convention below is the
+only airport-code inference.
 
 Native MSFS 2024 [`livery.cfg` files](https://docs.flightsimulator.com/msfs2024/html/5_Content_Configuration/CFG_Files/livery_cfg.htm)
 define one livery per file. The scanner uses `GENERAL.name`, including when there
@@ -191,6 +193,14 @@ are read in full, so this bounds package concurrency rather than total bytes.
 One synchronous immediate transaction upserts each batch. Child inserts use chunks
 of 100 rows to stay below SQLite parameter limits. IDs and unique source keys survive
 repeated scans, and records are not deleted when sources disappear.
+Package-name fallback airports are the exception. Each has the reserved source key
+`#package-name-airport`. A successfully read package retires that row when fallback
+eligibility disappears or explicit airport metadata becomes available. A same-code
+explicit observation promotes the fallback row to its explicit source key, preserving
+its ID, coordinates, and elevation when that source key does not already exist.
+Explicit names and IATA codes replace stored values, including null values. Ordinary
+explicit rows remain stored when their sources disappear. Failed packages retain
+their existing rows.
 An interrupted scan preserves existing livery links when their observed targets
 are unchanged. Changed or removed targets clear their links during the batch update.
 
@@ -211,9 +221,21 @@ Each malformed package produces a contextual stderr message and is skipped.
 The command continues valid packages and returns a nonzero status when any package
 fails. Database and Community directory errors stop the scan.
 
-Compiled BGL scenery does not establish airport identity. The scanner stores the
-package and reports a warning without creating guessed airport records. Airport
-coverage therefore depends on explicit XML and AirportServices entries.
+Compiled BGL scenery is not decoded. After all explicit metadata parses successfully,
+a package with BGL entries and no explicit airports can supply one inferred airport
+from its Community directory basename. The anchored convention is
+`vendor-airport-CODE-name`, with exactly four alphanumeric code characters and nonempty
+vendor and name segments containing letters, digits, and hyphens. Vendor names can
+contain hyphens. Package symlinks use the Community alias name. Codes are uppercased;
+names, IATA codes, and locations remain null until enrichment. Manifest titles do not
+supply codes. Explicit airports always take precedence, and corrupt airport metadata
+still fails the package even when the directory name matches.
+
+Every package containing BGL entries contributes one limitation warning, including
+packages with an explicit or inferred airport. Airport coverage may still be incomplete.
+The default scan prints the first five warning details across all batches, followed
+by the exact omitted count. `scan --verbose` prints every detail. Both modes count
+every warning and print every package failure.
 
 ## Persistence and migrations
 
@@ -303,5 +325,5 @@ migration data, and a single public connection lifecycle.
 
 Package identity follows the absolute installation path. Moving a package creates a
 new source identity. The scanner retains the old records until a future cleanup policy
-is defined. Airport codes require explicit evidence, and compiled scenery decoding
-remains unimplemented.
+is defined. Package-name inference can produce an incorrect airport code when the
+directory convention is misleading. Compiled scenery decoding remains unimplemented.

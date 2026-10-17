@@ -1,10 +1,11 @@
-import {sql} from 'drizzle-orm';
+import {and, eq, sql} from 'drizzle-orm';
 import {Option} from 'effect';
 import type {Effect} from 'effect/Effect';
 
 import database from '#database';
 import schema from '#database-schema';
 
+import airportFallback from './airport-fallback.ts';
 import type PackageSnapshot from './model.ts';
 
 type WrittenRows = Readonly<{aircraft: readonly number[]; liveries: readonly number[]}>;
@@ -16,13 +17,14 @@ type Transaction = Readonly<
     Parameters<
       Parameters<QueryDatabase['transaction']>[typeof firstIndex]
     >[typeof firstIndex],
-    'insert' | 'run'
+    'delete' | 'insert' | 'run' | 'select' | 'update'
   >
 >;
 type AircraftRow = Readonly<typeof schema.aircraft.$inferInsert>;
 type AirportRow = Readonly<typeof schema.airports.$inferInsert>;
 type LiveryRow = Readonly<typeof schema.liveries.$inferInsert>;
 type PackageRows = Readonly<{
+  packageId: number;
   aircraft: readonly AircraftRow[];
   airports: readonly AirportRow[];
   liveries: readonly LiveryRow[];
@@ -128,6 +130,7 @@ function packageRows(
     aircraft: snapshot.aircraft.map(row => ({...row, packageId})),
     airports: snapshot.airports.map(row => ({...row, packageId})),
     liveries: snapshot.liveries.map(row => liveryRow(row, packageId, airlineIds)),
+    packageId,
   };
 }
 
@@ -157,6 +160,77 @@ function saveAircraft(
   }
 
   return ids;
+}
+
+function promoteAirportFallback(
+  tx: Transaction,
+  inferred: Readonly<typeof schema.airports.$inferSelect>,
+  replacement: AirportRow
+): boolean {
+  if (replacement.sourceKey === airportFallback.sourceKey) {
+    return true;
+  }
+
+  const explicit = tx
+    .select({id: schema.airports.id})
+    .from(schema.airports)
+    .where(
+      and(
+        eq(schema.airports.packageId, inferred.packageId),
+        eq(schema.airports.sourceKey, replacement.sourceKey)
+      )
+    )
+    .get();
+  if (explicit) {
+    return false;
+  }
+
+  tx.update(schema.airports)
+    .set({sourceKey: replacement.sourceKey})
+    .where(eq(schema.airports.id, inferred.id))
+    .run();
+  return true;
+}
+
+function reconcileAirportFallback(
+  tx: Transaction,
+  rows: PackageRows
+): readonly AirportRow[] {
+  const inferred = tx
+    .select()
+    .from(schema.airports)
+    .where(
+      and(
+        eq(schema.airports.packageId, rows.packageId),
+        eq(schema.airports.sourceKey, airportFallback.sourceKey)
+      )
+    )
+    .get();
+  if (!inferred) {
+    return rows.airports;
+  }
+
+  const replacement = rows.airports.find(row => row.icaoCode === inferred.icaoCode);
+  if (!replacement || !promoteAirportFallback(tx, inferred, replacement)) {
+    tx.delete(schema.airports).where(eq(schema.airports.id, inferred.id)).run();
+    return rows.airports;
+  }
+
+  if (replacement.sourceKey !== airportFallback.sourceKey) {
+    return rows.airports;
+  }
+
+  return rows.airports.map(row => {
+    if (row !== replacement) {
+      return row;
+    }
+
+    return {
+      ...row,
+      iataCode: row.iataCode ?? inferred.iataCode,
+      name: row.name ?? inferred.name,
+    };
+  });
 }
 
 function saveAirports(tx: Transaction, values: readonly AirportRow[]): void {
@@ -215,7 +289,7 @@ function saveBatch(
         );
         saveAirports(
           tx,
-          rows.flatMap(row => row.airports)
+          rows.flatMap(row => reconcileAirportFallback(tx, row))
         );
         return {
           aircraft: saveAircraft(

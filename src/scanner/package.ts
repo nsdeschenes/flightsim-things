@@ -4,6 +4,7 @@ import path from 'node:path';
 import {Option} from 'effect';
 
 import configurations from './aircraft.ts';
+import airportFallback from './airport-fallback.ts';
 import type PackageSnapshot from './model.ts';
 import readScenery from './scenery.ts';
 
@@ -16,7 +17,10 @@ type PackageRead =
   | Readonly<{status: 'failure'; sourcePath: string; message: string}>;
 type Contents = Pick<PackageSnapshot, 'aircraft' | 'airports' | 'liveries' | 'warnings'>;
 type FileLocator = Readonly<{key: string; relative: string}>;
-type Inventory = Readonly<{files: readonly FileLocator[]; warnings: readonly string[]}>;
+type Inventory = Readonly<{
+  files: readonly FileLocator[];
+  hasCompiledScenery: boolean;
+}>;
 const firstIndex = 0;
 const missing = Option.getOrNull(Option.none());
 const metadataFiles =
@@ -102,14 +106,10 @@ function inventory(layout: Readonly<Record<string, unknown>>): Inventory {
     throw new TypeError('layout.json requires a content array');
   }
 
-  const selected = {files: new Map<string, string>(), warnings: [] as string[]};
+  const selected = {files: new Map<string, string>(), hasCompiledScenery: false};
   for (const entry of layout.content) {
     const relative = relativeFile(object(entry).path);
-    if (vfsKey(relative).endsWith('.bgl') && selected.warnings.length === firstIndex) {
-      selected.warnings.push(
-        'Compiled scenery metadata is not decoded; airport records require explicit XML or AirportServices metadata.'
-      );
-    }
+    selected.hasCompiledScenery ||= vfsKey(relative).endsWith('.bgl');
 
     if (metadataFiles.test(vfsKey(relative))) {
       addMetadataFile(selected.files, vfsKey(relative), relative);
@@ -121,7 +121,7 @@ function inventory(layout: Readonly<Record<string, unknown>>): Inventory {
       selected.files.entries(),
       ([key, relative]: readonly [string, string]) => ({key, relative})
     ),
-    warnings: selected.warnings,
+    hasCompiledScenery: selected.hasCompiledScenery,
   };
 }
 
@@ -192,8 +192,19 @@ async function snapshot(sourcePath: string): Promise<PackageSnapshot> {
     json(root, 'manifest.json'),
     json(root, 'layout.json'),
   ]);
-  const {files, warnings} = inventory(layout);
-  const contents = await readContents(root, files);
+  const {files, hasCompiledScenery} = inventory(layout);
+  let contents = await readContents(root, files);
+  if (contents.airports.length === firstIndex && hasCompiledScenery) {
+    contents = {...contents, airports: airportFallback.infer(sourcePath)};
+  }
+
+  const warnings: string[] = [];
+  if (hasCompiledScenery) {
+    warnings.push(
+      'Compiled scenery metadata is not decoded; airport coverage may be incomplete even with XML, AirportServices, or package-name fallback.'
+    );
+  }
+
   return {
     ...contents,
     metadata: metadata(sourcePath, manifest),

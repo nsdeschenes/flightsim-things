@@ -31,8 +31,16 @@ Scans save package, aircraft, livery, airport, and airline metadata locally.
 Malformed packages are skipped and cause a nonzero exit status; fix the reported errors
 and scan again. Repeated scans update existing records but retain records for removed addons.
 
-Airport detection requires explicit airport XML or `AirportServices` entries.
-Compiled BGL scenery is not decoded, so airport coverage may be incomplete.
+Airport detection uses explicit airport XML or `AirportServices` entries. When a package
+contains BGL scenery and no explicit airports, the scanner can infer one code from its
+Community directory name, such as `amsim-airport-lpma-madeira`. The convention requires
+`vendor-airport-CODE-name`, with a four-character alphanumeric code; vendor names can
+contain hyphens. Inferred names, IATA codes, and locations remain unknown until enrichment.
+Compiled BGL scenery is not decoded, so airport coverage may be incomplete even when
+an airport is identified. Later explicit metadata replaces the package-name fallback.
+
+Scans show the first five warning details and count every warning. Run
+`bun run start scan --verbose` to show all details. Package errors are always shown.
 
 ## List Airports
 
@@ -191,6 +199,10 @@ bun run start sentry set --dsn 'https://publickey@o0.ingest.sentry.io/123456' \
 
 Sample rates range from `0` (off) to `1` (all events).
 Use `sentry update` to change selected values or `sentry get` to view the configuration.
+Scan diagnostics go to structured Sentry Logs at the saved log sampling rate.
+This includes warnings omitted from the console.
+Expected package failures do not create Issues.
+Unexpected failures retain error reporting.
 Help, version, argument errors, and Sentry, OpenAIP key, and AI configuration commands do not send telemetry.
 With Sentry tracing enabled, AI SDK calls record model and token usage, prompts,
 and generated outputs through the Vercel AI integration.
