@@ -2,7 +2,7 @@ import {createWriteStream} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 
 import {BunTerminal} from '@effect/platform-bun';
-import {Console, Effect, Terminal} from 'effect';
+import {Console, Effect, Option, Terminal} from 'effect';
 import {Command} from 'effect/cli';
 import type {CliError} from 'effect/cli/CliError';
 import {Select as select} from 'effect/cli/Prompt';
@@ -10,12 +10,15 @@ import {TaggedError as taggedError} from 'effect/Data';
 
 import invocationClassifier from '#invocation';
 
+import type ordinary from './ordinary.ts';
+
 type DeepReadonly<Value> = Value extends object
   ? Value extends (...args: readonly never[]) => unknown
     ? Value
     : {readonly [Key in keyof Value]: DeepReadonly<Value[Key]>}
   : Value;
 type CommandTree = DeepReadonly<Command.Command.Any>;
+type RootCommand = DeepReadonly<typeof ordinary.command>;
 type PromptServices = Exclude<Command.Environment, Terminal.Terminal>;
 const {catch: catchEffect} = Effect;
 
@@ -106,6 +109,32 @@ function runChild(args: readonly string[]): Effect.Effect<void, InteractiveError
       traceInput('child-exit');
       yield* Console.log(outcome);
     })
+  );
+}
+
+function runSelectedCommand(
+  root: RootCommand,
+  args: readonly string[],
+  version: string
+): Effect.Effect<void, InteractiveError, PromptServices> {
+  const invocation = invocationClassifier.classify(
+    args,
+    root.subcommands.flatMap(group => group.commands)
+  );
+  const [, operation] = args;
+  if (Option.isNone(invocation.sensitiveCommand) || operation !== 'set') {
+    return runChild(args);
+  }
+
+  return Command.runWith(root, {renderErrors: false, version})(args).pipe(
+    Effect.matchEffect({
+      onFailure: () =>
+        Console.error(
+          'Could not save configuration. Check the values and try again.'
+        ).pipe(Effect.andThen(Console.log('\nCommand exited with code 1.\n'))),
+      onSuccess: () => Console.log('\nCommand completed.\n'),
+    }),
+    Effect.provide(BunTerminal.layer)
   );
 }
 
@@ -239,7 +268,8 @@ function prepareCommand(
 }
 
 function makeTuiCommand(
-  root: CommandTree
+  root: RootCommand,
+  version: string
 ): Command.Command<
   'tui',
   Record<string, never>,
@@ -264,7 +294,7 @@ function makeTuiCommand(
         }
 
         if (prepared.kind === 'Prepared') {
-          yield* runChild(prepared.args).pipe(
+          yield* runSelectedCommand(root, prepared.args, version).pipe(
             catchEffect(() => Console.error('Could not run the selected command.'))
           );
         }

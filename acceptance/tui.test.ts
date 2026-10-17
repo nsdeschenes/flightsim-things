@@ -66,8 +66,11 @@ async function waitForMainMenu(
   await session.waitFor('Exit');
 }
 
-async function startSession(args: readonly string[] = ['tui']): Promise<Session> {
-  const session = createTerminalSession(fixture.executable, fixture.home, args);
+async function startSession(
+  args: readonly string[] = ['tui'],
+  executable: readonly string[] = fixture.executable
+): Promise<Session> {
+  const session = createTerminalSession(executable, fixture.home, args);
   sessions.push(session);
   await waitForMainMenu(session);
   return session;
@@ -134,7 +137,7 @@ test('returns to the menu after failure and repeated successful commands', async
   expect(await session.exited).toBe(successExitCode);
 });
 
-test('collects a masked credential and passes it intact to the command child', async () => {
+test('collects a masked credential and saves it through the existing handler', async () => {
   const key = 'tui-private-key-$()`';
   const session = await startSession();
   await saveKey(session, key);
@@ -144,6 +147,32 @@ test('collects a masked credential and passes it intact to the command child', a
   });
   session.send(controlD);
 });
+
+test.skipIf(process.platform !== 'linux' || typeof Bun.which('strace') !== 'string')(
+  'keeps prompted credentials out of process arguments',
+  async () => {
+    const trace = path.join(fixture.home, 'execve.log');
+    const key = 'tui-private-execve-probe';
+    const session = await startSession(
+      ['tui'],
+      [
+        'strace',
+        '-f',
+        '-e',
+        'trace=execve',
+        '-s',
+        '4096',
+        '-o',
+        trace,
+        ...fixture.executable,
+      ]
+    );
+    await saveKey(session, key);
+    session.send(controlD);
+    expect(await session.exited).toBe(successExitCode);
+    expect(await readFile(trace, 'utf8')).not.toContain(key);
+  }
+);
 
 test('saves a literal navigation label as a directory argument', async () => {
   await mkdir(path.join(fixture.home, 'back'));
