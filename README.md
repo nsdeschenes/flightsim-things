@@ -25,7 +25,7 @@ bun run start tui
 
 Use the arrow keys and Enter to choose a command and answer its prompts.
 Each command prints its output and returns to the menu, including after a command fails.
-Choose **Back to menu** in any submenu to return to the main menu.
+Choose **back** in any submenu to return to the main menu.
 Escape in a submenu or an argument prompt discards the pending command and returns to the main menu.
 Choose **Exit**, press Escape at the main menu, or press Ctrl+C or Ctrl+D at any prompt to close the session.
 Ctrl+C during a running command ends the session and stops that command.

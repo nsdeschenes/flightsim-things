@@ -96,7 +96,7 @@ async function openKeyPrompt(
   prompt: string
 ): Promise<void> {
   session.send(choose('openaip-key'));
-  await session.waitFor('Back to menu');
+  await session.waitFor('back');
   if (prompt === 'argument') {
     session.send(down + enter);
     await session.waitFor('Key');
@@ -140,25 +140,25 @@ test('collects a masked credential and passes it intact to the command child', a
 });
 
 test('saves a literal navigation label as a directory argument', async () => {
-  await mkdir(path.join(fixture.home, 'Back to menu'));
+  await mkdir(path.join(fixture.home, 'back'));
   const session = await startSession();
   session.send(choose('community-path'));
-  await session.waitFor('Back to menu');
+  await session.waitFor('back');
   session.send(down + enter);
   await session.waitFor('Path');
-  session.send(`Back to menu${enter}`);
+  session.send(`back${enter}`);
   await session.waitFor('Command completed.');
   expect(JSON.parse(await readFile(fixture.configurationFile, 'utf8'))).toMatchObject({
-    communityPath: path.join(fixture.home, 'Back to menu'),
+    communityPath: path.join(fixture.home, 'back'),
   });
 });
 
 test.each(commandGroups)(
-  'returns from $name to the main menu with Back to menu',
+  'returns from $name to the main menu with back',
   async (group: Readonly<{name: string; commands: number}>) => {
     const session = await startSession();
     session.send(choose(group.name));
-    await session.waitFor('Back to menu');
+    await session.waitFor('back');
     session.send(down.repeat(group.commands) + enter);
     await session.waitFor('Choose a command');
     expect(await Bun.file(fixture.configurationFile).exists()).toBe(false);
@@ -171,7 +171,7 @@ test('runs a settings get command with its complete submenu path', async () => {
   expect(saved.exitCode).toBe(successExitCode);
   const session = await startSession();
   session.send(choose('community-path'));
-  await session.waitFor('Back to menu');
+  await session.waitFor('back');
   session.send(enter);
   await session.waitFor(fixture.home);
   await session.waitFor('Command completed.');

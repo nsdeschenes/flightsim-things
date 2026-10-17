@@ -138,7 +138,7 @@ function selectCommand(
     message = 'Choose a command';
     choices.push({title: 'Exit', value: exit});
   } else {
-    choices.push({title: 'Back to menu', value: {kind: 'Back'}});
+    choices.push({title: 'back', value: {kind: 'Back'}});
   }
 
   return select({choices, maxPerPage: choices.length, message});
