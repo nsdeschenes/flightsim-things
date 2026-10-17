@@ -53,6 +53,7 @@ async function startSession(): Promise<Session> {
   const session = createTerminalSession(fixture.executable, fixture.home);
   sessions.push(session);
   await session.waitFor('Choose a command');
+  await session.waitFor('Exit');
   return session;
 }
 
