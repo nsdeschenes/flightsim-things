@@ -1,4 +1,4 @@
-import {and, eq, sql} from 'drizzle-orm';
+import {and, eq, ne, sql} from 'drizzle-orm';
 import {Option} from 'effect';
 import type {Effect} from 'effect/Effect';
 
@@ -192,6 +192,36 @@ function promoteAirportFallback(
   return true;
 }
 
+function retireFallbackIfExplicit(tx: Transaction, rows: PackageRows): boolean {
+  if (!rows.airports.some(row => row.sourceKey === airportFallback.sourceKey)) {
+    return false;
+  }
+
+  const explicit = tx
+    .select({id: schema.airports.id})
+    .from(schema.airports)
+    .where(
+      and(
+        eq(schema.airports.packageId, rows.packageId),
+        ne(schema.airports.sourceKey, airportFallback.sourceKey)
+      )
+    )
+    .get();
+  if (explicit) {
+    tx.delete(schema.airports)
+      .where(
+        and(
+          eq(schema.airports.packageId, rows.packageId),
+          eq(schema.airports.sourceKey, airportFallback.sourceKey)
+        )
+      )
+      .run();
+    return true;
+  }
+
+  return false;
+}
+
 function reconcileAirportFallback(
   tx: Transaction,
   rows: PackageRows
@@ -289,7 +319,15 @@ function saveBatch(
         );
         saveAirports(
           tx,
-          rows.flatMap(row => reconcileAirportFallback(tx, row))
+          rows.flatMap(row => {
+            if (retireFallbackIfExplicit(tx, row)) {
+              return row.airports.filter(
+                airport => airport.sourceKey !== airportFallback.sourceKey
+              );
+            }
+
+            return reconcileAirportFallback(tx, row);
+          })
         );
         return {
           aircraft: saveAircraft(

@@ -154,3 +154,46 @@ test(
   },
   cliTimeout
 );
+
+async function retainedExplicitPackages(): Promise<void> {
+  await fixture.addon('vendor-airport-kaaa-retained', {
+    'airport.xml': '<FSData><Airport ident="KBBB"/></FSData>',
+    'world.bgl': 'compiled',
+  });
+  await fixture.addon('vendor-airport-kaaa-independent', {'world.bgl': 'compiled'});
+  expect(await fixture.run('scan')).toMatchObject({exitCode: successExitCode});
+  await fixture.addon('vendor-airport-kaaa-retained', {'world.bgl': 'compiled'});
+}
+
+function addPollutedFallback(): void {
+  using db = new Database(path.join(fixture.home, '.flightsim-things/addons.sqlite'));
+  db.run(`INSERT INTO airports (package_id, source_key, icao_code)
+    SELECT id, '#package-name-airport', 'KAAA' FROM packages
+    WHERE title = 'vendor-airport-kaaa-retained'`);
+}
+
+function verifyRetainedExplicit(): void {
+  expect(
+    fixture.query(`SELECT source_key, icao_code FROM airports
+    JOIN packages ON packages.id = airports.package_id
+    WHERE title = 'vendor-airport-kaaa-retained'`)
+  ).toEqual([{icao_code: 'KBBB', source_key: 'airport.xml#airport:KBBB'}]);
+  expect(
+    fixture.query(`SELECT source_key, icao_code FROM airports
+    JOIN packages ON packages.id = airports.package_id
+    WHERE title = 'vendor-airport-kaaa-independent'`)
+  ).toEqual([{icao_code: 'KAAA', source_key: '#package-name-airport'}]);
+}
+
+test(
+  'stored explicit airports suppress later fallback and repair coexistence within their package',
+  async () => {
+    await retainedExplicitPackages();
+    expect(await fixture.run('scan')).toMatchObject({exitCode: successExitCode});
+    verifyRetainedExplicit();
+    addPollutedFallback();
+    expect(await fixture.run('scan')).toMatchObject({exitCode: successExitCode});
+    verifyRetainedExplicit();
+  },
+  cliTimeout
+);

@@ -199,8 +199,9 @@ eligibility disappears or explicit airport metadata becomes available. A same-co
 explicit observation promotes the fallback row to its explicit source key, preserving
 its ID, coordinates, and elevation when that source key does not already exist.
 Explicit names and IATA codes replace stored values, including null values. Ordinary
-explicit rows remain stored when their sources disappear. Failed packages retain
-their existing rows.
+explicit rows remain stored when their sources disappear and prevent later scans
+from inserting package-name fallback airports for that package. Stored explicit
+rows also retire any coexisting fallback row. Failed packages retain their existing rows.
 An interrupted scan preserves existing livery links when their observed targets
 are unchanged. Changed or removed targets clear their links during the batch update.
 
