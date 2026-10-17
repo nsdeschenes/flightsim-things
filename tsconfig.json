@@ -37,6 +37,7 @@
         "ignoreEffectErrorsInTscExitCode": false,
         "allowedUnstableApis": [
           "effect/cli",
+          "effect/Terminal",
           "effect/ErrorReporter",
           "@effect/platform-bun"
         ],

@@ -7,7 +7,7 @@ import {http, HttpResponse, passthrough} from 'msw';
 
 import ai from '#ai';
 
-import classifyInvocation from './invocation.ts';
+import invocationClassifier from './invocation.ts';
 import withSentry from './sentry.ts';
 import testHttp from './test-http.ts';
 
@@ -144,7 +144,7 @@ async function exerciseTracing(): Promise<void> {
             const text = await generate('private-prompt-sentinel');
             process.stdout.write(`${text}\n`);
           }),
-        classifyInvocation(['generate'], [{name: 'generate'}])
+        invocationClassifier.classify(['generate'], [{name: 'generate'}])
       )
     );
   } finally {

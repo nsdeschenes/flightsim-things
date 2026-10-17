@@ -5,7 +5,7 @@ import {CliConfig, CliError, Command, GlobalFlag} from 'effect/cli';
 import {version} from '#package';
 
 import command from './commands/index.ts';
-import classifyInvocation from './invocation.ts';
+import invocationClassifier from './invocation.ts';
 import withSentry from './sentry.ts';
 
 const argvOffset = 2;
@@ -44,7 +44,7 @@ function failureMessage(error: unknown): string {
 }
 
 const args = process.argv.slice(argvOffset);
-const invocation = classifyInvocation(
+const invocation = invocationClassifier.classify(
   args,
   command.subcommands.flatMap(
     (
