@@ -4,6 +4,7 @@ import {Command} from 'effect/cli';
 import type {CliError} from 'effect/cli/CliError';
 import {Select as select} from 'effect/cli/Prompt';
 import {TaggedError as taggedError} from 'effect/Data';
+import type {Scope} from 'effect/Scope';
 
 import invocationClassifier from '#invocation';
 
@@ -38,7 +39,7 @@ function runSelectedCommand(
   root: RootCommand,
   args: readonly string[],
   version: string
-): Effect.Effect<void, never, PromptServices> {
+): Effect.Effect<void, never, Command.Environment> {
   return Command.runWith(root, {renderErrors: false, version})(args).pipe(
     Effect.matchEffect({
       onFailure: () =>
@@ -46,8 +47,7 @@ function runSelectedCommand(
           Effect.andThen(Console.log('\nCommand exited with code 1.\n'))
         ),
       onSuccess: () => Console.log('\nCommand completed.\n'),
-    }),
-    Effect.provide(BunTerminal.layer)
+    })
   );
 }
 
@@ -135,40 +135,42 @@ function collectSelection(
   });
 }
 
-function prepareCommand(
-  root: CommandTree
-): Effect.Effect<PreparationOutcome, never, PromptServices> {
-  return Effect.scoped(
-    Effect.gen(function* collectCommand() {
-      let cancellation: Cancellation = {kind: 'Root'};
-      const terminal = yield* BunTerminal.make(
-        (input: DeepReadonly<Terminal.UserInput>) => {
-          cancellation = cancelInput(input, cancellation);
-          return cancellation.kind === 'Cancelled';
-        }
-      );
-      return yield* Effect.gen(function* promptForCommand() {
-        const selection = yield* selectCommand(root, 'Root');
-        cancellation = {kind: 'Nested'};
-        return yield* collectSelection(selection, []);
-      }).pipe(
-        Effect.provideService(Terminal.Terminal, terminal),
-        Effect.catchTag('QuitError', () => {
-          if (cancellation.kind === 'Cancelled') {
-            return Effect.succeed(cancellation.outcome);
-          }
+type TuiSession = Readonly<{
+  prepare: Effect.Effect<PreparationOutcome, never, PromptServices>;
+  terminal: Terminal.Terminal;
+}>;
 
-          return Effect.succeed(exit);
-        })
-      );
-    })
-  ).pipe(
-    catchEffect(() =>
-      Console.error('Could not prepare the command. Please try again.').pipe(
-        Effect.as({kind: 'Retry'} as const)
+function makeTuiSession(root: CommandTree): Effect.Effect<TuiSession, never, Scope> {
+  return Effect.gen(function* createSession() {
+    let cancellation: Cancellation = {kind: 'Root'};
+    const terminal = yield* BunTerminal.make(
+      (input: DeepReadonly<Terminal.UserInput>) => {
+        cancellation = cancelInput(input, cancellation);
+        return cancellation.kind === 'Cancelled';
+      }
+    );
+    const prepare = Effect.gen(function* promptForCommand() {
+      cancellation = {kind: 'Root'};
+      const selection = yield* selectCommand(root, 'Root');
+      cancellation = {kind: 'Nested'};
+      return yield* collectSelection(selection, []);
+    }).pipe(
+      Effect.provideService(Terminal.Terminal, terminal),
+      Effect.catchTag('QuitError', () => {
+        if (cancellation.kind === 'Cancelled') {
+          return Effect.succeed(cancellation.outcome);
+        }
+
+        return Effect.succeed(exit);
+      }),
+      catchEffect(() =>
+        Console.error('Could not prepare the command. Please try again.').pipe(
+          Effect.as({kind: 'Retry'} as const)
+        )
       )
-    )
-  );
+    );
+    return {prepare, terminal};
+  });
 }
 
 function makeTuiCommand(
@@ -190,18 +192,20 @@ function makeTuiCommand(
         });
       }
 
+      const session = yield* makeTuiSession(root);
       while (true) {
-        // Release the wizard terminal before running the selected command.
-        const prepared = yield* prepareCommand(root);
+        const prepared = yield* session.prepare;
         if (prepared.kind === 'Exit') {
           return yield* Effect.void;
         }
 
         if (prepared.kind === 'Prepared') {
-          yield* runSelectedCommand(root, prepared.args, version);
+          yield* runSelectedCommand(root, prepared.args, version).pipe(
+            Effect.provideService(Terminal.Terminal, session.terminal)
+          );
         }
       }
-    })
+    }).pipe(Effect.scoped)
   ).pipe(Command.withDescription('Run commands in an interactive terminal menu'));
 }
 
