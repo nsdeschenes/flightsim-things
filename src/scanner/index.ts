@@ -1,3 +1,6 @@
+import path from 'node:path';
+
+import {logger} from '@sentry/effect/server';
 import {Console, Effect} from 'effect';
 import {TaggedError as taggedError} from 'effect/Data';
 
@@ -6,6 +9,7 @@ import communityPath from '#community-path';
 import type PackageSnapshot from './model.ts';
 import packageReader from './package.ts';
 import persistence from './persistence.ts';
+import safeXmlMessage from './xml-message.ts';
 
 type PackageRead = Awaited<ReturnType<typeof packageReader.read>>;
 type ScanSummary = Readonly<{
@@ -19,10 +23,15 @@ type ScanSummary = Readonly<{
 type DatabaseError = Effect.Error<ReturnType<typeof persistence.save>>;
 type CommunityPathError = Effect.Error<ReturnType<typeof communityPath.get>>;
 type BatchResult = Readonly<{paths: readonly string[]; finished: boolean}>;
+type ScanDiagnostic = Readonly<{
+  'diagnostic.message': string;
+  'package.name': string;
+}>;
 const batchSize = 16;
 const readConcurrency = 4;
 const firstIndex = 0;
 const nextIndex = 1;
+const warningDetailLimit = 5;
 
 class ScanError extends taggedError('ScanError')<{
   readonly message: string;
@@ -54,7 +63,65 @@ async function readBatch(
   return {finished: false, paths};
 }
 
-function reportReads(reads: readonly PackageRead[]): Effect.Effect<
+function warningDetails(
+  warnings: readonly string[],
+  priorWarnings: number,
+  verbose: boolean
+): readonly string[] {
+  if (verbose) {
+    return warnings;
+  }
+
+  return warnings.slice(
+    firstIndex,
+    Math.max(firstIndex, warningDetailLimit - priorWarnings)
+  );
+}
+
+function reportDiagnostic(
+  sourcePath: string,
+  message: string,
+  level: 'warn' | 'error'
+): Effect.Effect<void> {
+  return Effect.sync(() => {
+    const packageName = path.basename(sourcePath);
+    const diagnostic: ScanDiagnostic = {
+      'diagnostic.message': message,
+      'package.name': packageName,
+    };
+    if (level === 'warn') {
+      logger.warn('Package scan warning', diagnostic);
+    } else {
+      logger.error('Package scan failed', diagnostic);
+    }
+  });
+}
+
+function reportWarnings(
+  snapshot: PackageSnapshot,
+  priorWarnings: number,
+  verbose: boolean
+): Effect.Effect<void> {
+  return Effect.gen(function* reportPackageWarnings() {
+    yield* Effect.forEach(
+      snapshot.warnings,
+      warning =>
+        reportDiagnostic(snapshot.metadata.sourcePath, safeXmlMessage(warning), 'warn'),
+      {discard: true}
+    );
+    yield* Effect.forEach(
+      warningDetails(snapshot.warnings, priorWarnings, verbose),
+      warning => Console.error(`Warning for ${snapshot.metadata.sourcePath}: ${warning}`),
+      {discard: true}
+    );
+  });
+}
+
+function reportReads(
+  reads: readonly PackageRead[],
+  priorWarnings: number,
+  verbose: boolean
+): Effect.Effect<
   Readonly<{
     snapshots: readonly PackageSnapshot[];
     failedPackages: number;
@@ -67,16 +134,13 @@ function reportReads(reads: readonly PackageRead[]): Effect.Effect<
     for (const read of reads) {
       if (read.status === 'failure') {
         counts.failedPackages += nextIndex;
-        yield* Console.error(`Skipped ${read.sourcePath}: ${read.message}`);
+        yield* reportDiagnostic(read.sourcePath, read.diagnosticMessage, 'error').pipe(
+          Effect.andThen(Console.error(`Skipped ${read.sourcePath}: ${read.message}`))
+        );
       } else {
         snapshots.push(read.snapshot);
+        yield* reportWarnings(read.snapshot, priorWarnings + counts.warnings, verbose);
         counts.warnings += read.snapshot.warnings.length;
-        yield* Effect.forEach(
-          read.snapshot.warnings,
-          warning =>
-            Console.error(`Warning for ${read.snapshot.metadata.sourcePath}: ${warning}`),
-          {discard: true}
-        );
       }
     }
 
@@ -104,7 +168,8 @@ const emptyRows: WrittenRows = {aircraft: [], liveries: []};
 
 function importBatch(
   paths: readonly string[],
-  prior: ScanSummary
+  prior: ScanSummary,
+  verbose: boolean
 ): Effect.Effect<
   Readonly<{saved: WrittenRows; summary: ScanSummary}>,
   ScanError | DatabaseError
@@ -122,7 +187,7 @@ function importBatch(
         }),
       {concurrency: readConcurrency}
     );
-    const result = yield* reportReads(reads);
+    const result = yield* reportReads(reads, prior.warnings, verbose);
     const summary = summarize(result.snapshots, {
       ...prior,
       failedPackages: prior.failedPackages + result.failedPackages,
@@ -148,7 +213,8 @@ function appendIds(
 }
 
 function scanBatches(
-  iterator: Readonly<AsyncGenerator<string, void>>
+  iterator: Readonly<AsyncGenerator<string, void>>,
+  verbose: boolean
 ): Effect.Effect<
   Readonly<{summary: ScanSummary; written: WrittenRows}>,
   ScanError | DatabaseError
@@ -172,7 +238,7 @@ function scanBatches(
           return next;
         },
       });
-      const imported = yield* importBatch(batch.paths, summary);
+      const imported = yield* importBatch(batch.paths, summary, verbose);
       ({summary} = imported);
       appendIds(written.aircraft, imported.saved.aircraft);
       appendIds(written.liveries, imported.saved.liveries);
@@ -182,17 +248,17 @@ function scanBatches(
   });
 }
 
-function scan(): Effect.Effect<
-  ScanSummary,
-  ScanError | DatabaseError | CommunityPathError
-> {
+function scan(
+  options: Readonly<{verbose?: boolean}> = {}
+): Effect.Effect<ScanSummary, ScanError | DatabaseError | CommunityPathError> {
   return Effect.gen(function* scanCommunity() {
+    const verbose = options.verbose ?? false;
     const directory = yield* communityPath.get();
     yield* communityPath.validate(directory);
     const iterator = packageReader.discover(directory);
     const result = yield* Effect.acquireUseRelease(
       Effect.succeed(iterator),
-      scanBatches,
+      (batches: Readonly<AsyncGenerator<string, void>>) => scanBatches(batches, verbose),
       () =>
         Effect.tryPromise({
           catch: toError,
@@ -202,6 +268,12 @@ function scan(): Effect.Effect<
         }).pipe(Effect.orDie)
     );
     yield* persistence.link(result.written);
+    if (!verbose && result.summary.warnings > warningDetailLimit) {
+      yield* Console.error(
+        `${result.summary.warnings - warningDetailLimit} additional warnings omitted. Run scan --verbose to show every warning.`
+      );
+    }
+
     return result.summary;
   });
 }

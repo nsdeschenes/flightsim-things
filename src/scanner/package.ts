@@ -4,8 +4,10 @@ import path from 'node:path';
 import {Option} from 'effect';
 
 import configurations from './aircraft.ts';
+import airportFallback from './airport-fallback.ts';
 import type PackageSnapshot from './model.ts';
 import readScenery from './scenery.ts';
+import safeXmlMessage from './xml-message.ts';
 
 type PackageMetadata = PackageSnapshot['metadata'];
 type AircraftObservation = PackageSnapshot['aircraft'][number];
@@ -13,16 +15,75 @@ type AirportObservation = PackageSnapshot['airports'][number];
 type LiveryObservation = PackageSnapshot['liveries'][number];
 type PackageRead =
   | Readonly<{status: 'success'; snapshot: PackageSnapshot}>
-  | Readonly<{status: 'failure'; sourcePath: string; message: string}>;
+  | Readonly<{
+      status: 'failure';
+      sourcePath: string;
+      message: string;
+      diagnosticMessage: string;
+    }>;
 type Contents = Pick<PackageSnapshot, 'aircraft' | 'airports' | 'liveries' | 'warnings'>;
 type FileLocator = Readonly<{key: string; relative: string}>;
-type Inventory = Readonly<{files: readonly FileLocator[]; warnings: readonly string[]}>;
+type Inventory = Readonly<{
+  files: readonly FileLocator[];
+  hasCompiledScenery: boolean;
+}>;
 const firstIndex = 0;
 const missing = Option.getOrNull(Option.none());
 const metadataFiles =
   /(?:^|\/)(?:aircraft|livery)\.cfg$|\.xml$|(?:^|\/)airportservices\/[^/]+\/services\.spb$/iu;
 const drivePrefix = /^[a-z]:/iu;
 const bom = /^\uFEFF/u;
+const systemCode = /^[A-Z][A-Z\d_]+$/u;
+const validationReasons = [
+  'Expected a JSON object',
+  'Layout entries require a relative file path',
+  'Unsafe layout path',
+  'Metadata file escapes its package',
+  'Duplicate metadata path in layout.json',
+  'layout.json requires a content array',
+  'Invalid aircraft configuration line',
+  'Aircraft configuration requires GENERAL, LIVERY, or FLTSIM sections',
+  'Invalid virtual aircraft container',
+  'Duplicate FLTSIM section',
+];
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return String(error);
+}
+
+function diagnosticReason(error: unknown): string {
+  if (
+    error instanceof Error &&
+    'code' in error &&
+    typeof error.code === 'string' &&
+    systemCode.test(error.code)
+  ) {
+    return error.code;
+  }
+
+  const message = errorMessage(error);
+  const xmlMessage = safeXmlMessage(message);
+  if (message.startsWith('XML Parse error:') || xmlMessage !== message) {
+    return xmlMessage;
+  }
+
+  const reason = validationReasons.find(candidate => message.startsWith(candidate));
+  return reason ?? 'Package metadata validation failed';
+}
+
+class MetadataReadError extends Error {
+  public override name = 'MetadataReadError';
+  public readonly diagnosticMessage: string;
+
+  public constructor(error: unknown, relative: string, reason = diagnosticReason(error)) {
+    super(errorMessage(error));
+    this.diagnosticMessage = `${reason} in ${relative}`;
+  }
+}
 
 function text(value: unknown): string | null {
   if (typeof value !== 'string' || value.trim() === '') {
@@ -80,9 +141,18 @@ async function json(
   root: string,
   relative: string
 ): Promise<Readonly<Record<string, unknown>>> {
-  const contents = await readFile(root, relative);
-  const parsed: unknown = JSON.parse(contents.toString('utf8').replace(bom, ''));
-  return object(parsed);
+  try {
+    const contents = await readFile(root, relative);
+    const parsed: unknown = JSON.parse(contents.toString('utf8').replace(bom, ''));
+    return object(parsed);
+  } catch (error) {
+    let reason = diagnosticReason(error);
+    if (error instanceof SyntaxError) {
+      reason = 'Invalid JSON';
+    }
+
+    throw new MetadataReadError(error, relative, reason);
+  }
 }
 
 function addMetadataFile(
@@ -102,14 +172,10 @@ function inventory(layout: Readonly<Record<string, unknown>>): Inventory {
     throw new TypeError('layout.json requires a content array');
   }
 
-  const selected = {files: new Map<string, string>(), warnings: [] as string[]};
+  const selected = {files: new Map<string, string>(), hasCompiledScenery: false};
   for (const entry of layout.content) {
     const relative = relativeFile(object(entry).path);
-    if (vfsKey(relative).endsWith('.bgl') && selected.warnings.length === firstIndex) {
-      selected.warnings.push(
-        'Compiled scenery metadata is not decoded; airport records require explicit XML or AirportServices metadata.'
-      );
-    }
+    selected.hasCompiledScenery ||= vfsKey(relative).endsWith('.bgl');
 
     if (metadataFiles.test(vfsKey(relative))) {
       addMetadataFile(selected.files, vfsKey(relative), relative);
@@ -121,11 +187,15 @@ function inventory(layout: Readonly<Record<string, unknown>>): Inventory {
       selected.files.entries(),
       ([key, relative]: readonly [string, string]) => ({key, relative})
     ),
-    warnings: selected.warnings,
+    hasCompiledScenery: selected.hasCompiledScenery,
   };
 }
 
-async function readMetadata(root: string, locator: FileLocator): Promise<Contents> {
+async function parseMetadata(
+  root: string,
+  locator: FileLocator,
+  packageName: string
+): Promise<Contents> {
   const bytes = await readFile(root, locator.relative);
   if (locator.key.endsWith('aircraft.cfg')) {
     return {
@@ -141,13 +211,29 @@ async function readMetadata(root: string, locator: FileLocator): Promise<Content
     };
   }
 
-  const scenery = await readScenery(locator.key, new Blob([bytes]));
+  const scenery = await readScenery(locator.key, new Blob([bytes]), {
+    filePath: locator.relative,
+    packageName,
+  });
   return {aircraft: [], liveries: [], ...scenery};
+}
+
+async function readMetadata(
+  root: string,
+  locator: FileLocator,
+  packageName: string
+): Promise<Contents> {
+  try {
+    return await parseMetadata(root, locator, packageName);
+  } catch (error) {
+    throw new MetadataReadError(error, locator.relative);
+  }
 }
 
 async function readContents(
   root: string,
-  files: readonly FileLocator[]
+  files: readonly FileLocator[],
+  packageName: string
 ): Promise<Contents> {
   const contents: {
     aircraft: AircraftObservation[];
@@ -156,7 +242,7 @@ async function readContents(
     warnings: string[];
   } = {aircraft: [], airports: [], liveries: [], warnings: []};
   for (const locator of files) {
-    const rows = await readMetadata(root, locator);
+    const rows = await readMetadata(root, locator, packageName);
     contents.warnings.push(...rows.warnings);
     contents.aircraft.push(...rows.aircraft);
     for (const row of rows.airports) {
@@ -186,14 +272,24 @@ function metadata(
   };
 }
 
-async function snapshot(sourcePath: string): Promise<PackageSnapshot> {
-  const root = await fs.realpath(sourcePath);
+async function snapshot(sourcePath: string, root: string): Promise<PackageSnapshot> {
   const [manifest, layout] = await Promise.all([
     json(root, 'manifest.json'),
     json(root, 'layout.json'),
   ]);
-  const {files, warnings} = inventory(layout);
-  const contents = await readContents(root, files);
+  const {files, hasCompiledScenery} = inventory(layout);
+  let contents = await readContents(root, files, path.basename(sourcePath));
+  if (contents.airports.length === firstIndex && hasCompiledScenery) {
+    contents = {...contents, airports: airportFallback.infer(sourcePath)};
+  }
+
+  const warnings: string[] = [];
+  if (hasCompiledScenery) {
+    warnings.push(
+      'Compiled scenery metadata is not decoded; airport coverage may be incomplete even with XML, AirportServices, or package-name fallback.'
+    );
+  }
+
   return {
     ...contents,
     metadata: metadata(sourcePath, manifest),
@@ -203,14 +299,20 @@ async function snapshot(sourcePath: string): Promise<PackageSnapshot> {
 
 async function readPackage(sourcePath: string): Promise<PackageRead> {
   try {
-    return {snapshot: await snapshot(sourcePath), status: 'success'};
+    const root = await fs.realpath(sourcePath);
+    return {snapshot: await snapshot(sourcePath, root), status: 'success'};
   } catch (error) {
-    let message = String(error);
-    if (error instanceof Error) {
-      ({message} = error);
+    let diagnosticMessage = diagnosticReason(error);
+    if (error instanceof MetadataReadError) {
+      ({diagnosticMessage} = error);
     }
 
-    return {message, sourcePath, status: 'failure'};
+    return {
+      diagnosticMessage,
+      message: errorMessage(error),
+      sourcePath,
+      status: 'failure',
+    };
   }
 }
 

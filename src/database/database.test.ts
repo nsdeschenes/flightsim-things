@@ -2,6 +2,7 @@ import {afterEach, beforeEach, expect, expectTypeOf, test} from 'bun:test';
 import {mkdir, mkdtemp, readFile, rm, stat, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 
 import {Effect, Schema} from 'effect';
 
@@ -240,3 +241,43 @@ test('compiled database probe includes migrations and persists from an empty cwd
     });
   }
 }, 15_000);
+
+test('stale inferred snapshots yield to stored explicit airports without disrupting promotion', async () => {
+  const readerModule = fileURLToPath(new URL('../scanner/package.ts', import.meta.url));
+  const persistenceModule = fileURLToPath(
+    new URL('../scanner/persistence.ts', import.meta.url)
+  );
+  const result = await run(`
+    import assert from 'node:assert/strict';
+    import {mkdir, writeFile} from 'node:fs/promises';
+    import path from 'node:path';
+    import reader from ${JSON.stringify(readerModule)};
+    import persistence from ${JSON.stringify(persistenceModule)};
+    const root = path.join(process.env.HOME, 'Community/vendor-airport-kaaa-example');
+    await mkdir(root, {recursive: true});
+    await writeFile(path.join(root, 'manifest.json'), '{}');
+    await writeFile(path.join(root, 'world.bgl'), 'compiled');
+    await writeFile(path.join(root, 'layout.json'), JSON.stringify({content: [{path: 'world.bgl'}]}));
+    const stale = await reader.read(root);
+    assert.equal(stale.status, 'success');
+    await Effect.runPromise(persistence.save([stale.snapshot]));
+    const identity = await Effect.runPromise(database.use(db => db.select().from(schema.airports).get()));
+    await Effect.runPromise(database.use(db => {
+      db.update(schema.airports).set({latitude: 1.25}).run();
+      db.insert(schema.airports).values({packageId: identity.packageId, sourceKey: 'retained.xml#airport:KBBB', icaoCode: 'KBBB'}).run();
+    }));
+    await writeFile(path.join(root, 'airport.xml'), '<FSData><Airport ident="KAAA" name="Explicit"/></FSData>');
+    await writeFile(path.join(root, 'layout.json'), JSON.stringify({content: [{path: 'world.bgl'}, {path: 'airport.xml'}]}));
+    const explicit = await reader.read(root);
+    assert.equal(explicit.status, 'success');
+    await Effect.runPromise(persistence.save([explicit.snapshot]));
+    await Effect.runPromise(persistence.save([stale.snapshot]));
+    const rows = await Effect.runPromise(database.use(db => db.select().from(schema.airports).orderBy(schema.airports.id).all()));
+    assert.equal(rows.length, 2);
+    assert.equal(rows[0].id, identity.id);
+    assert.equal(rows[0].latitude, 1.25);
+    assert.equal(rows[0].sourceKey, 'airport.xml#airport:KAAA');
+    assert.equal(rows[1].sourceKey, 'retained.xml#airport:KBBB');
+  `);
+  expect(result).toMatchObject({exitCode: 0, stderr: ''});
+});

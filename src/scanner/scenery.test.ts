@@ -9,7 +9,8 @@ test.each([
 ])('unrelated malformed XML produces a warning for %s', async xml => {
   const result = await readScenery(
     'simobjects/airplanes/base/sound.xml',
-    new Blob([xml])
+    new Blob([xml]),
+    {filePath: 'simobjects/airplanes/base/sound.xml', packageName: 'test-package'}
   );
   expect(result.airports).toEqual([]);
   expect(result.warnings).toHaveLength(1);
@@ -34,5 +35,10 @@ test.each([
     '<?xml version="1.0" encoding="UTF-16"?><Sound><broken',
   ],
 ])('airport corruption and uncertain XML reject %s', (_name, filename, xml) => {
-  expect(readScenery(filename, new Blob([xml]))).rejects.toThrow();
+  expect(
+    readScenery(filename, new Blob([xml]), {
+      filePath: filename,
+      packageName: 'test-package',
+    })
+  ).rejects.toThrow();
 });
