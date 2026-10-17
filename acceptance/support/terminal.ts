@@ -28,7 +28,7 @@ function createTerminalSession(
   const terminal = new Bun.Terminal({
     cols: terminalColumns,
     data(_terminal: unknown, data: DeepReadonly<Uint8Array>): void {
-      output += decoder.decode(data);
+      output += decoder.decode(data, {stream: true});
     },
     rows: terminalRows,
   });

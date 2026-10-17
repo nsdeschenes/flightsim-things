@@ -177,8 +177,12 @@ async function writeDesktopFiles(
   ]);
 }
 
-async function archiveFiles(args: readonly string[]): Promise<void> {
-  const child = Bun.spawn(['tar', ...args], {stderr: 'inherit', stdout: 'inherit'});
+async function archiveFiles(args: readonly string[], cwd: string): Promise<void> {
+  const child = Bun.spawn(['tar', ...args], {
+    cwd,
+    stderr: 'inherit',
+    stdout: 'inherit',
+  });
   assert.equal(
     await child.exited,
     successExitCode,
@@ -202,7 +206,10 @@ async function createDesktopBundle(
       'dist',
       `flightsim-things-${version}-${target.id}-desktop.tar.gz`
     );
-    await archiveFiles(['-czf', archive, '-C', staging, '.']);
+    await archiveFiles(
+      ['-czf', path.basename(archive), '-C', staging, '.'],
+      path.dirname(archive)
+    );
     process.stdout.write(`${archive}\n`);
   } finally {
     await rm(staging, {force: true, recursive: true});
@@ -403,7 +410,7 @@ async function verifyLauncher(
       input: Readonly<{write: (value: string) => number}>,
       data: DeepReadonly<Uint8Array>
     ): void {
-      output += decoder.decode(data);
+      output += decoder.decode(data, {stream: true});
       if (
         !selectedExit &&
         output.includes('Choose a command') &&
@@ -427,7 +434,10 @@ async function verifyDesktopBundle(directories: SmokeDirectory): Promise<void> {
   const archive = directories.binary.replace(executableExtension, '-desktop.tar.gz');
   const extracted = path.join(directories.home, 'Extracted desktop bundle');
   await mkdir(extracted);
-  await archiveFiles(['-xzf', archive, '-C', extracted]);
+  await archiveFiles(
+    ['-xzf', path.basename(archive), '-C', extracted],
+    path.dirname(archive)
+  );
   const target = targets.find(
     candidate =>
       candidate.platform === process.platform && candidate.arch === process.arch

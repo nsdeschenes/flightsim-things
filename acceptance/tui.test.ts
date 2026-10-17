@@ -1,5 +1,5 @@
 import {afterEach, beforeEach, expect, setDefaultTimeout, test} from 'bun:test';
-import {mkdir, readFile} from 'node:fs/promises';
+import {mkdir, readFile, realpath} from 'node:fs/promises';
 import path from 'node:path';
 import {stripVTControlCharacters} from 'node:util';
 
@@ -149,7 +149,7 @@ test('saves a literal navigation label as a directory argument', async () => {
   session.send(`back${enter}`);
   await session.waitFor('Command completed.');
   expect(JSON.parse(await readFile(fixture.configurationFile, 'utf8'))).toMatchObject({
-    communityPath: path.join(fixture.home, 'back'),
+    communityPath: await realpath(path.join(fixture.home, 'back')),
   });
 });
 
