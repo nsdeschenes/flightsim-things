@@ -43,7 +43,12 @@ function failureMessage(error: unknown): string {
   return String(error);
 }
 
-const args = process.argv.slice(argvOffset);
+const noArguments = 0;
+let args = process.argv.slice(argvOffset);
+if (args.length === noArguments) {
+  args = ['tui'];
+}
+
 const invocation = invocationClassifier.classify(
   args,
   command.subcommands.flatMap(

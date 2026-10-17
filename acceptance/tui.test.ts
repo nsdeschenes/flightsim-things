@@ -59,8 +59,8 @@ afterEach(async () => {
   await fixture.dispose();
 });
 
-async function startSession(): Promise<Session> {
-  const session = createTerminalSession(fixture.executable, fixture.home);
+async function startSession(args: readonly string[] = ['tui']): Promise<Session> {
+  const session = createTerminalSession(fixture.executable, fixture.home, args);
   sessions.push(session);
   await session.waitFor('Choose a command');
   await session.waitFor('Exit');
@@ -230,11 +230,18 @@ test.each([escape, controlC, controlD])(
   }
 );
 
-test('noninteractive tui fails promptly while no arguments still prints help', async () => {
+test('no arguments opens the menu and runs commands', async () => {
+  const session = await startSession([]);
+  await greet(session);
+  session.send(escape);
+  expect(await session.exited).toBe(successExitCode);
+});
+
+test('noninteractive launches fail promptly with or without the tui command', async () => {
   const noninteractive = await fixture.run('tui');
   expect(noninteractive.exitCode).toBe(failureExitCode);
   expect(noninteractive.stderr).toContain('requires a terminal');
   const noArguments = await fixture.run();
-  expect(noArguments.exitCode).toBe(successExitCode);
-  expect(noArguments.stdout).toContain('USAGE');
+  expect(noArguments.exitCode).toBe(failureExitCode);
+  expect(noArguments.stderr).toContain('requires a terminal');
 });

@@ -169,7 +169,7 @@ async function writeDesktopFiles(
       'Open the Launch flightsim-things file to start the interactive menu.\n' +
       'On Linux, your file manager may require Run as a program or Run in terminal.\n' +
       'In a terminal, run ./flightsim-things tui, or flightsim-things.exe tui on Windows.\n' +
-      'Running the executable without arguments prints CLI help.\n'
+      'Running the executable without arguments starts the interactive menu. Use --help for CLI help.\n'
   );
   await Promise.all([
     chmod(binary, executableMode),

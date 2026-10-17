@@ -29,7 +29,7 @@ Choose **back** in any submenu to return to the main menu.
 Escape in a submenu or an argument prompt discards the pending command and returns to the main menu.
 Choose **Exit**, press Escape at the main menu, or press Ctrl+C or Ctrl+D at any prompt to close the session.
 Ctrl+C during a running command ends the session and stops that command.
-With no arguments, the CLI prints help.
+With no arguments, the CLI opens the interactive menu. Use `--help` to print help.
 Piped input or output cannot run `tui`.
 
 API key prompts hide your input. The existing `openaip-key get` command prints your saved key when you select it.
