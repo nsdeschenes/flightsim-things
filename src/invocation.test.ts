@@ -16,25 +16,25 @@ const rootCommands = [
 ];
 
 test.each([
-  {args: ['community-path', 'set', 'ai'], skipTelemetry: false},
-  {args: ['community-path', 'set', 'openaip-key'], skipTelemetry: false},
-  {args: ['community-path', 'set', 'sentry'], skipTelemetry: false},
-  {args: ['--unknown', 'community-path', 'set', 'ai'], skipTelemetry: false},
-  {args: ['--help', 'false', 'community-path', 'set', 'ai'], skipTelemetry: true},
-  {args: ['-v', 'false', 'community-path', 'set', 'ai'], skipTelemetry: true},
-  {args: ['-hv', 'false', 'community-path', 'set', 'ai'], skipTelemetry: true},
-  {args: ['--no-help', 'community-path', 'set', 'ai'], skipTelemetry: true},
-  {args: ['--help=false', 'community-path', 'set', 'ai'], skipTelemetry: true},
+  {args: ['community-path', 'set', 'ai'], controlInvocation: false},
+  {args: ['community-path', 'set', 'openaip-key'], controlInvocation: false},
+  {args: ['community-path', 'set', 'sentry'], controlInvocation: false},
+  {args: ['--unknown', 'community-path', 'set', 'ai'], controlInvocation: false},
+  {args: ['--help', 'false', 'community-path', 'set', 'ai'], controlInvocation: true},
+  {args: ['-v', 'false', 'community-path', 'set', 'ai'], controlInvocation: true},
+  {args: ['-hv', 'false', 'community-path', 'set', 'ai'], controlInvocation: true},
+  {args: ['--no-help', 'community-path', 'set', 'ai'], controlInvocation: true},
+  {args: ['--help=false', 'community-path', 'set', 'ai'], controlInvocation: true},
 ])(
   'recognized root wins over later credential markers for $args',
   ({
     args,
-    skipTelemetry,
-  }: Readonly<{args: readonly string[]; skipTelemetry: boolean}>) => {
+    controlInvocation,
+  }: Readonly<{args: readonly string[]; controlInvocation: boolean}>) => {
     const result = classifyInvocation(args, rootCommands);
     expect(result.command).toEqual(Option.some('community-path'));
     expect(result.sensitiveCommand).toEqual(Option.none());
-    expect(result.skipTelemetry).toBe(skipTelemetry);
+    expect(result.controlInvocation).toBe(controlInvocation);
   }
 );
 
@@ -48,7 +48,6 @@ test.each([
   const result = classifyInvocation(args, rootCommands);
   expect(result.command).toEqual(Option.some(command));
   expect(result.sensitiveCommand).toEqual(Option.some(command));
-  expect(result.skipTelemetry).toBe(true);
 });
 
 test.each([
@@ -61,7 +60,6 @@ test.each([
     const result = classifyInvocation(args, rootCommands);
     expect(result.command).toEqual(Option.some('private-option-key'));
     expect(result.sensitiveCommand).toEqual(Option.some('ai'));
-    expect(result.skipTelemetry).toBe(true);
   }
 );
 
@@ -82,22 +80,16 @@ test.each(ordinaryInvocations)(
   ({args, command}: Readonly<{args: readonly string[]; command?: string}>) => {
     expect(classifyInvocation(args, rootCommands)).toEqual({
       command: Option.fromNullishOr(command),
+      controlInvocation: false,
       sensitiveCommand: Option.none(),
-      skipTelemetry: false,
     });
   }
 );
 
-test('interactive parent skips telemetry while ordinary child commands retain classification', () => {
+test('interactive invocation keeps command classification independent of SDK startup', () => {
   expect(classifyInvocation(['tui'], rootCommands)).toEqual({
     command: Option.some('tui'),
+    controlInvocation: false,
     sensitiveCommand: Option.none(),
-    skipTelemetry: true,
   });
-  expect(classifyInvocation(['community-path', 'get'], rootCommands).skipTelemetry).toBe(
-    false
-  );
-  expect(
-    classifyInvocation(['openaip-key', 'set', 'private'], rootCommands).skipTelemetry
-  ).toBe(true);
 });

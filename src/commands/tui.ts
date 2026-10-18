@@ -1,12 +1,13 @@
 import {BunTerminal} from '@effect/platform-bun';
-import {Console, Effect, Terminal} from 'effect';
+import {Console, Data, Deferred, Effect, Queue, Terminal} from 'effect';
+import type {Done} from 'effect/Cause';
 import {Command} from 'effect/cli';
 import type {CliError} from 'effect/cli/CliError';
 import {Select as select} from 'effect/cli/Prompt';
-import {TaggedError as taggedError} from 'effect/Data';
 import type {Scope} from 'effect/Scope';
 
 import invocationClassifier from '#invocation';
+import sentry from '#sentry';
 
 import type ordinary from './ordinary.ts';
 
@@ -19,6 +20,7 @@ type CommandTree = DeepReadonly<Command.Command.Any>;
 type RootCommand = DeepReadonly<typeof ordinary.command>;
 type PromptServices = Exclude<Command.Environment, Terminal.Terminal>;
 const {catch: catchEffect} = Effect;
+const {TaggedError: taggedError} = Data;
 
 type Selection =
   | Readonly<{kind: 'Back'}>
@@ -40,15 +42,23 @@ function runSelectedCommand(
   args: readonly string[],
   version: string
 ): Effect.Effect<void, never, Command.Environment> {
-  return Command.runWith(root, {renderErrors: false, version})(args).pipe(
-    Effect.matchEffect({
-      onFailure: () =>
-        Console.error('Could not run the command. Check the values and try again.').pipe(
-          Effect.andThen(Console.log('\nCommand exited with code 1.\n'))
-        ),
-      onSuccess: () => Console.log('\nCommand completed.\n'),
-    })
-  );
+  return sentry
+    .instrument(
+      () => Command.runWith(root, {renderErrors: false, version})(args),
+      invocationClassifier.classify(
+        args,
+        root.subcommands.flatMap(group => group.commands)
+      )
+    )
+    .pipe(
+      Effect.matchEffect({
+        onFailure: () =>
+          Console.error(
+            'Could not run the command. Check the values and try again.'
+          ).pipe(Effect.andThen(Console.log('\nCommand exited with code 1.\n'))),
+        onSuccess: () => Console.log('\nCommand completed.\n'),
+      })
+    );
 }
 
 function prepareArguments(
@@ -138,25 +148,147 @@ function collectSelection(
 type TuiSession = Readonly<{
   prepare: Effect.Effect<PreparationOutcome, never, PromptServices>;
   terminal: Terminal.Terminal;
+  exitRequested: Effect.Effect<void>;
 }>;
+type InputSink = DeepReadonly<{
+  offer: (input: DeepReadonly<Terminal.UserInput>) => void;
+  end: () => void;
+}>;
+type PromptInput =
+  | Readonly<{kind: 'Idle' | 'Ended'}>
+  | Readonly<{kind: 'Reading'; sink: InputSink}>;
+type SessionInput = DeepReadonly<{
+  getCancellation: () => Cancellation;
+  setCancellation: (value: Cancellation) => void;
+  getPrompt: () => PromptInput;
+  setPrompt: (value: PromptInput) => void;
+  exitRequested: Effect.Effect<void>;
+  requestExit: () => void;
+}>;
+
+function makeSessionInput(): Effect.Effect<SessionInput> {
+  return Effect.gen(function* createSessionInput() {
+    let cancellation: Cancellation = {kind: 'Root'};
+    let prompt: PromptInput = {kind: 'Idle'};
+    const exitRequested = yield* Deferred.make<Readonly<{kind: 'Exit'}>>();
+    return {
+      exitRequested: Deferred.await(exitRequested).pipe(Effect.asVoid),
+      getCancellation: () => cancellation,
+      getPrompt: () => prompt,
+      requestExit() {
+        Deferred.doneUnsafe(exitRequested, Effect.succeed(exit));
+      },
+      setCancellation(value) {
+        cancellation = value;
+      },
+      setPrompt(value) {
+        prompt = value;
+      },
+    };
+  });
+}
+
+function forwardPromptInput(
+  input: DeepReadonly<Terminal.UserInput>,
+  sink: InputSink,
+  session: SessionInput
+): void {
+  const cancellation = cancelInput(input, session.getCancellation());
+  session.setCancellation(cancellation);
+  if (cancellation.kind === 'Cancelled') {
+    session.setPrompt({kind: 'Idle'});
+  }
+
+  sink.offer(input);
+  if (cancellation.kind === 'Cancelled') {
+    sink.end();
+  }
+}
+
+function forwardInput(
+  input: DeepReadonly<Terminal.UserInput>,
+  session: SessionInput
+): void {
+  const prompt = session.getPrompt();
+  if (prompt.kind === 'Reading') {
+    forwardPromptInput(input, prompt.sink, session);
+  } else if (input.key.ctrl && (input.key.name === 'c' || input.key.name === 'd')) {
+    session.requestExit();
+  }
+}
+
+function readPromptInput(session: SessionInput): Terminal.Terminal['readInput'] {
+  return Effect.gen(function* acquirePromptInput() {
+    const queue = yield* Queue.make<Terminal.UserInput, Done>();
+    const sink: InputSink = {
+      end() {
+        Queue.endUnsafe(queue);
+      },
+      offer(input) {
+        Queue.offerUnsafe(queue, input);
+      },
+    };
+    if (session.getPrompt().kind === 'Ended') {
+      sink.end();
+    } else {
+      session.setPrompt({kind: 'Reading', sink});
+    }
+
+    yield* Effect.addFinalizer(() =>
+      Effect.sync(() => {
+        const prompt = session.getPrompt();
+        if (prompt.kind === 'Reading' && prompt.sink === sink) {
+          session.setPrompt({kind: 'Idle'});
+        }
+      })
+    );
+    return queue;
+  });
+}
+
+function makeSessionTerminal(
+  session: SessionInput
+): Effect.Effect<Terminal.Terminal, never, Scope> {
+  return Effect.gen(function* acquireSessionInput() {
+    const terminal = yield* BunTerminal.make(
+      (input: DeepReadonly<Terminal.UserInput>) => {
+        forwardInput(input, session);
+        return false;
+      }
+    );
+    const input = yield* terminal.readInput;
+    yield* Queue.take(input).pipe(
+      Effect.forever,
+      catchEffect(() =>
+        Effect.sync(() => {
+          const prompt = session.getPrompt();
+          if (prompt.kind === 'Reading') {
+            prompt.sink.end();
+          }
+
+          session.setPrompt({kind: 'Ended'});
+          session.requestExit();
+        })
+      ),
+      Effect.forkScoped
+    );
+    return Terminal.make({...terminal, readInput: readPromptInput(session)});
+  });
+}
 
 function makeTuiSession(root: CommandTree): Effect.Effect<TuiSession, never, Scope> {
   return Effect.gen(function* createSession() {
-    let cancellation: Cancellation = {kind: 'Root'};
-    const terminal = yield* BunTerminal.make(
-      (input: DeepReadonly<Terminal.UserInput>) => {
-        cancellation = cancelInput(input, cancellation);
-        return cancellation.kind === 'Cancelled';
-      }
-    );
+    const input = yield* makeSessionInput();
+    const terminal = yield* makeSessionTerminal(input);
     const prepare = Effect.gen(function* promptForCommand() {
-      cancellation = {kind: 'Root'};
+      input.setCancellation({kind: 'Root'});
       const selection = yield* selectCommand(root, 'Root');
-      cancellation = {kind: 'Nested'};
+      input.setCancellation({kind: 'Nested'});
       return yield* collectSelection(selection, []);
     }).pipe(
       Effect.provideService(Terminal.Terminal, terminal),
       Effect.catchTag('QuitError', () => {
+        const cancellation = input.getCancellation();
         if (cancellation.kind === 'Cancelled') {
           return Effect.succeed(cancellation.outcome);
         }
@@ -169,7 +301,11 @@ function makeTuiSession(root: CommandTree): Effect.Effect<TuiSession, never, Sco
         )
       )
     );
-    return {prepare, terminal};
+    return {
+      exitRequested: input.exitRequested,
+      prepare,
+      terminal,
+    };
   });
 }
 
@@ -193,18 +329,20 @@ function makeTuiCommand(
       }
 
       const session = yield* makeTuiSession(root);
-      while (true) {
-        const prepared = yield* session.prepare;
-        if (prepared.kind === 'Exit') {
-          return yield* Effect.void;
-        }
+      return yield* Effect.gen(function* runMenuCommands() {
+        while (true) {
+          const prepared = yield* session.prepare;
+          if (prepared.kind === 'Exit') {
+            return yield* Effect.void;
+          }
 
-        if (prepared.kind === 'Prepared') {
-          yield* runSelectedCommand(root, prepared.args, version).pipe(
-            Effect.provideService(Terminal.Terminal, session.terminal)
-          );
+          if (prepared.kind === 'Prepared') {
+            yield* runSelectedCommand(root, prepared.args, version).pipe(
+              Effect.provideService(Terminal.Terminal, session.terminal)
+            );
+          }
         }
-      }
+      }).pipe(Effect.raceFirst(session.exitRequested));
     }).pipe(Effect.scoped)
   ).pipe(Command.withDescription('Run commands in an interactive terminal menu'));
 }

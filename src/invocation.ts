@@ -5,7 +5,7 @@ type RootCommand = Readonly<{name: string; alias?: string | undefined}>;
 type Invocation = Readonly<{
   command: Option.Option<string>;
   sensitiveCommand: Option.Option<'ai' | 'openaip-key'>;
-  skipTelemetry: boolean;
+  controlInvocation: boolean;
 }>;
 type ArgumentScan = Readonly<{
   firstValue: string | null;
@@ -34,7 +34,6 @@ const booleanLiterals = new Set([
 ]);
 const firstCharacter = 1;
 const nextArgument = 1;
-const noArguments = 0;
 const missing = Option.getOrNull(Option.none());
 
 function shortBuiltInArgument(
@@ -151,14 +150,10 @@ function classifyInvocation(
 
   return {
     command: Option.fromNullishOr(command),
+    controlInvocation: scan.controlInvocation,
     sensitiveCommand: Option.fromNullishOr(privateCommand).pipe(
       Option.filter(name => name !== 'sentry')
     ),
-    skipTelemetry:
-      args.length === noArguments ||
-      scan.controlInvocation ||
-      privateCommand !== missing ||
-      command === 'tui',
   };
 }
 

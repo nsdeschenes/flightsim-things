@@ -1,6 +1,7 @@
 import {Console, Effect, Option} from 'effect';
 import {Command, Flag} from 'effect/cli';
 
+import sentry from '#sentry';
 import configurationStore from '#sentry-config';
 
 type DeepReadonly<Value> = Value extends object
@@ -59,6 +60,7 @@ const setCommand = Command.make('set', flags, input =>
       },
     });
     yield* configurationStore.write(configuration);
+    yield* sentry.refresh;
     yield* Console.log('Sentry configuration saved.');
   })
 ).pipe(Command.withDescription('Save or replace the DSN and all four sample rates'));
@@ -109,6 +111,7 @@ const updateCommand = Command.make(
           },
         })
       );
+      yield* sentry.refresh;
       return yield* Console.log('Sentry configuration saved.');
     })
 ).pipe(Command.withDescription('Update selected options in the saved configuration'));

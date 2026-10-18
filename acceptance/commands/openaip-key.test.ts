@@ -60,7 +60,8 @@ test('set repairs an invalid saved key and preserves all other settings', async 
   );
   expect(await fixture.run('openaip-key', 'set', 'replacement-key')).toEqual({
     exitCode: 0,
-    stderr: '',
+    stderr:
+      'Sentry telemetry skipped. Sentry configuration has an invalid DSN or sample rates. Run sentry set with all options to replace it.\n',
     stdout: 'OpenAIP API key saved.\n',
   });
   expect(JSON.parse(await readFile(configurationFile, 'utf8'))).toEqual({
@@ -129,7 +130,7 @@ test.each(['{"openaipApiKey":"private-secret",broken}'])(
       expect(result.stderr).toContain('Repair the file');
       expect(result.stderr).not.toContain('private');
       expect(result.stderr).not.toContain('SyntaxError');
-      expect(result.stderr).not.toContain('Sentry telemetry skipped');
+      expect(result.stderr).toContain('Sentry telemetry skipped');
       expect(await readFile(configurationFile, 'utf8')).toBe(contents);
     }
   }

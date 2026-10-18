@@ -333,3 +333,218 @@ test('noninteractive launches fail promptly with or without the tui command', as
   expect(noArguments.exitCode).toBe(failureExitCode);
   expect(noArguments.stderr).toContain('requires a terminal');
 });
+
+const completedMenuCommands = 3;
+const sentrySignal = /"type":"(?:event|log|trace_metric|transaction)"/u;
+
+function sentryReceiver(capture: (envelope: string) => void): Bun.Server<unknown> {
+  return Bun.serve({
+    async fetch(request: Readonly<{text: () => Promise<string>}>): Promise<Response> {
+      capture(await request.text());
+      return new Response('{}');
+    },
+    hostname: '127.0.0.1',
+    port: 0,
+  });
+}
+
+async function saveSentryConfiguration(dsn: string): Promise<void> {
+  expect(
+    await fixture.run(
+      'sentry',
+      'set',
+      '--dsn',
+      dsn,
+      '--errors',
+      '1',
+      '--logs',
+      '1',
+      '--metrics',
+      '1',
+      '--traces',
+      '1'
+    )
+  ).toMatchObject({exitCode: 0});
+}
+
+test.each([controlC, controlD])('interrupts a running command with %j', async key => {
+  const session = await startSession(
+    ['tui'],
+    [
+      process.execPath,
+      path.resolve(import.meta.dir, '../src/commands/tui.test-client.ts'),
+    ]
+  );
+  session.send(enter);
+  await session.waitFor('Command is running.');
+  session.send(key);
+  expect(await session.exited).toBe(successExitCode);
+  expect(session.output()).not.toContain('Command completed.');
+});
+
+async function failCommunityPath(
+  session: Readonly<Omit<Session, 'exited'>>
+): Promise<void> {
+  session.send(choose('community-path'));
+  await session.waitFor('back');
+  session.send(enter);
+  await session.waitFor('Command exited with code 1.');
+  await waitForMainMenu(session);
+}
+
+async function exerciseTrackedCommands(
+  session: Readonly<Omit<Session, 'exited'>>
+): Promise<void> {
+  await listAirlines(session);
+  await failCommunityPath(session);
+  await saveKey(session, 'private-tui-telemetry-sentinel');
+  await listAirlines(session);
+  session.send(controlD);
+}
+
+function expectMenuTelemetry(payload: string): void {
+  expect(payload.match(/CLI command finished/gu)).toHaveLength(completedMenuCommands);
+  expect(payload).toContain('cli.command.completed');
+  expect(payload).toContain('"type":"event"');
+  expect(payload).toContain('"type":"transaction"');
+  expect(payload).toContain('"type":"log"');
+  expect(payload).toContain('"type":"trace_metric"');
+  expect(payload).not.toContain('private-tui-telemetry-sentinel');
+  expect(payload).not.toContain(fixture.home);
+  expect(payload).not.toContain(fixture.home.replaceAll('\\', String.raw`\\`));
+}
+
+test.each([{args: []}, {args: ['tui']}])(
+  'Sentry stays active across repeated menu commands and handled failures for $args',
+  async ({args}: Readonly<{args: readonly string[]}>) => {
+    const envelopes: string[] = [];
+    const server = sentryReceiver(envelope => {
+      envelopes.push(envelope);
+    });
+    try {
+      await saveSentryConfiguration(`http://publickey@127.0.0.1:${server.port}/123`);
+      const session = await startSession(args);
+      await exerciseTrackedCommands(session);
+      expect(await session.exited).toBe(successExitCode);
+      expectMenuTelemetry(envelopes.join('\n'));
+    } finally {
+      await server.stop(true);
+    }
+  }
+);
+
+async function setSentryInMenu(
+  session: Readonly<Omit<Session, 'exited'>>,
+  dsn: string,
+  rate: string
+): Promise<void> {
+  session.send(choose('sentry'));
+  await session.waitFor('back');
+  session.send(enter);
+  for (const [label, value] of [
+    ['Sentry DSN', dsn],
+    ['Error sample rate from 0 to 1', rate],
+    ['Log sample rate from 0 to 1', rate],
+    ['Metric sample rate from 0 to 1', rate],
+    ['Trace sample rate from 0 to 1', rate],
+  ]) {
+    await session.waitFor(`${label} (--`);
+    session.send(`${value}${enter}`);
+  }
+
+  await session.waitFor('Sentry configuration saved.');
+  await waitForMainMenu(session);
+  await listAirlines(session);
+}
+
+async function changeLiveSentry(
+  session: Readonly<Omit<Session, 'exited'>>,
+  originalPort: number | undefined,
+  replacementPort: number | undefined
+): Promise<void> {
+  await setSentryInMenu(session, `http://publickey@127.0.0.1:${originalPort}/123`, '1');
+  await setSentryInMenu(
+    session,
+    `http://publickey@127.0.0.1:${replacementPort}/123`,
+    '0'
+  );
+}
+
+function expectNoSignals(envelopes: readonly string[]): void {
+  expect(envelopes.filter(envelope => sentrySignal.test(envelope))).toEqual([]);
+}
+
+async function openSentryUpdate(
+  session: Readonly<Omit<Session, 'exited'>>
+): Promise<void> {
+  session.send(choose('sentry'));
+  await session.waitFor('back');
+  session.send(down + enter);
+  await session.waitFor('Set Sentry DSN (--dsn)?');
+  session.send(enter);
+}
+
+async function updateSentrySampling(
+  session: Readonly<Omit<Session, 'exited'>>
+): Promise<void> {
+  await openSentryUpdate(session);
+  for (const [label, flag] of [
+    ['Error sample rate from 0 to 1', 'errors'],
+    ['Log sample rate from 0 to 1', 'logs'],
+    ['Metric sample rate from 0 to 1', 'metrics'],
+    ['Trace sample rate from 0 to 1', 'traces'],
+  ]) {
+    await session.waitFor(`Set ${label} (--${flag})?`);
+    session.send(`y${enter}`);
+    await session.waitFor(`${label} (--${flag})`);
+    session.send(`1${enter}`);
+  }
+
+  await session.waitFor('Sentry configuration saved.');
+  await waitForMainMenu(session);
+}
+
+async function finishLiveSentry(
+  session: Readonly<Omit<Session, 'exited'>>
+): Promise<void> {
+  await updateSentrySampling(session);
+  await listAirlines(session);
+  session.send(controlD);
+}
+
+async function verifyLiveRefresh(
+  first: readonly string[],
+  second: readonly string[],
+  ports: Readonly<{first: number | undefined; second: number | undefined}>
+): Promise<void> {
+  const session = await startSession([]);
+  await changeLiveSentry(session, ports.first, ports.second);
+  expectNoSignals(second);
+  const originalCount = first.length;
+  await finishLiveSentry(session);
+  expect(await session.exited).toBe(successExitCode);
+  expect(first).toHaveLength(originalCount);
+  expect(first.join('\n')).toContain('cli.command.completed');
+  expect(second.join('\n')).toContain('cli.command.completed');
+  expect(second.join('\n')).toContain('"type":"transaction"');
+}
+
+test('menu set activates and replaces the DSN while update refreshes sampling', async () => {
+  const first: string[] = [];
+  const second: string[] = [];
+  const original = sentryReceiver(envelope => {
+    first.push(envelope);
+  });
+  const replacement = sentryReceiver(envelope => {
+    second.push(envelope);
+  });
+  try {
+    await verifyLiveRefresh(first, second, {
+      first: original.port,
+      second: replacement.port,
+    });
+  } finally {
+    await original.stop(true);
+    await replacement.stop(true);
+  }
+});
