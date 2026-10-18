@@ -1,4 +1,22 @@
 # Changelog
+## 1.0.0
+
+### Breaking Changes 🛠
+
+- (cli) Remove the hello command by @nsdeschenes in [#35](https://github.com/nsdeschenes/flightsim-things/pull/35)
+
+### New Features ✨
+
+- (cli) Add an interactive menu and desktop launchers by @nsdeschenes in [#32](https://github.com/nsdeschenes/flightsim-things/pull/32)
+
+### Bug Fixes 🐛
+
+- (scan) Recover airports and report diagnostics as logs by @nsdeschenes in [#33](https://github.com/nsdeschenes/flightsim-things/pull/33)
+
+### Documentation 📚
+
+- (cli) Turn README into a command reference by @nsdeschenes in [#34](https://github.com/nsdeschenes/flightsim-things/pull/34)
+
 ## 0.1.0
 
 ### New Features ✨
