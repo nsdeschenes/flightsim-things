@@ -1,12 +1,12 @@
 import {BunTerminal} from '@effect/platform-bun';
-import {Console, Data, Deferred, Effect, Queue, Terminal} from 'effect';
+import {Console, Data, Deferred, Effect, Option, Queue, Terminal} from 'effect';
 import type {Done} from 'effect/Cause';
 import {Command, Prompt} from 'effect/cli';
-import type {Scope} from 'effect/Scope';
 
 import invocationClassifier from '#invocation';
 import sentry from '#sentry';
 
+import guidedFlightSearch from './guided-flight-search.ts';
 import interactiveList from './interactive-list.ts';
 import inventory from './inventory.ts';
 import type ordinary from './ordinary.ts';
@@ -23,6 +23,7 @@ const {catch: catchEffect} = Effect;
 const {TaggedError: taggedError} = Data;
 const {Select: select} = Prompt;
 
+type SessionScope = Effect.Success<typeof Effect.scope>;
 type Selection =
   | Readonly<{kind: 'Back'}>
   | Readonly<{kind: 'Exit'}>
@@ -135,16 +136,42 @@ function selectCommand(
   return select({choices, maxPerPage: choices.length, message});
 }
 
+function prepareCustomCommand(
+  path: readonly string[]
+): Effect.Effect<
+  Option.Option<PreparationOutcome>,
+  PreparationError,
+  Command.Environment
+> {
+  return Effect.gen(function* prepareCustomSelection() {
+    const loadList = inventory.loaders.get(path.join(' '));
+    if (loadList) {
+      const list = yield* loadList;
+      return Option.some(yield* interactiveList.prepare(path, list));
+    }
+
+    if (path.join(' ') === 'find-flight') {
+      const outcome = yield* guidedFlightSearch.prepare();
+      if (outcome.kind === 'Back') {
+        return Option.some({kind: 'Retry'} as const);
+      }
+
+      return Option.some(yield* prepareArguments(outcome.args));
+    }
+
+    return Option.none();
+  });
+}
+
 function prepareSelection(
   command: CommandTree,
   path: readonly string[]
 ): Effect.Effect<PreparationOutcome, PreparationError, Command.Environment> {
   return Effect.gen(function* prepareCommandSelection() {
     yield* Console.log('Escape returns to the menu. Ctrl+C or Ctrl+D exits.');
-    const loadList = inventory.loaders.get(path.join(' '));
-    if (loadList) {
-      const list = yield* loadList;
-      return yield* interactiveList.prepare(path, list);
+    const prepared = yield* prepareCustomCommand(path);
+    if (Option.isSome(prepared)) {
+      return prepared.value;
     }
 
     const args = yield* Command.wizard(command, {prefix: path});
@@ -277,7 +304,7 @@ function readPromptInput(session: SessionInput): Terminal.Terminal['readInput'] 
 
 function makeSessionTerminal(
   session: SessionInput
-): Effect.Effect<Terminal.Terminal, never, Scope> {
+): Effect.Effect<Terminal.Terminal, never, SessionScope> {
   return Effect.gen(function* acquireSessionInput() {
     const terminal = yield* BunTerminal.make(
       (input: DeepReadonly<Terminal.UserInput>) => {
@@ -305,7 +332,9 @@ function makeSessionTerminal(
   });
 }
 
-function makeTuiSession(root: CommandTree): Effect.Effect<TuiSession, never, Scope> {
+function makeTuiSession(
+  root: CommandTree
+): Effect.Effect<TuiSession, never, SessionScope> {
   return Effect.gen(function* createSession() {
     const input = yield* makeSessionInput();
     const terminal = yield* makeSessionTerminal(input);
