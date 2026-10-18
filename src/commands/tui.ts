@@ -6,8 +6,8 @@ import {Command, Prompt} from 'effect/cli';
 import invocationClassifier from '#invocation';
 import sentry from '#sentry';
 
+import communityDirectory from './community-directory.ts';
 import guidedFlightSearch from './guided-flight-search.ts';
-import interactiveList from './interactive-list.ts';
 import inventory from './inventory.ts';
 import type ordinary from './ordinary.ts';
 
@@ -29,7 +29,7 @@ type Selection =
   | Readonly<{kind: 'Exit'}>
   | Readonly<{kind: 'Command'; command: CommandTree}>;
 type PreparedCommand = Readonly<{kind: 'Prepared'; args: readonly string[]}>;
-type PreparedListing = Effect.Success<ReturnType<typeof interactiveList.prepare>>;
+type PreparedListing = Effect.Success<ReturnType<typeof inventory.prepare>>;
 type PreparationOutcome =
   | PreparedCommand
   | PreparedListing
@@ -43,6 +43,7 @@ class InteractiveError extends taggedError('InteractiveError')<{
   readonly message: string;
 }> {}
 
+const noRemainingArguments = 0;
 const exit = {kind: 'Exit'} as const;
 const navigationOutcomes = {Back: {kind: 'Retry'}, Exit: exit} as const;
 function runSelectedCommand(
@@ -136,6 +137,43 @@ function selectCommand(
   return select({choices, maxPerPage: choices.length, message});
 }
 
+function prepareOutcome(
+  outcome: Readonly<{kind: 'Back'}> | Readonly<{kind: 'Args'; args: readonly string[]}>
+): Effect.Effect<PreparationOutcome> {
+  if (outcome.kind === 'Back') {
+    return Effect.succeed({kind: 'Retry'});
+  }
+
+  return prepareArguments(outcome.args);
+}
+
+function prepareGuidedCommand(
+  path: readonly string[]
+): Effect.Effect<
+  Option.Option<PreparationOutcome>,
+  PreparationError,
+  Command.Environment
+> {
+  return Effect.gen(function* prepareGuidedSelection() {
+    if (path.join(' ') === 'find-flight') {
+      const outcome = yield* guidedFlightSearch.prepare();
+      return Option.some(yield* prepareOutcome(outcome));
+    }
+
+    const [group, operation, ...remaining] = path;
+    if (
+      remaining.length === noRemainingArguments &&
+      group === 'community-path' &&
+      (operation === 'set' || operation === 'update')
+    ) {
+      const outcome = yield* communityDirectory.prepare(operation);
+      return Option.some(yield* prepareOutcome(outcome));
+    }
+
+    return Option.none();
+  });
+}
+
 function prepareCustomCommand(
   path: readonly string[]
 ): Effect.Effect<
@@ -143,24 +181,15 @@ function prepareCustomCommand(
   PreparationError,
   Command.Environment
 > {
-  return Effect.gen(function* prepareCustomSelection() {
-    const loadList = inventory.loaders.get(path.join(' '));
-    if (loadList) {
-      const list = yield* loadList;
-      return Option.some(yield* interactiveList.prepare(path, list));
-    }
+  const loadList = inventory.loaders.get(path.join(' '));
+  if (loadList) {
+    return loadList.pipe(
+      Effect.flatMap(list => inventory.prepare(path, list)),
+      Effect.asSome
+    );
+  }
 
-    if (path.join(' ') === 'find-flight') {
-      const outcome = yield* guidedFlightSearch.prepare();
-      if (outcome.kind === 'Back') {
-        return Option.some({kind: 'Retry'} as const);
-      }
-
-      return Option.some(yield* prepareArguments(outcome.args));
-    }
-
-    return Option.none();
-  });
+  return prepareGuidedCommand(path);
 }
 
 function prepareSelection(
