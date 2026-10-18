@@ -1,7 +1,6 @@
 import {and, eq, exists, getColumns, sql} from 'drizzle-orm';
 import {Console, Effect, Option} from 'effect';
 import {Command, Flag} from 'effect/cli';
-import {Literals as literalsFlag} from 'effect/cli/Flag';
 
 import database from '#database';
 import schema from '#database-schema';
@@ -18,7 +17,6 @@ type DeepReadonly<Value> = Value extends object
 type ListOptions = Readonly<{
   code: DeepReadonly<Option.Option<string>>;
   airline: DeepReadonly<Option.Option<string>>;
-  hyperlink: 'auto' | 'always' | 'never';
 }>;
 
 const columns = [
@@ -87,12 +85,8 @@ const listCommand = Command.make(
       Flag.withDescription('Match an exact aircraft ICAO type designator, ignoring case'),
       Flag.optional
     ),
-    hyperlink: literalsFlag('hyperlink', ['auto', 'always', 'never']).pipe(
-      Flag.withDescription('Link directories in terminal output: auto, always, or never'),
-      Flag.withDefault('auto')
-    ),
   },
-  ({code, airline, hyperlink}: ListOptions) =>
+  ({code, airline}: ListOptions) =>
     Effect.gen(function* listAircraft() {
       const aircraftCode = Option.map((value: string) => value.trim().toUpperCase())(
         code
@@ -111,10 +105,7 @@ const listCommand = Command.make(
         );
       }
 
-      const hyperlinks =
-        hyperlink === 'always' ||
-        (hyperlink === 'auto' && process.stdout.isTTY && process.env.TERM !== 'dumb');
-      return yield* Console.log(formatTable(aircraft, columns, hyperlinks));
+      return yield* Console.log(formatTable(aircraft, columns));
     })
 ).pipe(Command.withDescription('List installed aircraft from the saved addon database'));
 

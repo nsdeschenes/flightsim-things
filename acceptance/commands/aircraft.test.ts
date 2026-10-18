@@ -33,7 +33,7 @@ async function scanAircraft(): Promise<string> {
 async function listRows(...args: readonly string[]): Promise<string[][]> {
   const result = await fixture.run('aircraft', 'list', ...args);
   expect(result).toMatchObject({exitCode: 0, stderr: ''});
-  return result.stdout
+  return Bun.stripANSI(result.stdout)
     .split('\n')
     .filter(line => line.startsWith('|'))
     .slice(tableHeaderRows)
@@ -99,7 +99,8 @@ test(
     (5, 'A320', 'Airbus', 'A320-200', 'Alpha', 2, 'shared'),
     (4, 'A320', NULL, NULL, 'Alpha', 1, 'shared'),
     (2, NULL, NULL, NULL, NULL, 1, 'unknown')`);
-    expect(await fixture.run('aircraft', 'list')).toEqual({
+    const result = await fixture.run('aircraft', 'list');
+    expect({...result, stdout: Bun.stripANSI(result.stdout)}).toEqual({
       exitCode: 0,
       stderr: '',
       stdout: `+----+----------------------+--------------+----------+-------+------------+------------+------------------+
@@ -200,7 +201,7 @@ test(
 );
 
 test(
-  'list sanitizes Unicode and control characters and links aircraft directories only when forced',
+  'list sanitizes Unicode and control characters and always links aircraft directories',
   async () => {
     await scanAircraft();
     using db = new Database(path.join(fixture.home, '.flightsim-things/addons.sqlite'));
@@ -212,12 +213,8 @@ test(
       '\u001B[31m東京e\u0301\u001B[0m\tNorth\nGate\r\u0000',
       '\u001B]8;;https://example.invalid\u0007base\u001B]8;;\u0007',
     ]);
-    const [plain, disabled, linked] = await Promise.all([
-      fixture.run('aircraft', 'list'),
-      fixture.run('aircraft', 'list', '--hyperlink', 'never'),
-      fixture.run('aircraft', 'list', '--hyperlink', 'always'),
-    ]);
-    expect(plain).toEqual({
+    const linked = await fixture.run('aircraft', 'list');
+    expect({...linked, stdout: Bun.stripANSI(linked.stdout)}).toEqual({
       exitCode: 0,
       stderr: '',
       stdout: `+----+----------------------+--------------+-------+--------------------+------------+------------+-------------------------+
@@ -227,8 +224,8 @@ test(
 +----+----------------------+--------------+-------+--------------------+------------+------------+-------------------------+
 `,
     });
-    expect(disabled).toEqual(plain);
-    expect({...linked, stdout: Bun.stripANSI(linked.stdout)}).toEqual(plain);
+    expect(linked.stdout).not.toContain('\u001B[31m');
+    expect(linked.stdout).not.toContain('https://example.invalid');
     expect(linked.stdout).toContain(
       `\u001B]8;;${pathToFileURL(path.join(directory, path.sep)).href}\u001B\\/aircraft/東京 # North \u001B]8;;\u001B\\`
     );
@@ -236,7 +233,7 @@ test(
   cliTimeout
 );
 
-test('aircraft help registers list and its options and rejects an invalid hyperlink mode', async () => {
+test('aircraft help registers list and its options and rejects the removed hyperlink option', async () => {
   const [rootHelp, help, listHelp] = await Promise.all([
     fixture.run('--help'),
     fixture.run('aircraft', '--help'),
@@ -249,11 +246,12 @@ test('aircraft help registers list and its options and rejects an invalid hyperl
   ]);
   expect(rootHelp.stdout).toContain('aircraft');
   expect(help.stdout).toContain('list');
-  for (const flag of ['--code', '--airline', '--hyperlink']) {
+  for (const flag of ['--code', '--airline']) {
     expect(listHelp.stdout).toContain(flag);
   }
 
-  const invalid = await fixture.run('aircraft', 'list', '--hyperlink', 'sometimes');
-  expect(invalid.exitCode).not.toBe(successExitCode);
-  expect(invalid.stderr).toContain('sometimes');
+  expect(listHelp.stdout).not.toContain('--hyperlink');
+  const removed = await fixture.run('aircraft', 'list', '--hyperlink', 'always');
+  expect(removed.exitCode).not.toBe(successExitCode);
+  expect(removed.stderr).toContain('--hyperlink');
 });
