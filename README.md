@@ -48,6 +48,7 @@ Replace placeholders with your values and omit the brackets.
 - [Interactive menu](#interactive-menu)
 - [Community directory](#community-directory)
 - [Scan addons](#scan-addons)
+- [Clear saved records](#clear-saved-records)
 - [List airports](#list-airports)
 - [List aircraft](#list-aircraft)
 - [List airlines](#list-airlines)
@@ -64,6 +65,7 @@ flightsim-things community-path get
 flightsim-things community-path set <path>
 flightsim-things community-path update <path>
 flightsim-things scan [--verbose]
+flightsim-things database clear <target>
 flightsim-things airports list [--code <code>] [--hyperlink <mode>]
 flightsim-things aircraft list [--code <code>] [--airline <code>] [--hyperlink <mode>]
 flightsim-things airlines list [--code <code>] [--aircraft <code>]
@@ -187,6 +189,33 @@ can contain hyphens. Later explicit metadata replaces the fallback.
 
 The scanner does not decode compiled BGL scenery, so airport coverage can be
 incomplete. Inferred names, IATA codes, and locations remain unknown until enrichment.
+
+### Clear saved records
+
+```sh
+flightsim-things database clear aircraft
+flightsim-things database clear airlines
+flightsim-things database clear airports
+flightsim-things database clear liveries
+flightsim-things database clear packages
+flightsim-things database clear all
+```
+
+`database clear <target>` requires one of the targets above. It removes saved
+records without changing settings or simulator addon files.
+
+| Target     | Removed records and relationship changes                                     |
+| ---------- | ---------------------------------------------------------------------------- |
+| `aircraft` | Removes aircraft. Keeps liveries with null aircraft links.                   |
+| `airlines` | Removes airlines. Keeps liveries with null airline links.                    |
+| `airports` | Removes airports. Keeps packages and other records.                          |
+| `liveries` | Removes liveries. Keeps aircraft, airlines, airports, and packages.          |
+| `packages` | Removes packages and their aircraft, airports, and liveries. Keeps airlines. |
+| `all`      | Removes all five record types in one transaction.                            |
+
+The command preserves the database schema, migration history, and ID sequences.
+Clearing an empty target succeeds. A concurrent or later scan can repopulate
+cleared records from addon files.
 
 ### List airports
 

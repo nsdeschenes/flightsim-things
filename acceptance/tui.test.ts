@@ -1,3 +1,4 @@
+import {Database} from 'bun:sqlite';
 import {afterEach, beforeEach, expect, setDefaultTimeout, test} from 'bun:test';
 import {mkdir, readFile, realpath} from 'node:fs/promises';
 import path from 'node:path';
@@ -22,6 +23,7 @@ const expectedCommands = [
   'airlines',
   'airports',
   'community-path',
+  'database',
   'find-flight',
   'openaip-key',
   'scan',
@@ -33,6 +35,7 @@ const commandGroups = [
   {commands: 1, name: 'airlines'},
   {commands: 2, name: 'airports'},
   {commands: 3, name: 'community-path'},
+  {commands: 1, name: 'database'},
   {commands: 2, name: 'openaip-key'},
   {commands: 3, name: 'sentry'},
 ];
@@ -217,6 +220,50 @@ test('runs a settings get command with its complete submenu path', async () => {
   await session.waitFor(fixture.home);
   await session.waitFor('Command completed.');
   await waitForMainMenu(session);
+});
+
+async function openDatabaseTarget(
+  session: Readonly<Omit<Session, 'exited'>>
+): Promise<void> {
+  session.send(choose('database'));
+  await session.waitFor('back');
+  session.send(enter);
+  await session.waitFor('Target');
+  await session.waitFor('packages');
+}
+
+async function seedDatabaseAirline(): Promise<void> {
+  expect(await fixture.run('airlines', 'list')).toMatchObject({exitCode: 0});
+  using db = new Database(path.join(fixture.home, '.flightsim-things/addons.sqlite'));
+  db.run("INSERT INTO airlines (icao_code) VALUES ('BAW')");
+}
+
+test('clears saved airlines through the database target selection', async () => {
+  await seedDatabaseAirline();
+  const session = await startSession();
+  await openDatabaseTarget(session);
+  session.send(down + enter);
+  await session.waitFor('Cleared airlines from the saved addon database.');
+  await session.waitFor('Command completed.');
+  await waitForMainMenu(session);
+  expect(await fixture.run('airlines', 'list')).toEqual({
+    exitCode: 0,
+    stderr: '',
+    stdout: 'No saved airlines found. Run scan to populate the list.\n',
+  });
+});
+
+test('Escape cancels a database target without clearing saved records', async () => {
+  await seedDatabaseAirline();
+  const session = await startSession();
+  await openDatabaseTarget(session);
+  session.send(escape);
+  await waitForMainMenu(session);
+  using db = new Database(path.join(fixture.home, '.flightsim-things/addons.sqlite'), {
+    readonly: true,
+  });
+  expect(db.query('SELECT icao_code FROM airlines').all()).toEqual([{icao_code: 'BAW'}]);
+  expect(session.output()).not.toContain('Command completed.');
 });
 
 test.each(['submenu', 'argument'])(
