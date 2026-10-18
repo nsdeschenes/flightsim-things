@@ -367,6 +367,21 @@ async function saveSentryConfiguration(dsn: string): Promise<void> {
   ).toMatchObject({exitCode: 0});
 }
 
+test.each([controlC, controlD])('interrupts a running command with %j', async key => {
+  const session = await startSession(
+    ['tui'],
+    [
+      process.execPath,
+      path.resolve(import.meta.dir, '../src/commands/tui.test-client.ts'),
+    ]
+  );
+  session.send(enter);
+  await session.waitFor('Command is running.');
+  session.send(key);
+  expect(await session.exited).toBe(successExitCode);
+  expect(session.output()).not.toContain('Command completed.');
+});
+
 async function failCommunityPath(
   session: Readonly<Omit<Session, 'exited'>>
 ): Promise<void> {
@@ -396,6 +411,7 @@ function expectMenuTelemetry(payload: string): void {
   expect(payload).toContain('"type":"trace_metric"');
   expect(payload).not.toContain('private-tui-telemetry-sentinel');
   expect(payload).not.toContain(fixture.home);
+  expect(payload).not.toContain(fixture.home.replaceAll('\\', String.raw`\\`));
 }
 
 test.each([{args: []}, {args: ['tui']}])(
