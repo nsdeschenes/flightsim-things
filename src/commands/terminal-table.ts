@@ -21,11 +21,7 @@ function formatCell({text, url}: Cell, width: number): string {
   return content + ' '.repeat(width - Bun.stringWidth(text));
 }
 
-function columnCell<Row>(
-  row: Readonly<Row>,
-  column: TableColumn<Row>,
-  hyperlinks: boolean
-): Cell {
+function columnCell<Row>(row: Readonly<Row>, column: TableColumn<Row>): Cell {
   let value = '';
   if ('directory' in column) {
     value = column.directory(row);
@@ -36,7 +32,7 @@ function columnCell<Row>(
   }
 
   const text = Bun.stripANSI(value).replaceAll(controlCharacters, ' ');
-  if (hyperlinks && 'directory' in column) {
+  if ('directory' in column) {
     return {text, url: pathToFileURL(path.join(value, path.sep)).href};
   }
 
@@ -45,14 +41,13 @@ function columnCell<Row>(
 
 function formatTable<Row>(
   rows: readonly Readonly<Row>[],
-  columns: readonly TableColumn<Row>[],
-  hyperlinks: boolean
+  columns: readonly TableColumn<Row>[]
 ): string {
   const tableColumns: readonly Readonly<{cells: readonly Cell[]; width: number}>[] =
     columns.map(column => {
       const cells: readonly Cell[] = [
         {text: column.header},
-        ...rows.map(row => columnCell(row, column, hyperlinks)),
+        ...rows.map(row => columnCell(row, column)),
       ];
       let width = Bun.stringWidth(column.header);
       for (const cell of cells) {

@@ -1,7 +1,6 @@
 import {eq, getColumns, or, sql} from 'drizzle-orm';
 import {Console, Effect, Option} from 'effect';
 import {Command, Flag} from 'effect/cli';
-import {Literals as literalsFlag} from 'effect/cli/Flag';
 
 import airportEnrichment from '#airport-enrichment';
 import database from '#database';
@@ -18,7 +17,6 @@ type DeepReadonly<Value> = Value extends object
   : Value;
 type ListOptions = Readonly<{
   code: DeepReadonly<Option.Option<string>>;
-  hyperlink: 'auto' | 'always' | 'never';
 }>;
 
 const columns = [
@@ -42,12 +40,8 @@ const listCommand = Command.make(
       Flag.withDescription('Match an exact ICAO or IATA code, ignoring case'),
       Flag.optional
     ),
-    hyperlink: literalsFlag('hyperlink', ['auto', 'always', 'never']).pipe(
-      Flag.withDescription('Link directories in terminal output: auto, always, or never'),
-      Flag.withDefault('auto')
-    ),
   },
-  ({code, hyperlink}: ListOptions) =>
+  ({code}: ListOptions) =>
     Effect.gen(function* listAirports() {
       const airportCode = Option.map((value: string) => value.trim().toUpperCase())(code);
       const airports = yield* database.use(db =>
@@ -82,10 +76,7 @@ const listCommand = Command.make(
         );
       }
 
-      const hyperlinks =
-        hyperlink === 'always' ||
-        (hyperlink === 'auto' && process.stdout.isTTY && process.env.TERM !== 'dumb');
-      return yield* Console.log(formatTable(airports, columns, hyperlinks));
+      return yield* Console.log(formatTable(airports, columns));
     })
 ).pipe(Command.withDescription('List installed airports from the saved addon database'));
 
