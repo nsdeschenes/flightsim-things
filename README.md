@@ -64,8 +64,8 @@ flightsim-things community-path get
 flightsim-things community-path set <path>
 flightsim-things community-path update <path>
 flightsim-things scan [--verbose]
-flightsim-things airports list [--code <code>] [--hyperlink <mode>]
-flightsim-things aircraft list [--code <code>] [--airline <code>] [--hyperlink <mode>]
+flightsim-things airports list [--code <code>]
+flightsim-things aircraft list [--code <code>] [--airline <code>]
 flightsim-things airlines list [--code <code>] [--aircraft <code>]
 flightsim-things openaip-key get
 flightsim-things openaip-key set <key>
@@ -193,7 +193,7 @@ incomplete. Inferred names, IATA codes, and locations remain unknown until enric
 ```sh
 flightsim-things airports list
 flightsim-things airports list --code KJFK
-flightsim-things airports list --code JFK --hyperlink never
+flightsim-things airports list --code JFK
 ```
 
 `--code <code>` matches an exact airport ICAO or IATA code, ignoring case and
@@ -201,12 +201,8 @@ surrounding whitespace. The ASCII table includes every airport database column
 and the package directory. Missing values are blank. Rows sort by ICAO code,
 name, and ID, with missing codes and names first.
 
-`--hyperlink <mode>` controls clickable directory links for this command and
-`aircraft list`. The modes are:
-
-- `auto` is the default. Links appear only in interactive terminals whose `TERM` is not `dumb`.
-- `always` forces links, including in piped output.
-- `never` disables links.
+Directory cells always include clickable terminal hyperlinks, including in piped
+output. Terminals that support hyperlinks open the package directory.
 
 ### List aircraft
 
@@ -214,7 +210,7 @@ name, and ID, with missing codes and names first.
 flightsim-things aircraft list
 flightsim-things aircraft list --code A320
 flightsim-things aircraft list --airline BAW
-flightsim-things aircraft list --code A320 --airline BAW --hyperlink never
+flightsim-things aircraft list --code A320 --airline BAW
 ```
 
 `--code <code>` matches an exact aircraft ICAO type designator.
@@ -225,7 +221,8 @@ record must match both. Each aircraft appears once, even with multiple matching 
 
 The ASCII table includes every aircraft database column and the aircraft package
 directory. Missing values are blank. Rows sort by ICAO type designator, name,
-and ID. `--hyperlink` accepts `auto`, `always`, or `never`, as for `airports list`.
+and ID. Directory cells always include clickable terminal hyperlinks, including
+in piped output.
 
 ### List airlines
 

@@ -91,7 +91,7 @@ const listCommand = Command.make(
         );
       }
 
-      return yield* Console.log(formatTable(airlines, columns, false));
+      return yield* Console.log(formatTable(airlines, columns));
     })
 ).pipe(Command.withDescription('List airlines from the saved addon database'));
 
