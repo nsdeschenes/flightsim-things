@@ -184,6 +184,18 @@ test('y traverses a directory and submits its spaced child', async () => {
   await completed(session, directory);
 });
 
+test.each(['set', 'update'] as const)(
+  'first-time %s opens without an unset-setting error and saves normally',
+  async operation => {
+    const session = await startSource(operation);
+    expect(session.output()).not.toContain('No Community directory is saved.');
+    expect(await configuration()).toBe('');
+    await manual(session);
+    session.send(fixture.home + enter);
+    await completed(session, fixture.home);
+  }
+);
+
 test('manual entry preserves quoted tilde normalization and blank rejection', async () => {
   const directory = path.join(fixture.home, 'Manual Community');
   await mkdir(directory);
