@@ -160,8 +160,7 @@ function flightTable(result: FlightResult): string {
         {header: 'Departure', key: 'departure'},
         {header: 'Destination', key: 'destination'},
         ...columns,
-      ],
-      false
+      ]
     );
   }
 
@@ -170,8 +169,7 @@ function flightTable(result: FlightResult): string {
       ...liveryRow(flight),
       counterpart: airportLabel(flight.counterpart),
     })),
-    [{header: directions[result.fixed.endpoint].header, key: 'counterpart'}, ...columns],
-    false
+    [{header: directions[result.fixed.endpoint].header, key: 'counterpart'}, ...columns]
   );
 }
 

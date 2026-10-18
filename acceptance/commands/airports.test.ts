@@ -60,7 +60,8 @@ test(
       (5, 'KAAA', 'AAA', 'Alpha', 12.3456789, -123.456789, 1234.5678, 2, 'shared.xml'),
       (4, 'KAAA', 'AAA', 'Alpha', NULL, NULL, NULL, 1, 'shared.xml'),
       (2, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'unknown.xml')`);
-    expect(await fixture.run('airports', 'list')).toEqual({
+    const result = await fixture.run('airports', 'list');
+    expect({...result, stdout: Bun.stripANSI(result.stdout)}).toEqual({
       exitCode: 0,
       stderr: '',
       stdout: `+----+-----------+-----------+-------+------------+-------------+------------------+------------+-------------+------------------+
@@ -90,7 +91,8 @@ test(
       '\u001B[31m東京国際空港e\u0301\u001B[0m\tNorth\nGate\r\u0000\u0085',
       '\u001B]8;;https://example.invalid\u0007airport.xml\u001B]8;;\u0007',
     ]);
-    expect(await fixture.run('airports', 'list')).toEqual({
+    const result = await fixture.run('airports', 'list');
+    expect({...result, stdout: Bun.stripANSI(result.stdout)}).toEqual({
       exitCode: 0,
       stderr: '',
       stdout: `+----+-----------+-----------+-----------------------------+----------+-----------+------------------+------------+-------------+----------------+
@@ -100,6 +102,8 @@ test(
 +----+-----------+-----------+-----------------------------+----------+-----------+------------------+------------+-------------+----------------+
 `,
     });
+    expect(result.stdout).not.toContain('\u001B[31m');
+    expect(result.stdout).not.toContain('https://example.invalid');
   },
   cliTimeout
 );
@@ -123,8 +127,8 @@ test(
       stdout: `+----+-----------+-----------+-------+----------+-----------+------------------+------------+------------+----------------+
 | ID | ICAO code | IATA code | Name  | Latitude | Longitude | Elevation meters | Package ID | Source key | Directory      |
 +----+-----------+-----------+-------+----------+-----------+------------------+------------+------------+----------------+
-| 1  | kAaA      | aAa       | Alpha |          |           |                  | 1          | first.xml  | /airports/test |
-| 2  | kAaA      | aAa       | Beta  |          |           |                  | 1          | second.xml | /airports/test |
+| 1  | kAaA      | aAa       | Alpha |          |           |                  | 1          | first.xml  | \u001B]8;;${pathToFileURL('/').href}airports/test/\u001B\\/airports/test\u001B]8;;\u001B\\ |
+| 2  | kAaA      | aAa       | Beta  |          |           |                  | 1          | second.xml | \u001B]8;;${pathToFileURL('/').href}airports/test/\u001B\\/airports/test\u001B]8;;\u001B\\ |
 +----+-----------+-----------+-------+----------+-----------+------------------+------------+------------+----------------+
 `,
     };
@@ -141,7 +145,7 @@ test(
       stdout: `+----+-----------+-----------+---------+----------+-----------+------------------+------------+-------------+----------------+
 | ID | ICAO code | IATA code | Name    | Latitude | Longitude | Elevation meters | Package ID | Source key  | Directory      |
 +----+-----------+-----------+---------+----------+-----------+------------------+------------+-------------+----------------+
-| 4  | %         |           | Literal |          |           |                  | 1          | percent.xml | /airports/test |
+| 4  | %         |           | Literal |          |           |                  | 1          | percent.xml | \u001B]8;;${pathToFileURL('/').href}airports/test/\u001B\\/airports/test\u001B]8;;\u001B\\ |
 +----+-----------+-----------+---------+----------+-----------+------------------+------------+-------------+----------------+
 `,
     });
@@ -150,7 +154,7 @@ test(
 );
 
 test(
-  'list keeps piped output plain and safely links directory labels only when forced',
+  'list always safely links directory labels in piped output and preserves alignment',
   async () => {
     await scanAirport();
     using db = new Database(path.join(fixture.home, '.flightsim-things/addons.sqlite'));
@@ -171,20 +175,8 @@ test(
 +----+-----------+-----------+-------+----------+-----------+------------------+------------+--------------------------+-----------------------------------+
 `,
     };
-    const [plain, disabled, linked] = await Promise.all([
-      fixture.run('airports', 'list'),
-      fixture.run('airports', 'list', '--hyperlink', 'never'),
-      fixture.run('airports', 'list', '--hyperlink', 'always'),
-    ]);
-    expect({
-      disabled,
-      linked: {...linked, stdout: Bun.stripANSI(linked.stdout)},
-      plain,
-    }).toEqual({
-      disabled: expected,
-      linked: expected,
-      plain: expected,
-    });
+    const linked = await fixture.run('airports', 'list');
+    expect({...linked, stdout: Bun.stripANSI(linked.stdout)}).toEqual(expected);
     expect(linked.stdout).toContain(
       `\u001B]8;;${pathToFileURL('/').href}airports/Space%20%23%E6%9D%B1%E4%BA%AC%1B%5B31m%09North%0A/end%07/\u001B\\/airports/Space #東京 North /end \u001B]8;;\u001B\\`
     );
@@ -204,9 +196,15 @@ test('airport help registers list and retains enrich', async () => {
   const listHelp = await fixture.run('airports', 'list', '--help');
   expect(listHelp).toMatchObject({exitCode: 0, stderr: ''});
   expect(listHelp.stdout).toContain('--code');
-  expect(listHelp.stdout).toContain('--hyperlink');
+  expect(listHelp.stdout).not.toContain('--hyperlink');
   expect(await fixture.run('airports', 'enrich', '--help')).toMatchObject({
     exitCode: 0,
     stderr: '',
   });
+});
+
+test('airport list rejects the removed hyperlink option', async () => {
+  const removed = await fixture.run('airports', 'list', '--hyperlink', 'always');
+  expect(removed.exitCode).not.toBe(successExitCode);
+  expect(removed.stderr).toContain('--hyperlink');
 });
