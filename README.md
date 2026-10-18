@@ -49,6 +49,7 @@ Replace placeholders with your values and omit the brackets.
 
 - [Shell completion](#shell-completion)
 - [Interactive menu](#interactive-menu)
+- [Command wizard](#command-wizard)
 - [Community directory](#community-directory)
 - [Scan addons](#scan-addons)
 - [Clear saved records](#clear-saved-records)
@@ -166,6 +167,32 @@ chmod +x flightsim-things 'Launch flightsim-things.command'
 ```
 
 On Linux, use `Launch flightsim-things.sh` in that command.
+
+### Command wizard
+
+```sh
+flightsim-things --wizard
+flightsim-things airports --wizard
+flightsim-things ai set --wizard
+```
+
+Use `--wizard` alone or with a command path to collect inputs, confirm one command,
+and exit. Enter values at the prompts. Supplied arguments, flags, and Boolean
+spellings such as `--wizard=true` are rejected. Both input and output require a terminal.
+
+The wizard uses generic prompts from the command definitions. Optional inputs can
+be skipped. It does not prefill saved values or use the menu's directory browser,
+inventory selection, or guided flight search. Use `tui` for those flows.
+
+The final summary shows command names with values omitted. Confirmation defaults
+to no. Press Enter to decline, or Ctrl+C or Ctrl+D at a prompt to cancel without
+running the command. API key prompts hide your input. Standalone values that look
+like CLI control flags are rejected. Help, version, and shell completion requests
+take precedence over the wizard.
+
+Collection, cancellation, and decline send no command telemetry. A confirmed
+command uses the ordinary command's telemetry policy. See the
+[wizard research report](docs/direct-wizard-research.md) for the design and checks.
 
 ### Community directory
 
