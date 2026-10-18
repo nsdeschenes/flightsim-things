@@ -1,12 +1,20 @@
 import {BunRuntime, BunServices} from '@effect/platform-bun';
-import {Effect, Option} from 'effect';
+import {Effect, Option, Redacted} from 'effect';
 import {CliConfig, CliError, Command, GlobalFlag} from 'effect/cli';
 
 import {version} from '#package';
 import sentry from '#sentry';
 
 import command from './commands/index.ts';
+import ordinary from './commands/ordinary.ts';
+import directWizard from './direct-wizard.ts';
 import invocationClassifier from './invocation.ts';
+
+type DeepReadonly<Value> = Value extends object
+  ? Value extends (...args: readonly never[]) => unknown
+    ? Value
+    : {readonly [Key in keyof Value]: DeepReadonly<Value[Key]>}
+  : Value;
 
 const argvOffset = 2;
 const successExitCode = 0;
@@ -49,29 +57,80 @@ if (args.length === noArguments) {
   args = ['tui'];
 }
 
-const invocation = invocationClassifier.classify(
-  args,
-  command.subcommands.flatMap(
-    (
-      group: Readonly<{
-        commands: readonly Readonly<{name: string; alias: string | undefined}>[];
-      }>
-    ) => group.commands
-  )
-);
-const sensitiveInvocation = Option.isSome(invocation.sensitiveCommand);
-let sensitiveUsageError =
-  'Invalid OpenAIP key command arguments. Run flightsim-things openaip-key --help for usage.\n';
-if (Option.contains(invocation.sensitiveCommand, 'ai')) {
-  sensitiveUsageError =
-    'Invalid AI command arguments. Run flightsim-things ai --help for usage.\n';
+function renderFailure(
+  error: unknown,
+  sensitiveCommand: DeepReadonly<Option.Option<'ai' | 'openaip-key'>>,
+  sanitizeErrors: boolean
+): void {
+  process.exitCode = exitCodeFor(error);
+  if (
+    (Option.isSome(sensitiveCommand) || sanitizeErrors) &&
+    CliError.isCliError(error) &&
+    (!(error instanceof CliError.ShowHelp) || error.errors.length !== noErrors)
+  ) {
+    let message = 'Invalid command arguments. Run flightsim-things --help for usage.\n';
+    if (!sanitizeErrors && Option.contains(sensitiveCommand, 'ai')) {
+      message =
+        'Invalid AI command arguments. Run flightsim-things ai --help for usage.\n';
+    } else if (!sanitizeErrors) {
+      message =
+        'Invalid OpenAIP key command arguments. Run flightsim-things openaip-key --help for usage.\n';
+    }
+
+    process.stderr.write(message);
+  } else if (!(error instanceof CliError.ShowHelp)) {
+    process.stderr.write(`Command failed, ${failureMessage(error)}\n`);
+  }
+}
+
+function execute(
+  executionArgs: readonly string[],
+  tree: DeepReadonly<typeof command | typeof ordinary.command>,
+  sanitizeErrors = false
+): Effect.Effect<void, never, Command.Environment> {
+  const invocation = invocationClassifier.classify(
+    executionArgs,
+    tree.subcommands.flatMap(group => group.commands)
+  );
+  return sentry
+    .instrument(
+      () =>
+        Command.runWith(tree, {
+          renderErrors: !Option.isSome(invocation.sensitiveCommand) && !sanitizeErrors,
+          version,
+        })(executionArgs),
+      invocation
+    )
+    .pipe(
+      Effect.match({
+        onFailure(error: unknown) {
+          renderFailure(error, invocation.sensitiveCommand, sanitizeErrors);
+        },
+        onSuccess() {
+          process.exitCode = successExitCode;
+        },
+      })
+    );
 }
 
 const main = sentry
   .run(() =>
-    sentry.instrument(
-      () => Command.runWith(command, {renderErrors: !sensitiveInvocation, version})(args),
-      invocation
+    directWizard.prepare(args, ordinary.command).pipe(
+      Effect.flatMap(
+        (
+          request: DeepReadonly<Effect.Success<ReturnType<typeof directWizard.prepare>>>
+        ) => {
+          if (request.kind === 'Ordinary') {
+            return execute(request.args, command, request.sanitizeErrors);
+          }
+
+          if (request.kind === 'Confirmed') {
+            return execute(Redacted.value(request.args), ordinary.command);
+          }
+
+          return Effect.void;
+        }
+      )
     )
   )
   .pipe(
@@ -83,19 +142,18 @@ const main = sentry
     ]),
     Effect.match({
       onFailure(error: unknown) {
-        process.exitCode = exitCodeFor(error);
-        if (
-          sensitiveInvocation &&
-          CliError.isCliError(error) &&
-          (!(error instanceof CliError.ShowHelp) || error.errors.length !== noErrors)
-        ) {
-          process.stderr.write(sensitiveUsageError);
-        } else if (!(error instanceof CliError.ShowHelp)) {
-          process.stderr.write(`Command failed, ${failureMessage(error)}\n`);
+        if (error instanceof directWizard.Error) {
+          process.exitCode = error.exitCode;
+          process.stderr.write(`${error.message}\n`);
+        } else {
+          process.exitCode = commandFailureExitCode;
+          process.stderr.write(
+            'Could not prepare the command. Run flightsim-things --help for usage.\n'
+          );
         }
       },
       onSuccess() {
-        process.exitCode = successExitCode;
+        process.exitCode ??= successExitCode;
       },
     })
   );
