@@ -84,21 +84,32 @@ function validateCommunityDirectory(
   });
 }
 
-function get(): Effect.Effect<string, CommunityPathError> {
-  return Effect.gen(function* getCommunityPath() {
+function find(): Effect.Effect<Option.Option<string>, CommunityPathError> {
+  return Effect.gen(function* findCommunityPath() {
     const saved = yield* configuration
       .get('communityPath')
       .pipe(Effect.mapError(toError));
+    if (Option.isNone(saved)) {
+      return Option.none();
+    }
+
+    return yield* Effect.try({
+      catch: toError,
+      try: () => parseCommunityPath(saved.value),
+    }).pipe(Effect.asSome);
+  });
+}
+
+function get(): Effect.Effect<string, CommunityPathError> {
+  return Effect.gen(function* getCommunityPath() {
+    const saved = yield* find();
     if (Option.isNone(saved)) {
       return yield* new CommunityPathError({
         message: 'No Community directory is saved. Run community-path set <path>.',
       });
     }
 
-    return yield* Effect.try({
-      catch: toError,
-      try: () => parseCommunityPath(saved.value),
-    });
+    return saved.value;
   });
 }
 
@@ -116,6 +127,6 @@ function set(input: string): Effect.Effect<string, CommunityPathError> {
   });
 }
 
-const communityPath = {get, set, validate: validateCommunityDirectory};
+const communityPath = {find, get, set, validate: validateCommunityDirectory};
 
 export default communityPath;

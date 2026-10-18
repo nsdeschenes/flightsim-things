@@ -509,13 +509,21 @@ test.skipIf(process.platform !== 'linux' || typeof Bun.which('strace') !== 'stri
   }
 );
 
-test('saves a literal navigation label as a directory argument', async () => {
-  await mkdir(path.join(fixture.home, 'back'));
-  const session = await startSession();
+async function openCommunityManual(
+  session: Readonly<Omit<Session, 'exited'>>
+): Promise<void> {
   session.send(choose('community-path'));
   await session.waitFor('back');
   session.send(down + enter);
+  await session.waitFor('Enter a path');
+  session.send(down + enter);
   await session.waitFor('Path');
+}
+
+test('saves a literal navigation label as a directory argument', async () => {
+  await mkdir(path.join(fixture.home, 'back'));
+  const session = await startSession();
+  await openCommunityManual(session);
   session.send(`back${enter}`);
   await session.waitFor('Command completed.');
   const saved = await fixture.run('community-path', 'get');

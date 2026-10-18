@@ -158,6 +158,14 @@ flightsim-things community-path update <path>
 The directory must exist. Relative paths resolve from the current working
 directory. Quoted `~` paths are supported. Quote paths that contain spaces.
 
+In the interactive menu, choose `community-path`, then `set` or `update`.
+Choose **Browse directories** or **Enter a path**. The browser highlights a usable
+saved directory, or starts in the working or home directory. Type to filter the
+directory names, and use the arrow keys to move through the results.
+For a directory with subdirectories, press Enter, then `y` to enter it or `n` to
+select it. Selection saves the directory. Escape discards the pending selection.
+If browsing fails, choose **Enter a path**. Direct CLI commands still require a path.
+
 ```sh
 flightsim-things community-path set "C:\Games\MSFS 2024\Community"
 flightsim-things community-path update "~/Games/MSFS 2024/Community"
