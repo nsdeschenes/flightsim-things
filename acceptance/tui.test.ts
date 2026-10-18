@@ -3,6 +3,7 @@ import {afterEach, beforeEach, expect, setDefaultTimeout, test} from 'bun:test';
 import {mkdir, readFile, realpath} from 'node:fs/promises';
 import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
+import {pathToFileURL} from 'node:url';
 import {stripVTControlCharacters} from 'node:util';
 
 import createCliFixture from '#acceptance-cli';
@@ -320,6 +321,23 @@ async function recoverFromNoMatches(
   expect(session.output()).not.toContain('Command completed.');
 }
 
+function expectDirectoryHyperlink(output: string, directory: string): void {
+  const hyperlinkTargets: readonly string[] = output
+    .split(`${escape}]8;`)
+    .slice(headingLines)
+    .filter(sequence => sequence.includes(';'))
+    .map(sequence => {
+      const [target = ''] = sequence
+        .slice(sequence.indexOf(';') + ';'.length)
+        .split('\u0007');
+      return target.split(`${escape}\\`).at(firstChoice) ?? '';
+    });
+  const expectedUrl = pathToFileURL(
+    path.resolve(fixture.home, directory) + path.sep
+  ).href;
+  expect(hyperlinkTargets).toContain(expectedUrl);
+}
+
 test.each(inventoryPickers)(
   '$name narrows saved records before Enter and displays the exact selected row',
   async (picker: Picker) => {
@@ -331,7 +349,7 @@ test.each(inventoryPickers)(
 
     await submitPicker(session, picker.selection, picker.row);
     if (picker.name !== 'airlines') {
-      expect(session.output()).toContain('\u001B]8;;file:///inventory/');
+      expectDirectoryHyperlink(session.output(), picker.row.at(lastFrame) ?? '');
     }
 
     await selectUnknownRecord(session, picker);
