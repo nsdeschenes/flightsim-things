@@ -292,15 +292,33 @@ test.each([
   {args: ['unknown-private-command']},
   {args: ['sentry', 'get']},
   {args: ['--help', 'sentry']},
+  {args: ['--completions', 'bash']},
+  {args: ['ai', 'set', '--completions', 'fish']},
+  {args: ['--completions=private-invalid-shell']},
+  {args: ['airports', 'list', '--completions=private-invalid-shell']},
+  {args: ['tui', '--completions=private-invalid-shell']},
+  {args: ['tui', '--completions']},
 ])(
   'expected CLI control command %s does not send telemetry',
   async ({args}: Readonly<{args: readonly string[]}>) => {
     expect(await set(dsn, '1')).toMatchObject({exitCode: 0});
+    const previous = await readFile(configurationFile, 'utf8');
+    const files = await readdir(path.dirname(configurationFile));
     await fixture.run(...args);
+    expect(await readFile(configurationFile, 'utf8')).toBe(previous);
+    expect(await readdir(path.dirname(configurationFile))).toEqual(files);
     expect(envelopeTypes()).toEqual([]);
     expect(envelopes.join('\n')).not.toContain('private-invalid');
   }
 );
+
+test('enabled telemetry preserves root and nested completion script output', async () => {
+  const baseline = await fixture.run('--completions', 'bash');
+  expect(await set(dsn, '1')).toMatchObject({exitCode: 0});
+  expect(await fixture.run('--completions', 'bash')).toEqual(baseline);
+  expect(await fixture.run('ai', 'set', '--completions', 'bash')).toEqual(baseline);
+  expect(envelopeTypes()).toEqual([]);
+});
 
 test('zero sampling rates drop all four signals', async () => {
   expect(await set()).toMatchObject({exitCode: 0});

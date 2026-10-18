@@ -156,12 +156,15 @@ function instrumentCommand<Result, Failure, Requirements>(
   command: () => Effect.Effect<Result, Failure, Requirements>,
   invocation: DeepReadonly<ReturnType<typeof invocationClassifier.classify>>
 ): Effect.Effect<Result, Failure, Requirements> {
+  if (invocation.controlInvocation) {
+    return command();
+  }
+
   if (Option.contains(invocation.command, 'tui')) {
     return command().pipe(Effect.tapCause(reportTuiFailure));
   }
 
   if (
-    invocation.controlInvocation ||
     Option.isSome(invocation.sensitiveCommand) ||
     Option.contains(invocation.command, 'sentry')
   ) {

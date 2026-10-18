@@ -82,7 +82,7 @@ function prepareArguments(
 ): Effect.Effect<PreparedCommand | Readonly<{kind: 'Retry'}>> {
   if (args.some(argument => invocationClassifier.isCliControlArgument(argument))) {
     return Console.error(
-      'A value looks like a CLI help or version flag. Use the CLI directly to pass this value.'
+      'A value looks like a CLI control flag. Use the CLI directly to pass this value.'
     ).pipe(Effect.as({kind: 'Retry'} as const));
   }
 

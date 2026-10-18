@@ -304,6 +304,26 @@ async function runBinary(
   return {exitCode, stderr, stdout};
 }
 
+async function verifyCompletions(directories: SmokeDirectory): Promise<void> {
+  for (const {shell, marker} of [
+    {marker: 'Static completion script for Bash', shell: 'bash'},
+    {marker: 'Static completion script for Bash', shell: 'sh'},
+    {marker: '#compdef flightsim-things', shell: 'zsh'},
+    {marker: 'complete -c flightsim-things', shell: 'fish'},
+  ]) {
+    const generated = await runBinary(directories, ['--completions', shell]);
+    assert.equal(generated.exitCode, successExitCode);
+    assert.equal(generated.stderr, '');
+    assert.ok(generated.stdout.includes(marker));
+    assert.ok(generated.stdout.includes('--verbose'));
+    assert.deepEqual(
+      await runBinary(directories, ['ai', 'set', '--completions', shell]),
+      generated,
+      'Nested completion actions must bypass credential command execution'
+    );
+  }
+}
+
 async function verifyCommands(directories: SmokeDirectory): Promise<void> {
   assert.deepEqual(await runBinary(directories, ['--version']), {
     exitCode: successExitCode,
@@ -460,6 +480,7 @@ async function verifyDesktopBundle(directories: SmokeDirectory): Promise<void> {
 async function smoke(executable: string): Promise<void> {
   const directories = await smokeDirectory(executable);
   try {
+    await verifyCompletions(directories);
     await verifyCommands(directories);
     await verifyPersistence(directories);
     await verifyDesktopBundle(directories);
