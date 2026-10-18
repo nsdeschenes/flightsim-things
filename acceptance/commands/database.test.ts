@@ -220,9 +220,13 @@ test(
 test(
   'a later scan restores aircraft even when their package remains saved',
   async () => {
-    await fixture.addon('base', {
-      'SimObjects/Airplanes/Base/aircraft.cfg': aircraftConfig,
-    });
+    await fixture.addon(
+      'base',
+      {
+        'SimObjects/Airplanes/Base/aircraft.cfg': aircraftConfig,
+      },
+      'AIRCRAFT'
+    );
     expect(await fixture.run('community-path', 'set', fixture.community)).toMatchObject({
       exitCode: 0,
     });
