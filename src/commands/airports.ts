@@ -6,6 +6,7 @@ import airportEnrichment from '#airport-enrichment';
 import database from '#database';
 import schema from '#database-schema';
 
+import type SavedList from './saved-list.ts';
 import formatTable from './terminal-table.ts';
 
 type Airport = typeof schema.airports.$inferSelect &
@@ -33,6 +34,51 @@ const columns = [
 ] as const;
 const noAirports = 0;
 
+const emptyAirportsMessage =
+  'No installed airports found. Run scan to populate the list.';
+
+function findAirports(
+  airportCode: DeepReadonly<Option.Option<string>>
+): Effect.Effect<Airport[], InstanceType<typeof database.Error>> {
+  return database.use(db =>
+    db
+      .select({
+        ...getColumns(schema.airports),
+        sourcePath: schema.packages.sourcePath,
+      })
+      .from(schema.airports)
+      .innerJoin(schema.packages, eq(schema.airports.packageId, schema.packages.id))
+      .where(
+        airportCode.pipe(
+          Option.map((value: string) =>
+            or(
+              eq(sql`upper(${schema.airports.icaoCode})`, value),
+              eq(sql`upper(${schema.airports.iataCode})`, value)
+            )
+          ),
+          Option.getOrUndefined
+        )
+      )
+      .orderBy(schema.airports.icaoCode, schema.airports.name, schema.airports.id)
+      .all()
+  );
+}
+
+const savedList: Effect.Effect<
+  SavedList,
+  InstanceType<typeof database.Error>
+> = findAirports(Option.none<string>()).pipe(
+  Effect.map((rows: readonly Readonly<Airport>[]) => ({
+    choices: rows.map(row => ({
+      description: `${row.sourceKey} | ${row.sourcePath}`,
+      title: `[ID ${row.id}] ${[row.name, row.icaoCode, row.iataCode].filter(Boolean).join(' | ')}`,
+      value: () => formatTable([row], columns),
+    })),
+    emptyMessage: emptyAirportsMessage,
+    message: 'Choose an airport',
+  }))
+);
+
 const listCommand = Command.make(
   'list',
   {
@@ -44,36 +90,13 @@ const listCommand = Command.make(
   ({code}: ListOptions) =>
     Effect.gen(function* listAirports() {
       const airportCode = Option.map((value: string) => value.trim().toUpperCase())(code);
-      const airports = yield* database.use(db =>
-        db
-          .select({
-            ...getColumns(schema.airports),
-            sourcePath: schema.packages.sourcePath,
-          })
-          .from(schema.airports)
-          .innerJoin(schema.packages, eq(schema.airports.packageId, schema.packages.id))
-          .where(
-            airportCode.pipe(
-              Option.map(value =>
-                or(
-                  eq(sql`upper(${schema.airports.icaoCode})`, value),
-                  eq(sql`upper(${schema.airports.iataCode})`, value)
-                )
-              ),
-              Option.getOrUndefined
-            )
-          )
-          .orderBy(schema.airports.icaoCode, schema.airports.name, schema.airports.id)
-          .all()
-      );
+      const airports = yield* findAirports(airportCode);
       if (airports.length === noAirports) {
         if (Option.isSome(airportCode)) {
           return yield* Console.log('No installed airports match that code.');
         }
 
-        return yield* Console.log(
-          'No installed airports found. Run scan to populate the list.'
-        );
+        return yield* Console.log(emptyAirportsMessage);
       }
 
       return yield* Console.log(formatTable(airports, columns));
@@ -94,4 +117,6 @@ const airportsCommand = Command.make('airports').pipe(
   Command.withSubcommands([listCommand, enrichCommand])
 );
 
-export default airportsCommand;
+const airports = {command: airportsCommand, savedList};
+
+export default airports;

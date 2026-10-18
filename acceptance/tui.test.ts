@@ -2,6 +2,7 @@ import {Database} from 'bun:sqlite';
 import {afterEach, beforeEach, expect, setDefaultTimeout, test} from 'bun:test';
 import {mkdir, readFile, realpath} from 'node:fs/promises';
 import path from 'node:path';
+import {setTimeout as delay} from 'node:timers/promises';
 import {stripVTControlCharacters} from 'node:util';
 
 import createCliFixture from '#acceptance-cli';
@@ -13,6 +14,9 @@ setDefaultTimeout(testTimeoutMilliseconds);
 
 const firstChoice = 0;
 const headingLines = 1;
+const lastFrame = -1;
+const filterTimeoutMilliseconds = 10_000;
+const filterPollMilliseconds = 10;
 const lineBreak = /\r?\n/u;
 const selectedMarker = /^[❯>] /u;
 const successExitCode = 0;
@@ -25,6 +29,7 @@ const expectedCommands = [
   'community-path',
   'database',
   'find-flight',
+  'liveries',
   'openaip-key',
   'scan',
   'sentry',
@@ -36,6 +41,7 @@ const commandGroups = [
   {commands: 2, name: 'airports'},
   {commands: 3, name: 'community-path'},
   {commands: 1, name: 'database'},
+  {commands: 1, name: 'liveries'},
   {commands: 2, name: 'openaip-key'},
   {commands: 3, name: 'sentry'},
 ];
@@ -44,6 +50,8 @@ const enter = '\r';
 const controlD = '\u0004';
 const controlC = '\u0003';
 const escape = '\u001B';
+const controlU = '\u0015';
+const backspace = '\u007F';
 let fixture: Awaited<ReturnType<typeof createCliFixture>>;
 type Session = ReturnType<typeof createTerminalSession>;
 let sessions: Session[];
@@ -86,14 +94,315 @@ async function listAirlines(session: Readonly<Omit<Session, 'exited'>>): Promise
   session.send(choose('airlines'));
   await session.waitFor('Command');
   session.send(enter);
-  await session.waitFor('Set Aircraft (--aircraft)?');
-  session.send(enter);
-  await session.waitFor('Set Code (--code)?');
-  session.send(enter);
   await session.waitFor('No saved airlines found. Run scan to populate the list.');
   await session.waitFor('Command completed.');
   await waitForMainMenu(session);
 }
+
+async function openSavedList(
+  session: Readonly<Omit<Session, 'exited'>>,
+  name: string
+): Promise<void> {
+  session.send(choose(name));
+  await session.waitFor('back');
+  session.send(enter);
+}
+
+async function seedInventory(): Promise<void> {
+  expect(await fixture.run('airlines', 'list')).toMatchObject({exitCode: 0});
+  using db = new Database(path.join(fixture.home, '.flightsim-things/addons.sqlite'));
+  db.run(`INSERT INTO packages (id, source_path) VALUES
+    (1, '/inventory/first'), (2, '/inventory/second')`);
+  db.run(`INSERT INTO aircraft
+    (id, icao_type_designator, manufacturer, model, name, package_id, source_key) VALUES
+    (1, 'A320', 'Airbus', '320neo', 'Skybus', 1, 'first.cfg'),
+    (2, 'A320', 'Airbus', '320neo', 'Skybus', 2, 'second.cfg'),
+    (3, 'B738', 'Boeing', '737', 'Other aircraft', 1, 'other.cfg'),
+    (4, NULL, NULL, NULL, NULL, 1, 'unknown.cfg')`);
+  db.run(`INSERT INTO airlines (id, icao_code, iata_code, name) VALUES
+    (1, 'BAW', 'BA', 'British Airways'), (2, 'DAL', 'DL', 'Delta Air Lines'),
+    (3, NULL, NULL, 'Unnamed carrier')`);
+  db.run(`INSERT INTO airports
+    (id, icao_code, iata_code, name, latitude, longitude, elevation_meters, package_id, source_key) VALUES
+    (1, 'EGLL', 'LHR', 'Heathrow', 51.47, -0.45, 25, 1, 'first.xml'),
+    (2, 'EGLL', 'LHR', 'Heathrow', 51.48, -0.46, 26, 2, 'second.xml'),
+    (3, 'KJFK', 'JFK', 'Kennedy', NULL, NULL, NULL, 1, 'other.xml'),
+    (4, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'unknown.xml')`);
+  db.run(`INSERT INTO liveries
+    (id, name, registration, aircraft_id, airline_id, package_id, source_key, target_aircraft_key) VALUES
+    (1, 'Heritage', 'G-EUAA', 1, 1, 1, 'heritage.cfg', 'base'),
+    (2, 'Freighter', 'N999', 3, 2, 2, 'freighter.cfg', 'other'),
+    (3, NULL, NULL, NULL, NULL, 1, 'unknown-livery.cfg', 'missing')`);
+}
+
+const inventoryPickers = [
+  {
+    empty: 'No installed aircraft found. Run scan to populate the list.',
+    hidden: 'Other aircraft',
+    name: 'aircraft',
+    queries: ['Skybus', 'aIrBuS', '320nEo', 'a320'],
+    row: [
+      '2',
+      'A320',
+      'Airbus',
+      '320neo',
+      'Skybus',
+      '2',
+      'second.cfg',
+      '/inventory/second',
+    ],
+    selection: down,
+    unknownId: '[ID 4]',
+    unknownRow: ['4', '', '', '', '', '1', 'unknown.cfg', '/inventory/first'],
+  },
+  {
+    empty: 'No saved airlines found. Run scan to populate the list.',
+    hidden: 'Delta Air Lines',
+    name: 'airlines',
+    queries: ['British Airways', 'bAw', 'bA'],
+    row: ['1', 'BAW', 'BA', 'British Airways'],
+    selection: '',
+    unknownId: '[ID 3]',
+    unknownRow: ['3', '', '', 'Unnamed carrier'],
+  },
+  {
+    empty: 'No installed airports found. Run scan to populate the list.',
+    hidden: 'Kennedy',
+    name: 'airports',
+    queries: ['Heathrow', 'eGlL', 'lHr'],
+    row: [
+      '2',
+      'EGLL',
+      'LHR',
+      'Heathrow',
+      '51.48',
+      '-0.46',
+      '26',
+      '2',
+      'second.xml',
+      '/inventory/second',
+    ],
+    selection: down,
+    unknownId: '[ID 4]',
+    unknownRow: ['4', '', '', '', '', '', '', '1', 'unknown.xml', '/inventory/first'],
+  },
+  {
+    empty: 'No installed liveries found. Run scan to populate the list.',
+    hidden: 'Freighter',
+    name: 'liveries',
+    queries: ['Heritage', 'g-EuAa', 'Skybus', 'a320', 'British Airways', 'bAw', 'bA'],
+    row: [
+      '1',
+      'Heritage',
+      'G-EUAA',
+      '1',
+      'A320',
+      'Skybus',
+      '1',
+      'BAW',
+      'BA',
+      'British Airways',
+      'base',
+      '1',
+      'heritage.cfg',
+      '/inventory/first',
+    ],
+    selection: '',
+    unknownId: '[ID 3]',
+    unknownRow: [
+      '3',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      'missing',
+      '1',
+      'unknown-livery.cfg',
+      '/inventory/first',
+    ],
+  },
+];
+type Picker = Readonly<{
+  name: string;
+  queries: readonly string[];
+  hidden: string;
+  row: readonly string[];
+  selection: string;
+  unknownId: string;
+  unknownRow: readonly string[];
+}>;
+
+async function narrowPicker(
+  session: Readonly<Omit<Session, 'exited'>>,
+  query: string,
+  expected: Readonly<{visible: string; hidden: string}>
+): Promise<void> {
+  const start = session.output().length;
+  session.send(controlU + query);
+  const deadline = Date.now() + filterTimeoutMilliseconds;
+  while (Date.now() < deadline) {
+    const frame =
+      stripVTControlCharacters(session.output().slice(start))
+        .split(`[filter: ${query}]`)
+        .slice(headingLines)
+        .at(lastFrame) ?? '';
+    if (frame.includes(expected.visible)) {
+      expect(frame).not.toContain(expected.hidden);
+      return;
+    }
+
+    await delay(filterPollMilliseconds);
+  }
+
+  throw new Error(`Missing filtered frame for "${query}". Output ${session.output()}`);
+}
+
+function tableRows(output: string): string[][] {
+  return stripVTControlCharacters(output)
+    .split(lineBreak)
+    .filter(line => line.startsWith('|'))
+    .slice(headingLines)
+    .map(line =>
+      line
+        .split('|')
+        .slice(headingLines, -headingLines)
+        .map(cell => cell.trim())
+    );
+}
+
+async function submitPicker(
+  session: Readonly<Omit<Session, 'exited'>>,
+  selection: string,
+  row: readonly string[]
+): Promise<void> {
+  const start = session.output().length;
+  session.send(selection + enter);
+  await session.waitFor('Command completed.');
+  await waitForMainMenu(session);
+  expect(tableRows(session.output().slice(start))).toEqual([[...row]]);
+  expect(session.output()).not.toContain('Set Code (--code)?');
+  expect(session.output()).not.toContain('Set Aircraft (--aircraft)?');
+  expect(session.output()).not.toContain('Set Airline (--airline)?');
+}
+
+async function startPicker(name: string): Promise<Session> {
+  const session = await startSession();
+  await openSavedList(session, name);
+  await session.waitFor('type to filter');
+  return session;
+}
+
+async function selectUnknownRecord(
+  session: Readonly<Omit<Session, 'exited'>>,
+  picker: Picker
+): Promise<void> {
+  await openSavedList(session, picker.name);
+  await session.waitFor('type to filter');
+  await narrowPicker(session, picker.unknownId, {
+    hidden: '[ID 1]',
+    visible: picker.unknownId,
+  });
+  await submitPicker(session, '', picker.unknownRow);
+}
+
+async function recoverFromNoMatches(
+  session: Readonly<Omit<Session, 'exited'>>
+): Promise<void> {
+  session.send('British AirwaysX');
+  await session.waitFor('No matches');
+  session.send(enter + backspace);
+  await session.waitFor('[ID 1]');
+  expect(session.output()).not.toContain('Command completed.');
+}
+
+test.each(inventoryPickers)(
+  '$name narrows saved records before Enter and displays the exact selected row',
+  async (picker: Picker) => {
+    await seedInventory();
+    const session = await startPicker(picker.name);
+    for (const query of picker.queries) {
+      await narrowPicker(session, query, {hidden: picker.hidden, visible: '[ID 1]'});
+    }
+
+    await submitPicker(session, picker.selection, picker.row);
+    if (picker.name !== 'airlines') {
+      expect(session.output()).toContain('\u001B]8;;file:///inventory/');
+    }
+
+    await selectUnknownRecord(session, picker);
+    session.send(controlD);
+    expect(await session.exited).toBe(successExitCode);
+  }
+);
+
+test('autocomplete recovers from zero matches, supports Backspace, clearing, and arrow navigation', async () => {
+  await seedInventory();
+  const session = await startPicker('airlines');
+  await recoverFromNoMatches(session);
+  const start = session.output().length;
+  session.send(controlU);
+  await session.waitFor('Delta Air Lines');
+  expect(stripVTControlCharacters(session.output().slice(start))).toContain(
+    'Unnamed carrier'
+  );
+  session.send(down);
+  await session.waitFor('Delta Air Lines');
+  await submitPicker(session, '', ['2', 'DAL', 'DL', 'Delta Air Lines']);
+});
+
+test.each(inventoryPickers)(
+  '$name bypasses the picker for an empty inventory',
+  async (picker: Readonly<{name: string; empty: string}>) => {
+    const session = await startSession();
+    await openSavedList(session, picker.name);
+    await session.waitFor(picker.empty);
+    await session.waitFor('Command completed.');
+    await waitForMainMenu(session);
+    expect(session.output()).not.toContain('type to filter');
+  }
+);
+
+test.each(inventoryPickers)(
+  '$name returns to the menu on Escape and exits on Ctrl+C and Ctrl+D',
+  async (picker: Readonly<{name: string}>) => {
+    await seedInventory();
+    for (const key of [escape, controlC, controlD]) {
+      const session = await startPicker(picker.name);
+      session.send(key);
+      if (key === escape) {
+        await waitForMainMenu(session);
+        session.send(controlD);
+      }
+
+      expect(await session.exited).toBe(successExitCode);
+      expect(session.output()).not.toContain('Command completed.');
+    }
+  }
+);
+
+test('autocomplete sanitizes titles and descriptions before rendering', async () => {
+  await seedInventory();
+  using db = new Database(path.join(fixture.home, '.flightsim-things/addons.sqlite'));
+  db.run('UPDATE aircraft SET name = ?, source_key = ? WHERE id = 1', [
+    '\u001B[31m東京\u001B[0m\tNorth\nGate',
+    '\u001B]8;;https://example.invalid\u0007source.cfg\u001B]8;;\u0007\r\u0000',
+  ]);
+  const session = await startSession();
+  await openSavedList(session, 'aircraft');
+  await session.waitFor('type to filter');
+  await narrowPicker(session, '東京 North Gate', {
+    hidden: 'Other aircraft',
+    visible: '[ID 1]',
+  });
+  expect(session.output()).not.toContain('\u001B[31m');
+  expect(session.output()).not.toContain('https://example.invalid');
+  expect(session.output()).toContain('source.cfg  ');
+});
 
 async function saveKey(
   session: Readonly<Omit<Session, 'exited'>>,

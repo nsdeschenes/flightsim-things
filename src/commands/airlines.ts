@@ -5,6 +5,7 @@ import {Command, Flag} from 'effect/cli';
 import database from '#database';
 import schema from '#database-schema';
 
+import type SavedList from './saved-list.ts';
 import formatTable from './terminal-table.ts';
 
 type Airline = typeof schema.airlines.$inferSelect;
@@ -25,6 +26,7 @@ const columns = [
   {header: 'Name', key: 'name'},
 ] as const;
 const noAirlines = 0;
+const emptyAirlinesMessage = 'No saved airlines found. Run scan to populate the list.';
 
 function findAirlines(
   airlineCode: DeepReadonly<Option.Option<string>>,
@@ -60,6 +62,20 @@ function findAirlines(
   });
 }
 
+const savedList: Effect.Effect<
+  SavedList,
+  InstanceType<typeof database.Error>
+> = findAirlines(Option.none<string>(), Option.none<string>()).pipe(
+  Effect.map((rows: readonly Readonly<Airline>[]) => ({
+    choices: rows.map(row => ({
+      title: `[ID ${row.id}] ${[row.name, row.icaoCode, row.iataCode].filter(Boolean).join(' | ')}`,
+      value: () => formatTable([row], columns),
+    })),
+    emptyMessage: emptyAirlinesMessage,
+    message: 'Choose an airline',
+  }))
+);
+
 const listCommand = Command.make(
   'list',
   {
@@ -86,9 +102,7 @@ const listCommand = Command.make(
           return yield* Console.log('No saved airlines match those filters.');
         }
 
-        return yield* Console.log(
-          'No saved airlines found. Run scan to populate the list.'
-        );
+        return yield* Console.log(emptyAirlinesMessage);
       }
 
       return yield* Console.log(formatTable(airlines, columns));
@@ -100,4 +114,6 @@ const airlinesCommand = Command.make('airlines').pipe(
   Command.withSubcommands([listCommand])
 );
 
-export default airlinesCommand;
+const airlines = {command: airlinesCommand, savedList};
+
+export default airlines;

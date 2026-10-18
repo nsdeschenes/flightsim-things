@@ -1,14 +1,14 @@
 import {BunTerminal} from '@effect/platform-bun';
 import {Console, Data, Deferred, Effect, Queue, Terminal} from 'effect';
 import type {Done} from 'effect/Cause';
-import {Command} from 'effect/cli';
-import type {CliError} from 'effect/cli/CliError';
-import {Select as select} from 'effect/cli/Prompt';
+import {Command, Prompt} from 'effect/cli';
 import type {Scope} from 'effect/Scope';
 
 import invocationClassifier from '#invocation';
 import sentry from '#sentry';
 
+import interactiveList from './interactive-list.ts';
+import inventory from './inventory.ts';
 import type ordinary from './ordinary.ts';
 
 type DeepReadonly<Value> = Value extends object
@@ -21,13 +21,20 @@ type RootCommand = DeepReadonly<typeof ordinary.command>;
 type PromptServices = Exclude<Command.Environment, Terminal.Terminal>;
 const {catch: catchEffect} = Effect;
 const {TaggedError: taggedError} = Data;
+const {Select: select} = Prompt;
 
 type Selection =
   | Readonly<{kind: 'Back'}>
   | Readonly<{kind: 'Exit'}>
   | Readonly<{kind: 'Command'; command: CommandTree}>;
 type PreparedCommand = Readonly<{kind: 'Prepared'; args: readonly string[]}>;
-type PreparationOutcome = PreparedCommand | Readonly<{kind: 'Exit' | 'Retry'}>;
+type PreparedListing = Effect.Success<ReturnType<typeof interactiveList.prepare>>;
+type PreparationOutcome =
+  | PreparedCommand
+  | PreparedListing
+  | Readonly<{kind: 'Exit' | 'Retry'}>;
+type DatabaseError = Effect.Error<NonNullable<ReturnType<typeof inventory.loaders.get>>>;
+type PreparationError = Effect.Error<ReturnType<typeof Command.wizard>> | DatabaseError;
 type Cancellation =
   | Readonly<{kind: 'Root' | 'Nested'}>
   | Readonly<{kind: 'Cancelled'; outcome: Readonly<{kind: 'Exit' | 'Retry'}>}>;
@@ -39,12 +46,19 @@ const exit = {kind: 'Exit'} as const;
 const navigationOutcomes = {Back: {kind: 'Retry'}, Exit: exit} as const;
 function runSelectedCommand(
   root: RootCommand,
-  args: readonly string[],
+  prepared: PreparedCommand | PreparedListing,
   version: string
 ): Effect.Effect<void, never, Command.Environment> {
+  const {args} = prepared;
   return sentry
     .instrument(
-      () => Command.runWith(root, {renderErrors: false, version})(args),
+      () => {
+        if (prepared.kind === 'Listing') {
+          return Console.log(prepared.output);
+        }
+
+        return Command.runWith(root, {renderErrors: false, version})(args);
+      },
       invocationClassifier.classify(
         args,
         root.subcommands.flatMap(group => group.commands)
@@ -121,10 +135,27 @@ function selectCommand(
   return select({choices, maxPerPage: choices.length, message});
 }
 
+function prepareSelection(
+  command: CommandTree,
+  path: readonly string[]
+): Effect.Effect<PreparationOutcome, PreparationError, Command.Environment> {
+  return Effect.gen(function* prepareCommandSelection() {
+    yield* Console.log('Escape returns to the menu. Ctrl+C or Ctrl+D exits.');
+    const loadList = inventory.loaders.get(path.join(' '));
+    if (loadList) {
+      const list = yield* loadList;
+      return yield* interactiveList.prepare(path, list);
+    }
+
+    const args = yield* Command.wizard(command, {prefix: path});
+    return yield* prepareArguments(args);
+  });
+}
+
 function collectSelection(
   selection: Selection,
   prefix: readonly string[]
-): Effect.Effect<PreparationOutcome, Terminal.QuitError | CliError, Command.Environment> {
+): Effect.Effect<PreparationOutcome, PreparationError, Command.Environment> {
   return Effect.gen(function* collectSelectedCommand() {
     if (selection.kind !== 'Command') {
       return navigationOutcomes[selection.kind];
@@ -139,9 +170,7 @@ function collectSelection(
       return yield* collectSelection(child, path);
     }
 
-    yield* Console.log('Escape returns to the menu. Ctrl+C or Ctrl+D exits.');
-    const args = yield* Command.wizard(command, {prefix: path});
-    return yield* prepareArguments(args);
+    return yield* prepareSelection(command, path);
   });
 }
 
@@ -336,8 +365,8 @@ function makeTuiCommand(
             return yield* Effect.void;
           }
 
-          if (prepared.kind === 'Prepared') {
-            yield* runSelectedCommand(root, prepared.args, version).pipe(
+          if (prepared.kind === 'Prepared' || prepared.kind === 'Listing') {
+            yield* runSelectedCommand(root, prepared, version).pipe(
               Effect.provideService(Terminal.Terminal, session.terminal)
             );
           }

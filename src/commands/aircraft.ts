@@ -5,6 +5,7 @@ import {Command, Flag} from 'effect/cli';
 import database from '#database';
 import schema from '#database-schema';
 
+import type SavedList from './saved-list.ts';
 import formatTable from './terminal-table.ts';
 
 type Aircraft = typeof schema.aircraft.$inferSelect &
@@ -30,6 +31,8 @@ const columns = [
   {directory: (row: Readonly<Aircraft>): string => row.sourcePath, header: 'Directory'},
 ] as const;
 const noAircraft = 0;
+const emptyAircraftMessage =
+  'No installed aircraft found. Run scan to populate the list.';
 
 function findAircraft(
   aircraftCode: DeepReadonly<Option.Option<string>>,
@@ -72,6 +75,21 @@ function findAircraft(
   });
 }
 
+const savedList: Effect.Effect<
+  SavedList,
+  InstanceType<typeof database.Error>
+> = findAircraft(Option.none<string>(), Option.none<string>()).pipe(
+  Effect.map((rows: readonly Readonly<Aircraft>[]) => ({
+    choices: rows.map(row => ({
+      description: `${row.sourceKey} | ${row.sourcePath}`,
+      title: `[ID ${row.id}] ${[row.name, row.manufacturer, row.model, row.icaoTypeDesignator].filter(Boolean).join(' | ')}`,
+      value: () => formatTable([row], columns),
+    })),
+    emptyMessage: emptyAircraftMessage,
+    message: 'Choose an aircraft',
+  }))
+);
+
 const listCommand = Command.make(
   'list',
   {
@@ -100,9 +118,7 @@ const listCommand = Command.make(
           return yield* Console.log('No installed aircraft match those filters.');
         }
 
-        return yield* Console.log(
-          'No installed aircraft found. Run scan to populate the list.'
-        );
+        return yield* Console.log(emptyAircraftMessage);
       }
 
       return yield* Console.log(formatTable(aircraft, columns));
@@ -114,4 +130,6 @@ const aircraftCommand = Command.make('aircraft').pipe(
   Command.withSubcommands([listCommand])
 );
 
-export default aircraftCommand;
+const aircraft = {command: aircraftCommand, savedList};
+
+export default aircraft;
