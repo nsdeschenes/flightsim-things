@@ -255,7 +255,7 @@ test('stale inferred snapshots yield to stored explicit airports without disrupt
     import persistence from ${JSON.stringify(persistenceModule)};
     const root = path.join(process.env.HOME, 'Community/vendor-airport-kaaa-example');
     await mkdir(root, {recursive: true});
-    await writeFile(path.join(root, 'manifest.json'), '{}');
+    await writeFile(path.join(root, 'manifest.json'), '{"content_type":"SCENERY"}');
     await writeFile(path.join(root, 'world.bgl'), 'compiled');
     await writeFile(path.join(root, 'layout.json'), JSON.stringify({content: [{path: 'world.bgl'}]}));
     const stale = await reader.read(root);

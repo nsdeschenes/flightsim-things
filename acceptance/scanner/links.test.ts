@@ -38,9 +38,13 @@ function expectLinked(total: number): void {
 
 async function seedBatches(): Promise<void> {
   for (const index of Array.from({length: packageCount}).keys()) {
-    await fixture.addon(`package-${index}`, {
-      [cfgPath]: `${baseCfg}[FLTSIM.0]\nui_variation=First\n[FLTSIM.1]\nui_variation=Second\n`,
-    });
+    await fixture.addon(
+      `package-${index}`,
+      {
+        [cfgPath]: `${baseCfg}[FLTSIM.0]\nui_variation=First\n[FLTSIM.1]\nui_variation=Second\n`,
+      },
+      'AIRCRAFT'
+    );
   }
 
   expect(await fixture.run('community-path', 'set', fixture.community)).toMatchObject({
@@ -117,10 +121,14 @@ test(
 );
 
 async function seedExternalTarget(): Promise<string> {
-  const base = await fixture.addon('base', {[cfgPath]: baseCfg});
-  await fixture.addon('variant', {
-    'SimObjects/Airplanes/Variant/aircraft.cfg': variantCfg,
-  });
+  const base = await fixture.addon('base', {[cfgPath]: baseCfg}, 'AIRCRAFT');
+  await fixture.addon(
+    'variant',
+    {
+      'SimObjects/Airplanes/Variant/aircraft.cfg': variantCfg,
+    },
+    'LIVERY'
+  );
   expect(await fixture.run('community-path', 'set', fixture.community)).toMatchObject({
     exitCode: 0,
   });
@@ -136,10 +144,10 @@ test(
     await rm(base, {recursive: true});
     expect(await fixture.run('scan')).toMatchObject({exitCode: 0});
     expectLinked(noLinks);
-    await fixture.addon('base', {[cfgPath]: baseCfg});
+    await fixture.addon('base', {[cfgPath]: baseCfg}, 'AIRCRAFT');
     expect(await fixture.run('scan')).toMatchObject({exitCode: 0});
     expectLinked(variantCount);
-    await fixture.addon('duplicate', {[cfgPath]: baseCfg});
+    await fixture.addon('duplicate', {[cfgPath]: baseCfg}, 'AIRCRAFT');
     expect(await fixture.run('scan')).toMatchObject({exitCode: 0});
     expectLinked(noLinks);
   },

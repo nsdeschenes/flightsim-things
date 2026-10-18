@@ -349,7 +349,7 @@ function xmlLogs(): readonly Readonly<{
 }
 
 async function addCase(input: XmlCase): Promise<void> {
-  const root = await fixture.addon(input.name, {[input.filename]: ''});
+  const root = await fixture.addon(input.name, {[input.filename]: ''}, 'SCENERY');
   await writeFile(
     path.join(root, input.filename),
     Buffer.from(input.source, input.format)
@@ -385,7 +385,11 @@ function verifyCase(input: XmlCase): void {
 }
 
 async function addAlias(): Promise<void> {
-  const original = await fixture.addon('alias', {'linked.xml': malformedSound});
+  const original = await fixture.addon(
+    'alias',
+    {'linked.xml': malformedSound},
+    'SCENERY'
+  );
   const target = path.join(fixture.home, 'private-target');
   await rename(original, target);
   await symlink(target, original);
@@ -397,11 +401,19 @@ async function seedPackages(): Promise<void> {
       await addCase(input);
     })
   );
-  await fixture.addon('later-failure', {
-    'a-Sound.xml': malformedSound,
-    'z-Fatal.xml': malformedAirport,
-  });
-  await fixture.addon('valid', {'valid.xml': '<FSData><Airport ident="KAAA"/></FSData>'});
+  await fixture.addon(
+    'later-failure',
+    {
+      'a-Sound.xml': malformedSound,
+      'z-Fatal.xml': malformedAirport,
+    },
+    'SCENERY'
+  );
+  await fixture.addon(
+    'valid',
+    {'valid.xml': '<FSData><Airport ident="KAAA"/></FSData>'},
+    'SCENERY'
+  );
   await addAlias();
 }
 

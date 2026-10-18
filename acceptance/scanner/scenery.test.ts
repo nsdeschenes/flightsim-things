@@ -32,10 +32,14 @@ function enrichAirportLocation(): void {
 test(
   'airport rescans update metadata while preserving identity and enriched locations',
   async () => {
-    const root = await fixture.addon('airport', {
-      'airport.xml':
-        '<FSData><Airport ident="KAAA" name="Original" iata="AAA"/></FSData>',
-    });
+    const root = await fixture.addon(
+      'airport',
+      {
+        'airport.xml':
+          '<FSData><Airport ident="KAAA" name="Original" iata="AAA"/></FSData>',
+      },
+      'SCENERY'
+    );
     expect(await fixture.run('community-path', 'set', fixture.community)).toMatchObject({
       exitCode: 0,
     });
@@ -76,18 +80,28 @@ test(
 test.each(['<Sound><broken'])(
   'unrelated malformed XML warns without rejecting aircraft or arbitrary airport XML for %s',
   async xml => {
-    await fixture.addon('mixed', {
-      'SimObjects/Airplanes/Base/aircraft.cfg': cfg,
-      'SimObjects/Airplanes/Base/sound.xml': xml,
-      'arbitrary/location.xml': '<FSData><Airport ident="KAAA"/></FSData>',
-    });
+    await fixture.addon(
+      'aircraft',
+      {
+        'SimObjects/Airplanes/Base/aircraft.cfg': cfg,
+      },
+      'AIRCRAFT'
+    );
+    await fixture.addon(
+      'scenery',
+      {
+        'SimObjects/Airplanes/Base/sound.xml': xml,
+        'arbitrary/location.xml': '<FSData><Airport ident="KAAA"/></FSData>',
+      },
+      'SCENERY'
+    );
     expect(await fixture.run('community-path', 'set', fixture.community)).toMatchObject({
       exitCode: 0,
     });
     const result = await fixture.run('scan');
     expect(result.exitCode).toBe(successExitCode);
     expect(result.stdout).toContain(
-      'Scanned 1 packages, 1 aircraft, 1 airports, and 1 liveries. 0 packages failed. 1 warnings.'
+      'Scanned 2 packages, 1 aircraft, 1 airports, and 1 liveries. 0 packages failed. 1 warnings.'
     );
     expect(result.stderr).toContain('simobjects/airplanes/base/sound.xml');
     expect(fixture.query('SELECT icao_code FROM airports')).toEqual([
@@ -105,10 +119,13 @@ test.each(['<Sound><broken'])(
 test.each([['malformed-airport', 'arbitrary.xml', '<FSData><Airport']])(
   'airport corruption and uncertain XML remain package failures for %s',
   async (name, filename, xml) => {
-    await fixture.addon(name, {
-      'SimObjects/Airplanes/Base/aircraft.cfg': cfg,
-      [filename]: xml,
-    });
+    await fixture.addon(
+      name,
+      {
+        [filename]: xml,
+      },
+      'SCENERY'
+    );
     expect(await fixture.run('community-path', 'set', fixture.community)).toMatchObject({
       exitCode: 0,
     });
@@ -124,7 +141,7 @@ test.each([['malformed-airport', 'arbitrary.xml', '<FSData><Airport']])(
 test(
   'native parsing accepts UTF-16 airports and malformed UTF-16 remains strict',
   async () => {
-    const root = await fixture.addon('utf16', {'arbitrary.xml': ''});
+    const root = await fixture.addon('utf16', {'arbitrary.xml': ''}, 'SCENERY');
     const filename = path.join(root, 'arbitrary.xml');
     await writeFile(
       filename,
@@ -148,7 +165,7 @@ test(
 test(
   'regular file symlinks are ignored during package discovery',
   async () => {
-    await fixture.addon('valid', {'aircraft.cfg': cfg});
+    await fixture.addon('valid', {'aircraft.cfg': cfg}, 'AIRCRAFT');
     const filename = path.join(fixture.community, 'readme.txt');
     await writeFile(filename, 'readme');
     await symlink(filename, path.join(fixture.community, 'readme-link'), 'file');

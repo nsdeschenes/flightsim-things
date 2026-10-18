@@ -28,34 +28,59 @@ async function invalidNames(): Promise<void> {
     'vendor-airport-kaaa-',
     'vendor-kaaa-name',
   ]) {
-    await fixture.addon(name, {'scenery/world.bgl': 'compiled'});
+    await fixture.addon(name, {'scenery/world.bgl': 'compiled'}, 'SCENERY');
   }
 
-  await fixture.addon('vendor-airport-kbbb-no-bgl', {});
+  await fixture.addon('vendor-airport-kbbb-no-bgl', {}, 'SCENERY');
 }
 
 async function candidatePackages(): Promise<void> {
-  await fixture.addon('amsim-airport-lpma-madeira', {'scenery/world.bgl': 'compiled'});
-  await fixture.addon('asianairports-airport-rkss-gimpo', {
-    'scenery/world.bgl': 'compiled',
-  });
-  const linked = await fixture.addon('unmatched-target', {
-    'scenery/world.bgl': 'compiled',
-  });
+  await fixture.addon(
+    'amsim-airport-lpma-madeira',
+    {'scenery/world.bgl': 'compiled'},
+    'SCENERY'
+  );
+  await fixture.addon(
+    'asianairports-airport-rkss-gimpo',
+    {
+      'scenery/world.bgl': 'compiled',
+    },
+    'SCENERY'
+  );
+  const linked = await fixture.addon(
+    'unmatched-target',
+    {
+      'scenery/world.bgl': 'compiled',
+    },
+    'SCENERY'
+  );
   await symlink(linked, path.join(fixture.community, 'vendor-name-airport-lfmn-nice'));
   await invalidNames();
-  await fixture.addon('vendor-airport-kccc-explicit', {
-    'arbitrary/metadata.xml': '<FSData><Airport ident="KDDD" name="Explicit"/></FSData>',
-    'scenery/world.bgl': 'compiled',
-  });
-  await fixture.addon('vendor-airport-keee-services', {
-    'AirportServices/KFFF/Services.spb': 'compiled services',
-    'scenery/world.bgl': 'compiled',
-  });
-  await fixture.addon('vendor-airport-kggg-broken', {
-    'airport.xml': '<FSData><Airport',
-    'scenery/world.bgl': 'compiled',
-  });
+  await fixture.addon(
+    'vendor-airport-kccc-explicit',
+    {
+      'arbitrary/metadata.xml':
+        '<FSData><Airport ident="KDDD" name="Explicit"/></FSData>',
+      'scenery/world.bgl': 'compiled',
+    },
+    'SCENERY'
+  );
+  await fixture.addon(
+    'vendor-airport-keee-services',
+    {
+      'AirportServices/KFFF/Services.spb': 'compiled services',
+      'scenery/world.bgl': 'compiled',
+    },
+    'SCENERY'
+  );
+  await fixture.addon(
+    'vendor-airport-kggg-broken',
+    {
+      'airport.xml': '<FSData><Airport',
+      'scenery/world.bgl': 'compiled',
+    },
+    'SCENERY'
+  );
 }
 
 test(
@@ -84,12 +109,28 @@ test(
 );
 
 async function initialFallbacks(): Promise<void> {
-  await fixture.addon('amsim-airport-lpma-madeira', {'scenery/world.bgl': 'compiled'});
-  await fixture.addon('vendor-airport-kbbb-changed', {'scenery/world.bgl': 'compiled'});
-  await fixture.addon('vendor-airport-kccc-removed', {'scenery/world.bgl': 'compiled'});
-  await fixture.addon('ordinary', {
-    'airport.xml': '<FSData><Airport ident="KDDD"/></FSData>',
-  });
+  await fixture.addon(
+    'amsim-airport-lpma-madeira',
+    {'scenery/world.bgl': 'compiled'},
+    'SCENERY'
+  );
+  await fixture.addon(
+    'vendor-airport-kbbb-changed',
+    {'scenery/world.bgl': 'compiled'},
+    'SCENERY'
+  );
+  await fixture.addon(
+    'vendor-airport-kccc-removed',
+    {'scenery/world.bgl': 'compiled'},
+    'SCENERY'
+  );
+  await fixture.addon(
+    'ordinary',
+    {
+      'airport.xml': '<FSData><Airport ident="KDDD"/></FSData>',
+    },
+    'SCENERY'
+  );
   expect(await fixture.run('scan')).toMatchObject({exitCode: successExitCode});
 }
 
@@ -108,14 +149,22 @@ async function enrichedFallbackRescan(identity: readonly unknown[]): Promise<voi
 }
 
 async function replaceFallbacks(): Promise<void> {
-  await fixture.addon('amsim-airport-lpma-madeira', {
-    'airport.xml': '<FSData><Airport ident="LPMA"/></FSData>',
-  });
-  await fixture.addon('vendor-airport-kbbb-changed', {
-    'airport.xml': '<FSData><Airport ident="KEEE" name="Changed"/></FSData>',
-  });
-  await fixture.addon('vendor-airport-kccc-removed', {});
-  await fixture.addon('ordinary', {});
+  await fixture.addon(
+    'amsim-airport-lpma-madeira',
+    {
+      'airport.xml': '<FSData><Airport ident="LPMA"/></FSData>',
+    },
+    'SCENERY'
+  );
+  await fixture.addon(
+    'vendor-airport-kbbb-changed',
+    {
+      'airport.xml': '<FSData><Airport ident="KEEE" name="Changed"/></FSData>',
+    },
+    'SCENERY'
+  );
+  await fixture.addon('vendor-airport-kccc-removed', {}, 'SCENERY');
+  await fixture.addon('ordinary', {}, 'SCENERY');
 }
 
 function verifyPromotedAirports(identity: readonly unknown[]): void {
@@ -156,13 +205,25 @@ test(
 );
 
 async function retainedExplicitPackages(): Promise<void> {
-  await fixture.addon('vendor-airport-kaaa-retained', {
-    'airport.xml': '<FSData><Airport ident="KBBB"/></FSData>',
-    'world.bgl': 'compiled',
-  });
-  await fixture.addon('vendor-airport-kaaa-independent', {'world.bgl': 'compiled'});
+  await fixture.addon(
+    'vendor-airport-kaaa-retained',
+    {
+      'airport.xml': '<FSData><Airport ident="KBBB"/></FSData>',
+      'world.bgl': 'compiled',
+    },
+    'SCENERY'
+  );
+  await fixture.addon(
+    'vendor-airport-kaaa-independent',
+    {'world.bgl': 'compiled'},
+    'SCENERY'
+  );
   expect(await fixture.run('scan')).toMatchObject({exitCode: successExitCode});
-  await fixture.addon('vendor-airport-kaaa-retained', {'world.bgl': 'compiled'});
+  await fixture.addon(
+    'vendor-airport-kaaa-retained',
+    {'world.bgl': 'compiled'},
+    'SCENERY'
+  );
 }
 
 function addPollutedFallback(): void {

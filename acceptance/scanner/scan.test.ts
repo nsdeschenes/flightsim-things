@@ -37,25 +37,29 @@ async function mixedPackages(): Promise<string> {
     );
   }
 
-  return fixture.addon(
-    '99-base',
+  await fixture.addon(
+    'scenery',
     {
       'AirportServices/KCCC/Services.xml': '<Service.Packages/>',
       'AirportServices/KDDD/Services.spb': 'binary service metadata',
       'AirportServices/Shared/Services.xml': '<Service.Packages/>',
-      'SimObjects/Airplanes/Base/aircraft.cfg': baseCfg,
       'scenery/source.xml':
         '<FSData><Airport ident="KAAA" name="A &amp; B" iata="aaa"/><Airport ident="KBBB" name="Second"/></FSData>',
       'scenery/world.bgl': 'compiled scenery',
     },
     'SCENERY'
   );
+  return fixture.addon(
+    '99-base',
+    {'SimObjects/Airplanes/Base/aircraft.cfg': baseCfg},
+    'AIRCRAFT'
+  );
 }
 
 function verifyImported(result: Awaited<ReturnType<typeof fixture.run>>): void {
   expect(result.exitCode).toBe(successExitCode);
   expect(result.stdout).toContain(
-    'Scanned 19 packages, 1 aircraft, 4 airports, and 38 liveries. 0 packages failed. 1 warnings.'
+    'Scanned 20 packages, 1 aircraft, 4 airports, and 38 liveries. 0 packages failed. 1 warnings.'
   );
   expect(result.stderr).toContain('Compiled scenery metadata is not decoded');
   const airports: unknown = JSON.parse(
@@ -104,7 +108,7 @@ test(
       fixture.query("SELECT registration FROM liveries WHERE name = 'Factory; white'")
     ).toEqual([{registration: 'F-NEW'}]);
     expect(fixture.query('SELECT count(*) AS total FROM packages')).toEqual([
-      {total: 19},
+      {total: 20},
     ]);
   },
   cliTimeout
@@ -163,24 +167,32 @@ test(
 );
 
 async function malformedPackages(): Promise<void> {
-  const valid = await fixture.addon('external-package', {
-    'SimObjects/Airplanes/Base/aircraft.cfg': baseCfg,
-  });
+  const valid = await fixture.addon(
+    'external-package',
+    {
+      'SimObjects/Airplanes/Base/aircraft.cfg': baseCfg,
+    },
+    'AIRCRAFT'
+  );
   await symlink(valid, path.join(fixture.community, 'linked-package'), 'dir');
-  const broken = await fixture.addon('broken', {});
+  const broken = await fixture.addon('broken', {}, 'AIRCRAFT');
   await writeFile(path.join(broken, 'manifest.json'), '{bad json');
-  const escaped = await fixture.addon('escaped', {});
+  const escaped = await fixture.addon('escaped', {}, 'AIRCRAFT');
   await writeFile(
     path.join(escaped, 'layout.json'),
     JSON.stringify({content: [{path: '../outside.cfg'}]})
   );
-  const linkedFile = await fixture.addon('linked-file', {'aircraft.cfg': baseCfg});
+  const linkedFile = await fixture.addon(
+    'linked-file',
+    {'aircraft.cfg': baseCfg},
+    'AIRCRAFT'
+  );
   await rm(path.join(linkedFile, 'aircraft.cfg'));
   await symlink(
     path.join(valid, 'SimObjects/Airplanes/Base/aircraft.cfg'),
     path.join(linkedFile, 'aircraft.cfg')
   );
-  await fixture.addon('empty-cfg', {'aircraft.cfg': ''});
+  await fixture.addon('empty-cfg', {'aircraft.cfg': ''}, 'AIRCRAFT');
 }
 
 test(

@@ -6,8 +6,10 @@ import database from '#database';
 import schema from '#database-schema';
 
 import airportFallback from './airport-fallback.ts';
+import contentPolicy from './content-policy.ts';
 import type PackageSnapshot from './model.ts';
 
+type ContentPolicy = ReturnType<typeof contentPolicy>;
 type WrittenRows = Readonly<{aircraft: readonly number[]; liveries: readonly number[]}>;
 type QueryDatabase = Parameters<
   Parameters<typeof database.use>[typeof firstIndex]
@@ -25,6 +27,7 @@ type AirportRow = Readonly<typeof schema.airports.$inferInsert>;
 type LiveryRow = Readonly<typeof schema.liveries.$inferInsert>;
 type PackageRows = Readonly<{
   packageId: number;
+  policy: ContentPolicy;
   aircraft: readonly AircraftRow[];
   airports: readonly AirportRow[];
   liveries: readonly LiveryRow[];
@@ -131,7 +134,22 @@ function packageRows(
     airports: snapshot.airports.map(row => ({...row, packageId})),
     liveries: snapshot.liveries.map(row => liveryRow(row, packageId, airlineIds)),
     packageId,
+    policy: contentPolicy(snapshot.metadata.contentType),
   };
+}
+
+function removeDisallowedContent(tx: Transaction, rows: PackageRows): void {
+  if (!rows.policy.liveries) {
+    tx.delete(schema.liveries).where(eq(schema.liveries.packageId, rows.packageId)).run();
+  }
+
+  if (!rows.policy.aircraft) {
+    tx.delete(schema.aircraft).where(eq(schema.aircraft.packageId, rows.packageId)).run();
+  }
+
+  if (!rows.policy.airports) {
+    tx.delete(schema.airports).where(eq(schema.airports.packageId, rows.packageId)).run();
+  }
 }
 
 function saveAircraft(
@@ -317,6 +335,10 @@ function saveBatch(
         const rows = snapshots.map(snapshot =>
           packageRows(snapshot, packageIds, airlineIds)
         );
+        for (const row of rows) {
+          removeDisallowedContent(tx, row);
+        }
+
         saveAirports(
           tx,
           rows.flatMap(row => {

@@ -21,10 +21,14 @@ afterEach(async () => {
 });
 
 async function seedInventory(): Promise<void> {
-  await fixture.addon('aircraft', {
-    'SimObjects/Airplanes/A320/aircraft.cfg':
-      '[GENERAL]\nicao_type_designator=A320\nicao_model=A320\n[FLTSIM.0]\ntitle=Installed Airbus A320\nui_variation=BA livery\nicao_airline=BAW\nairline=British Airways\n',
-  });
+  await fixture.addon(
+    'aircraft',
+    {
+      'SimObjects/Airplanes/A320/aircraft.cfg':
+        '[GENERAL]\nicao_type_designator=A320\nicao_model=A320\n[FLTSIM.0]\ntitle=Installed Airbus A320\nui_variation=BA livery\nicao_airline=BAW\nairline=British Airways\n',
+    },
+    'AIRCRAFT'
+  );
   expect(await fixture.run('community-path', 'set', fixture.community)).toMatchObject({
     exitCode: 0,
   });

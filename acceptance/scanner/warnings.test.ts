@@ -25,14 +25,22 @@ afterEach(async () => {
 
 async function warningFixtures(): Promise<void> {
   for (const index of Array.from({length: warningPackages}).keys()) {
-    await fixture.addon(`warning-${index}`, {
-      'scenery/world.bgl': 'compiled',
-      'sound.xml': '<Sound><broken',
-    });
+    await fixture.addon(
+      `warning-${index}`,
+      {
+        'scenery/world.bgl': 'compiled',
+        'sound.xml': '<Sound><broken',
+      },
+      'SCENERY'
+    );
   }
 
   for (const index of Array.from({length: failurePackages}).keys()) {
-    await fixture.addon(`broken-${index}`, {'airport.xml': '<FSData><Airport'});
+    await fixture.addon(
+      `broken-${index}`,
+      {'airport.xml': '<FSData><Airport'},
+      'SCENERY'
+    );
   }
 }
 
@@ -87,7 +95,8 @@ test.each([detailLimit, aboveDetailLimit])(
           `sound-${index}.xml`,
           '<Sound><broken',
         ])
-      )
+      ),
+      'SCENERY'
     );
     const result = await fixture.run('scan');
     expect(result.exitCode).toBe(successExitCode);
