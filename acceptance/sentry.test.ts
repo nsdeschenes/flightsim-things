@@ -218,12 +218,12 @@ test('failed atomic replacement removes temporary files', async () => {
 });
 
 test.each(['sentry', 'openaip-key'])(
-  'malformed leading arguments skip telemetry for %s',
+  'malformed leading arguments safely diagnose invalid telemetry configuration for %s',
   async command => {
     await seedConfiguration('{broken');
     const result = await fixture.run('--log-level', 'private-option-key', command, 'get');
     expect(result.exitCode).toBe(unknownCommandExitCode);
-    expect(result.stderr).not.toContain('Sentry telemetry skipped');
+    expect(result.stderr).toContain('Sentry telemetry skipped');
     expect(await readFile(configurationFile, 'utf8')).toBe('{broken');
   }
 );

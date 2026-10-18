@@ -56,12 +56,15 @@ test('set replaces the complete tuple across providers and preserves unrelated s
     })
   );
   for (const provider of ['openai', 'anthropic', 'google']) {
-    expect(await set(provider, 'opaque/model:v1', `private-${provider}-key`)).toEqual(
-      saved
-    );
+    expect(await set(provider, 'opaque/model:v1', `private-${provider}-key`)).toEqual({
+      ...saved,
+      stderr:
+        'Sentry telemetry skipped. Sentry configuration has an invalid DSN or sample rates. Run sentry set with all options to replace it.\n',
+    });
     expect(await fixture.run('ai', 'get')).toEqual({
       exitCode: 0,
-      stderr: '',
+      stderr:
+        'Sentry telemetry skipped. Sentry configuration has an invalid DSN or sample rates. Run sentry set with all options to replace it.\n',
       stdout: `Provider: ${provider}\nModel: opaque/model:v1\nAPI key: <redacted>\n`,
     });
     expect(JSON.parse(await readFile(configurationFile, 'utf8'))).toEqual({
@@ -127,7 +130,7 @@ test('corrupt document preserves bytes and fails safely', async () => {
     expect(result.stderr).toContain('Repair the file');
     expect(result.stderr).not.toContain('private');
     expect(result.stderr).not.toContain('SyntaxError');
-    expect(result.stderr).not.toContain('Sentry telemetry skipped');
+    expect(result.stderr).toContain('Sentry telemetry skipped');
     expect(await readFile(configurationFile, 'utf8')).toBe(contents);
   }
 });
@@ -242,7 +245,7 @@ async function assertAiInvocations(): Promise<void> {
   });
 }
 
-test('AI invocations bypass telemetry for valid and malformed commands', async () => {
+test('AI invocations do not record command telemetry for valid and malformed commands', async () => {
   const envelopes: string[] = [];
   const server = Bun.serve({
     async fetch(request: Readonly<{text: () => Promise<string>}>): Promise<Response> {
@@ -271,12 +274,14 @@ test('AI invocations bypass telemetry for valid and malformed commands', async (
 });
 
 test.each(['{broken', '{"sentry":{"dsn":"private-invalid-dsn"}}'])(
-  'malformed leading AI arguments bypass invalid telemetry configuration %#',
+  'malformed leading AI arguments safely diagnose invalid telemetry configuration %#',
   async contents => {
     await seed(contents);
     const result = await fixture.run('--log-level', 'private-option-key', 'ai', 'get');
     expect(result.exitCode).toBe(unknownCommandExitCode);
-    expect(result.stderr).toBe(
+    expect(result.stderr).not.toContain('private');
+    expect(result.stderr).toContain('Sentry telemetry skipped.');
+    expect(result.stderr).toContain(
       'Invalid AI command arguments. Run flightsim-things ai --help for usage.\n'
     );
     expect(result.stdout).not.toContain('private');

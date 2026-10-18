@@ -7,6 +7,7 @@ import {TaggedError as taggedError} from 'effect/Data';
 import type {Scope} from 'effect/Scope';
 
 import invocationClassifier from '#invocation';
+import sentry from '#sentry';
 
 import type ordinary from './ordinary.ts';
 
@@ -40,15 +41,23 @@ function runSelectedCommand(
   args: readonly string[],
   version: string
 ): Effect.Effect<void, never, Command.Environment> {
-  return Command.runWith(root, {renderErrors: false, version})(args).pipe(
-    Effect.matchEffect({
-      onFailure: () =>
-        Console.error('Could not run the command. Check the values and try again.').pipe(
-          Effect.andThen(Console.log('\nCommand exited with code 1.\n'))
-        ),
-      onSuccess: () => Console.log('\nCommand completed.\n'),
-    })
-  );
+  return sentry
+    .instrument(
+      () => Command.runWith(root, {renderErrors: false, version})(args),
+      invocationClassifier.classify(
+        args,
+        root.subcommands.flatMap(group => group.commands)
+      )
+    )
+    .pipe(
+      Effect.matchEffect({
+        onFailure: () =>
+          Console.error(
+            'Could not run the command. Check the values and try again.'
+          ).pipe(Effect.andThen(Console.log('\nCommand exited with code 1.\n'))),
+        onSuccess: () => Console.log('\nCommand completed.\n'),
+      })
+    );
 }
 
 function prepareArguments(

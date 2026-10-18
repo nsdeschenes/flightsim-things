@@ -6,9 +6,9 @@ import {Effect, Option, Redacted} from 'effect';
 import {http, HttpResponse, passthrough} from 'msw';
 
 import ai from '#ai';
+import sentry from '#sentry';
 
 import invocationClassifier from './invocation.ts';
-import withSentry from './sentry.ts';
 import testHttp from './test-http.ts';
 
 type CapturedRequest = Readonly<{
@@ -138,13 +138,15 @@ async function exerciseTracing(): Promise<void> {
   interceptProviders();
   try {
     await Effect.runPromise(
-      withSentry(
-        () =>
-          Effect.promise(async () => {
-            const text = await generate('private-prompt-sentinel');
-            process.stdout.write(`${text}\n`);
-          }),
-        invocationClassifier.classify(['generate'], [{name: 'generate'}])
+      sentry.run(() =>
+        sentry.instrument(
+          () =>
+            Effect.promise(async () => {
+              const text = await generate('private-prompt-sentinel');
+              process.stdout.write(`${text}\n`);
+            }),
+          invocationClassifier.classify(['generate'], [{name: 'generate'}])
+        )
       )
     );
   } finally {

@@ -3,10 +3,10 @@ import {Effect, Option} from 'effect';
 import {CliConfig, CliError, Command, GlobalFlag} from 'effect/cli';
 
 import {version} from '#package';
+import sentry from '#sentry';
 
 import command from './commands/index.ts';
 import invocationClassifier from './invocation.ts';
-import withSentry from './sentry.ts';
 
 const argvOffset = 2;
 const successExitCode = 0;
@@ -67,29 +67,33 @@ if (Option.contains(invocation.sensitiveCommand, 'ai')) {
     'Invalid AI command arguments. Run flightsim-things ai --help for usage.\n';
 }
 
-const main = withSentry(
-  () => Command.runWith(command, {renderErrors: !sensitiveInvocation, version})(args),
-  invocation
-).pipe(
-  Effect.provide([
-    BunServices.layer,
-    CliConfig.layer({builtIns: [GlobalFlag.Help, GlobalFlag.Version]}),
-  ]),
-  Effect.match({
-    onFailure(error: unknown) {
-      process.exitCode = exitCodeFor(error);
-      if (error instanceof CliError.ShowHelp) {
-        if (sensitiveInvocation && error.errors.length !== noErrors) {
-          process.stderr.write(sensitiveUsageError);
+const main = sentry
+  .run(() =>
+    sentry.instrument(
+      () => Command.runWith(command, {renderErrors: !sensitiveInvocation, version})(args),
+      invocation
+    )
+  )
+  .pipe(
+    Effect.provide([
+      BunServices.layer,
+      CliConfig.layer({builtIns: [GlobalFlag.Help, GlobalFlag.Version]}),
+    ]),
+    Effect.match({
+      onFailure(error: unknown) {
+        process.exitCode = exitCodeFor(error);
+        if (error instanceof CliError.ShowHelp) {
+          if (sensitiveInvocation && error.errors.length !== noErrors) {
+            process.stderr.write(sensitiveUsageError);
+          }
+        } else {
+          process.stderr.write(`Command failed, ${failureMessage(error)}\n`);
         }
-      } else {
-        process.stderr.write(`Command failed, ${failureMessage(error)}\n`);
-      }
-    },
-    onSuccess() {
-      process.exitCode = successExitCode;
-    },
-  })
-);
+      },
+      onSuccess() {
+        process.exitCode = successExitCode;
+      },
+    })
+  );
 
 BunRuntime.runMain(main);
