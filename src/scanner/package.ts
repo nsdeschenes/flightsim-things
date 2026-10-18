@@ -5,10 +5,12 @@ import {Option} from 'effect';
 
 import configurations from './aircraft.ts';
 import airportFallback from './airport-fallback.ts';
+import contentPolicy from './content-policy.ts';
 import type PackageSnapshot from './model.ts';
 import readScenery from './scenery.ts';
 import safeXmlMessage from './xml-message.ts';
 
+type ContentPolicy = ReturnType<typeof contentPolicy>;
 type PackageMetadata = PackageSnapshot['metadata'];
 type AircraftObservation = PackageSnapshot['aircraft'][number];
 type AirportObservation = PackageSnapshot['airports'][number];
@@ -29,8 +31,8 @@ type Inventory = Readonly<{
 }>;
 const firstIndex = 0;
 const missing = Option.getOrNull(Option.none());
-const metadataFiles =
-  /(?:^|\/)(?:aircraft|livery)\.cfg$|\.xml$|(?:^|\/)airportservices\/[^/]+\/services\.spb$/iu;
+const configurationFiles = /(?:^|\/)(?:aircraft|livery)\.cfg$/iu;
+const sceneryFiles = /\.xml$|(?:^|\/)airportservices\/[^/]+\/services\.spb$/iu;
 const drivePrefix = /^[a-z]:/iu;
 const bom = /^\uFEFF/u;
 const systemCode = /^[A-Z][A-Z\d_]+$/u;
@@ -167,7 +169,10 @@ function addMetadataFile(
   files.set(key, relative);
 }
 
-function inventory(layout: Readonly<Record<string, unknown>>): Inventory {
+function inventory(
+  layout: Readonly<Record<string, unknown>>,
+  policy: ContentPolicy
+): Inventory {
   if (!Array.isArray(layout.content)) {
     throw new TypeError('layout.json requires a content array');
   }
@@ -175,10 +180,14 @@ function inventory(layout: Readonly<Record<string, unknown>>): Inventory {
   const selected = {files: new Map<string, string>(), hasCompiledScenery: false};
   for (const entry of layout.content) {
     const relative = relativeFile(object(entry).path);
-    selected.hasCompiledScenery ||= vfsKey(relative).endsWith('.bgl');
+    const key = vfsKey(relative);
+    selected.hasCompiledScenery ||= policy.airports && key.endsWith('.bgl');
 
-    if (metadataFiles.test(vfsKey(relative))) {
-      addMetadataFile(selected.files, vfsKey(relative), relative);
+    if (
+      (policy.liveries && configurationFiles.test(key)) ||
+      (policy.airports && sceneryFiles.test(key))
+    ) {
+      addMetadataFile(selected.files, key, relative);
     }
   }
 
@@ -277,7 +286,8 @@ async function snapshot(sourcePath: string, root: string): Promise<PackageSnapsh
     json(root, 'manifest.json'),
     json(root, 'layout.json'),
   ]);
-  const {files, hasCompiledScenery} = inventory(layout);
+  const policy = contentPolicy(text(manifest.content_type));
+  const {files, hasCompiledScenery} = inventory(layout, policy);
   let contents = await readContents(root, files, path.basename(sourcePath));
   if (contents.airports.length === firstIndex && hasCompiledScenery) {
     contents = {...contents, airports: airportFallback.infer(sourcePath)};
@@ -292,6 +302,7 @@ async function snapshot(sourcePath: string, root: string): Promise<PackageSnapsh
 
   return {
     ...contents,
+    aircraft: contents.aircraft.filter(() => policy.aircraft),
     metadata: metadata(sourcePath, manifest),
     warnings: [...warnings, ...contents.warnings],
   };

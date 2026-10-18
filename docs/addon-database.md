@@ -167,8 +167,12 @@ metadata interpretation and transactional upserts.
 | `AirportServices/<ICAO>/Services.xml` or `Services.spb`                                  | Explicit airport code; name and IATA code remain null                              |
 | `vendor-airport-CODE-name` Community directory with BGL scenery and no explicit airports | One inferred four-character alphanumeric airport code; other metadata remains null |
 
-Store the original content type string, including unfamiliar values. It describes the
-package; it does not limit the number or kinds of child records.
+Store the original content type string, including unfamiliar values. The manifest
+content type controls which metadata the scanner imports. `AIRCRAFT` permits
+aircraft and bundled liveries. `LIVERY` permits liveries, including legacy
+`aircraft.cfg` variations. `SCENERY` permits airports, including package-name
+fallback. Missing or unsupported content types produce no child records.
+The scanner skips unrelated metadata files before parsing them.
 
 The `scan` command reads the saved Community directory and imports this metadata.
 The two JSON files alone cannot reliably supply airline identity or airport codes. Aircraft configuration provides
@@ -193,6 +197,8 @@ are read in full, so this bounds package concurrency rather than total bytes.
 One synchronous immediate transaction upserts each batch. Child inserts use chunks
 of 100 rows to stay below SQLite parameter limits. IDs and unique source keys survive
 repeated scans, and records are not deleted when sources disappear.
+A successfully read package removes stored child records that its current manifest
+content type does not permit. Allowed records retain their IDs and enriched data.
 Package-name fallback airports are the exception. Each has the reserved source key
 `#package-name-airport`. A successfully read package retires that row when fallback
 eligibility disappears or explicit airport metadata becomes available. A same-code
@@ -223,7 +229,7 @@ The command continues valid packages and returns a nonzero status when any packa
 fails. Database and Community directory errors stop the scan.
 
 Compiled BGL scenery is not decoded. After all explicit metadata parses successfully,
-a package with BGL entries and no explicit airports can supply one inferred airport
+a `SCENERY` package with BGL entries and no explicit airports can supply one inferred airport
 from its Community directory basename. The anchored convention is
 `vendor-airport-CODE-name`, with exactly four alphanumeric code characters and nonempty
 vendor and name segments containing letters, digits, and hyphens. Vendor names can
@@ -232,7 +238,7 @@ names, IATA codes, and locations remain null until enrichment. Manifest titles d
 supply codes. Explicit airports always take precedence, and corrupt airport metadata
 still fails the package even when the directory name matches.
 
-Every package containing BGL entries contributes one limitation warning, including
+Every `SCENERY` package containing BGL entries contributes one limitation warning, including
 packages with an explicit or inferred airport. Airport coverage may still be incomplete.
 The default scan prints the first five warning details across all batches, followed
 by the exact omitted count. `scan --verbose` prints every detail. Both modes count

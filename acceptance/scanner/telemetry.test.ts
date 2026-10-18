@@ -58,10 +58,19 @@ beforeEach(async () => {
         `sound-${index}.xml`,
         '<Sound><broken',
       ])
-    )
+    ),
+    'SCENERY'
   );
-  await fixture.addon('malformed-airport', {'airport.xml': '<FSData><Airport'});
-  const missingFile = await fixture.addon('missing-file', {'aircraft.cfg': ''});
+  await fixture.addon(
+    'malformed-airport',
+    {'airport.xml': '<FSData><Airport'},
+    'SCENERY'
+  );
+  const missingFile = await fixture.addon(
+    'missing-file',
+    {'aircraft.cfg': ''},
+    'AIRCRAFT'
+  );
   await rm(path.join(missingFile, 'aircraft.cfg'));
 });
 
@@ -186,7 +195,7 @@ test(
 const privateValue = 'PRIVATE_CONFIGURATION_SENTINEL';
 
 async function addLinkedFailure(): Promise<string> {
-  const alias = await fixture.addon('linked-missing', {'aircraft.cfg': ''});
+  const alias = await fixture.addon('linked-missing', {'aircraft.cfg': ''}, 'AIRCRAFT');
   const target = path.join(fixture.home, 'PRIVATE_CANONICAL_TARGET');
   await rename(alias, target);
   await rm(path.join(target, 'aircraft.cfg'));
@@ -195,14 +204,22 @@ async function addLinkedFailure(): Promise<string> {
 }
 
 async function addPrivateFailures(): Promise<string> {
-  await fixture.addon('malformed-config', {
-    'SimObjects/Airplanes/Example/aircraft.cfg': privateValue,
-  });
-  await fixture.addon('malformed-livery', {'livery.cfg': privateValue});
-  await fixture.addon('invalid-container', {
-    'SimObjects/Airplanes/Example/aircraft.cfg': `[LIVERY]\nbase_container=../../../../${privateValue}\n`,
-  });
-  const invalidJson = await fixture.addon('invalid-json', {});
+  await fixture.addon(
+    'malformed-config',
+    {
+      'SimObjects/Airplanes/Example/aircraft.cfg': privateValue,
+    },
+    'AIRCRAFT'
+  );
+  await fixture.addon('malformed-livery', {'livery.cfg': privateValue}, 'LIVERY');
+  await fixture.addon(
+    'invalid-container',
+    {
+      'SimObjects/Airplanes/Example/aircraft.cfg': `[LIVERY]\nbase_container=../../../../${privateValue}\n`,
+    },
+    'LIVERY'
+  );
+  const invalidJson = await fixture.addon('invalid-json', {}, 'AIRCRAFT');
   await writeFile(path.join(invalidJson, 'manifest.json'), privateValue);
   return addLinkedFailure();
 }

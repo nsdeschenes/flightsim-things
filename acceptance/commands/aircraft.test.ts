@@ -19,10 +19,14 @@ afterEach(async () => {
 });
 
 async function scanAircraft(): Promise<string> {
-  const directory = await fixture.addon('aircraft', {
-    'SimObjects/Airplanes/Base/aircraft.cfg':
-      '[GENERAL]\nicao_type_designator=A320\nicao_manufacturer=Airbus\nicao_model=A320-200\n[FLTSIM.0]\nui_type=Airbus A320\nicao_airline=BAW\natc_airline=British Airways\n[FLTSIM.1]\nicao_airline=BAW\n',
-  });
+  const directory = await fixture.addon(
+    'aircraft',
+    {
+      'SimObjects/Airplanes/Base/aircraft.cfg':
+        '[GENERAL]\nicao_type_designator=A320\nicao_manufacturer=Airbus\nicao_model=A320-200\n[FLTSIM.0]\nui_type=Airbus A320\nicao_airline=BAW\natc_airline=British Airways\n[FLTSIM.1]\nicao_airline=BAW\n',
+    },
+    'AIRCRAFT'
+  );
   expect(await fixture.run('community-path', 'set', fixture.community)).toMatchObject({
     exitCode: 0,
   });

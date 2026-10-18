@@ -105,10 +105,14 @@ test(
 test(
   'airline names survive unnamed observations in either order within one batch',
   async () => {
-    await fixture.addon('airline-names', {
-      'SimObjects/Airplanes/Base/aircraft.cfg':
-        '[GENERAL]\nicao_model=Base\n[FLTSIM.0]\nicao_airline=TST\natc_airline=Test Airline\n[FLTSIM.1]\nicao_airline=TST\n[FLTSIM.2]\nicao_airline=REV\n[FLTSIM.3]\nicao_airline=REV\natc_airline=Reverse Airline\n',
-    });
+    await fixture.addon(
+      'airline-names',
+      {
+        'SimObjects/Airplanes/Base/aircraft.cfg':
+          '[GENERAL]\nicao_model=Base\n[FLTSIM.0]\nicao_airline=TST\natc_airline=Test Airline\n[FLTSIM.1]\nicao_airline=TST\n[FLTSIM.2]\nicao_airline=REV\n[FLTSIM.3]\nicao_airline=REV\natc_airline=Reverse Airline\n',
+      },
+      'AIRCRAFT'
+    );
     expect(await fixture.run('community-path', 'set', fixture.community)).toMatchObject({
       exitCode: 0,
     });

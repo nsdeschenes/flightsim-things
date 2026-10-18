@@ -49,10 +49,14 @@ test('list distinguishes an empty catalog from missing filter matches', async ()
 test(
   'list reads scanned airlines once despite multiple matching liveries',
   async () => {
-    await fixture.addon('aircraft', {
-      'SimObjects/Airplanes/Base/aircraft.cfg':
-        '[GENERAL]\nicao_type_designator=A320\n[FLTSIM.0]\nicao_airline=BAW\natc_airline=British Airways\n[FLTSIM.1]\nicao_airline=BAW\n',
-    });
+    await fixture.addon(
+      'aircraft',
+      {
+        'SimObjects/Airplanes/Base/aircraft.cfg':
+          '[GENERAL]\nicao_type_designator=A320\n[FLTSIM.0]\nicao_airline=BAW\natc_airline=British Airways\n[FLTSIM.1]\nicao_airline=BAW\n',
+      },
+      'AIRCRAFT'
+    );
     expect(await fixture.run('community-path', 'set', fixture.community)).toMatchObject({
       exitCode: 0,
     });

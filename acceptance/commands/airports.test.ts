@@ -18,9 +18,13 @@ afterEach(async () => {
 });
 
 async function scanAirport(): Promise<void> {
-  await fixture.addon('airport', {
-    'airport.xml': '<FSData><Airport ident="KZZZ" name="Zulu" iata="ZZZ"/></FSData>',
-  });
+  await fixture.addon(
+    'airport',
+    {
+      'airport.xml': '<FSData><Airport ident="KZZZ" name="Zulu" iata="ZZZ"/></FSData>',
+    },
+    'SCENERY'
+  );
   expect(await fixture.run('community-path', 'set', fixture.community)).toMatchObject({
     exitCode: 0,
   });
