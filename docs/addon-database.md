@@ -229,7 +229,7 @@ The command continues valid packages and returns a nonzero status when any packa
 fails. Database and Community directory errors stop the scan.
 
 Compiled BGL scenery is not decoded. After all explicit metadata parses successfully,
-a package with BGL entries and no explicit airports can supply one inferred airport
+a `SCENERY` package with BGL entries and no explicit airports can supply one inferred airport
 from its Community directory basename. The anchored convention is
 `vendor-airport-CODE-name`, with exactly four alphanumeric code characters and nonempty
 vendor and name segments containing letters, digits, and hyphens. Vendor names can
@@ -238,7 +238,7 @@ names, IATA codes, and locations remain null until enrichment. Manifest titles d
 supply codes. Explicit airports always take precedence, and corrupt airport metadata
 still fails the package even when the directory name matches.
 
-Every package containing BGL entries contributes one limitation warning, including
+Every `SCENERY` package containing BGL entries contributes one limitation warning, including
 packages with an explicit or inferred airport. Airport coverage may still be incomplete.
 The default scan prints the first five warning details across all batches, followed
 by the exact omitted count. `scan --verbose` prints every detail. Both modes count
