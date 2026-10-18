@@ -7,14 +7,15 @@ type Invocation = Readonly<{
   sensitiveCommand: Option.Option<'ai' | 'openaip-key'>;
   controlInvocation: boolean;
 }>;
+type PendingValue = 'none' | 'boolean' | 'value';
 type ArgumentScan = Readonly<{
   firstValue: string | null;
   fallbackCommand: ConfigurationCommand | null;
-  consumesBoolean: boolean;
+  pendingValue: PendingValue;
   controlInvocation: boolean;
   hasLeadingOption: boolean;
 }>;
-type BuiltInArgument = Readonly<{consumesBoolean: boolean; present: boolean}>;
+type BuiltInArgument = Readonly<{pendingValue: PendingValue; present: boolean}>;
 
 const negativeNumber = /^-(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/u;
 const builtInFlag = /^--(?:help|h|version|v|no-help|no-version)$/u;
@@ -33,43 +34,51 @@ const booleanLiterals = new Set([
   'on',
 ]);
 const firstCharacter = 1;
-const nextArgument = 1;
 const missing = Option.getOrNull(Option.none());
 
-function shortBuiltInArgument(
-  flags: string,
-  value: string,
-  hasInlineValue: boolean
-): BuiltInArgument {
+function shortBuiltInArgument(flags: string, hasInlineValue: boolean): BuiltInArgument {
   if (hasInlineValue) {
     return {
-      consumesBoolean: false,
+      pendingValue: 'none',
       present: ['h', 'v', 'help', 'version'].includes(flags),
     };
   }
 
-  return {
-    consumesBoolean: lastShortBuiltInFlag.test(flags) && booleanLiterals.has(value),
-    present: shortBuiltInFlag.test(flags),
-  };
+  let pendingValue: PendingValue = 'none';
+  if (lastShortBuiltInFlag.test(flags)) {
+    pendingValue = 'boolean';
+  }
+
+  return {pendingValue, present: shortBuiltInFlag.test(flags)};
 }
 
-function builtInArgument(argument: string, following: string): BuiltInArgument {
-  const [flag = '', inlineValue] = argument.split('=');
-  const value = inlineValue ?? following;
+function valueAfterFlag(hasInlineValue: boolean, kind: PendingValue): PendingValue {
+  if (hasInlineValue) {
+    return 'none';
+  }
+
+  return kind;
+}
+
+function builtInArgument(argument: string): BuiltInArgument {
+  const [flag = ''] = argument.split('=');
   const hasInlineValue = argument.includes('=');
+  if (flag === '--completions' || (flag === '-completions' && hasInlineValue)) {
+    return {pendingValue: valueAfterFlag(hasInlineValue, 'value'), present: true};
+  }
+
   if (builtInFlag.test(flag)) {
     return {
-      consumesBoolean: !hasInlineValue && booleanLiterals.has(value),
+      pendingValue: valueAfterFlag(hasInlineValue, 'boolean'),
       present: true,
     };
   }
 
   if (!argument.startsWith('--')) {
-    return shortBuiltInArgument(flag.slice(firstCharacter), value, hasInlineValue);
+    return shortBuiltInArgument(flag.slice(firstCharacter), hasInlineValue);
   }
 
-  return {consumesBoolean: false, present: false};
+  return {pendingValue: 'none', present: false};
 }
 
 function configurationCommand(value: string): ConfigurationCommand | null {
@@ -80,48 +89,52 @@ function configurationCommand(value: string): ConfigurationCommand | null {
   return missing;
 }
 
-function scanArgument(
-  scan: ArgumentScan,
-  argument: string,
-  following: string
-): ArgumentScan {
-  if (scan.consumesBoolean) {
-    return {...scan, consumesBoolean: false};
+function isValue(argument: string): boolean {
+  return !argument.startsWith('-') || argument === '-' || negativeNumber.test(argument);
+}
+
+function scanArgument(scan: ArgumentScan, argument: string): ArgumentScan {
+  if (
+    (scan.pendingValue === 'boolean' && booleanLiterals.has(argument)) ||
+    (scan.pendingValue === 'value' && isValue(argument))
+  ) {
+    return {...scan, pendingValue: 'none'};
   }
 
   const fallbackCommand = scan.fallbackCommand ?? configurationCommand(argument);
-  if (!argument.startsWith('-') || argument === '-' || negativeNumber.test(argument)) {
+  if (isValue(argument)) {
     return {
       ...scan,
       fallbackCommand,
       firstValue: scan.firstValue ?? argument,
+      pendingValue: 'none',
     };
   }
 
-  const {consumesBoolean, present} = builtInArgument(argument, following);
+  const {pendingValue, present} = builtInArgument(argument);
   return {
     ...scan,
-    consumesBoolean,
     controlInvocation: scan.controlInvocation || present,
     fallbackCommand,
     hasLeadingOption: scan.hasLeadingOption || scan.firstValue === missing,
+    pendingValue,
   };
 }
 
 function scanArguments(args: readonly string[]): ArgumentScan {
   let scan: ArgumentScan = {
-    consumesBoolean: false,
     controlInvocation: false,
     fallbackCommand: missing,
     firstValue: missing,
     hasLeadingOption: false,
+    pendingValue: 'none',
   };
-  for (const [index, argument] of args.entries()) {
+  for (const argument of args) {
     if (argument === '--') {
       break;
     }
 
-    scan = scanArgument(scan, argument, args.at(index + nextArgument) ?? '');
+    scan = scanArgument(scan, argument);
   }
 
   return scan;
@@ -158,7 +171,7 @@ function classifyInvocation(
 }
 
 function isCliControlArgument(argument: string): boolean {
-  return argument.startsWith('-') && builtInArgument(argument, '').present;
+  return argument.startsWith('-') && builtInArgument(argument).present;
 }
 
 const invocationClassifier = {classify: classifyInvocation, isCliControlArgument};

@@ -628,7 +628,7 @@ test.each([controlC, controlD])(
   }
 );
 
-test.each(['--help', '--h', '--v', '-h'])(
+test.each(['--help', '--h', '--v', '-h', '--completions', '--completions=bash'])(
   'refuses credential control token %s',
   async token => {
     const session = await startSession();
@@ -637,7 +637,7 @@ test.each(['--help', '--h', '--v', '-h'])(
     session.send(down + enter);
     await session.waitFor('Key');
     session.send(`${token}${enter}`);
-    await session.waitFor('A value looks like a CLI help or version flag.');
+    await session.waitFor('A value looks like a CLI control flag.');
     await waitForMainMenu(session);
     expect(await Bun.file(fixture.configurationFile).exists()).toBe(false);
     await listAirlines(session);

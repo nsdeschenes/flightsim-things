@@ -452,7 +452,7 @@ test.each(controlTokens)(
     await filters(session, first, 'Review search');
     await session.waitFor('Cancel to menu');
     session.send(enter);
-    await session.waitFor('A value looks like a CLI help or version flag.');
+    await session.waitFor('A value looks like a CLI control flag.');
     await mainMenu(session);
     expect(session.output()).not.toContain('Command completed.');
   }

@@ -77,16 +77,20 @@ const main = sentry
   .pipe(
     Effect.provide([
       BunServices.layer,
-      CliConfig.layer({builtIns: [GlobalFlag.Help, GlobalFlag.Version]}),
+      CliConfig.layer({
+        builtIns: [GlobalFlag.Help, GlobalFlag.Version, GlobalFlag.Completions],
+      }),
     ]),
     Effect.match({
       onFailure(error: unknown) {
         process.exitCode = exitCodeFor(error);
-        if (error instanceof CliError.ShowHelp) {
-          if (sensitiveInvocation && error.errors.length !== noErrors) {
-            process.stderr.write(sensitiveUsageError);
-          }
-        } else {
+        if (
+          sensitiveInvocation &&
+          CliError.isCliError(error) &&
+          (!(error instanceof CliError.ShowHelp) || error.errors.length !== noErrors)
+        ) {
+          process.stderr.write(sensitiveUsageError);
+        } else if (!(error instanceof CliError.ShowHelp)) {
           process.stderr.write(`Command failed, ${failureMessage(error)}\n`);
         }
       },

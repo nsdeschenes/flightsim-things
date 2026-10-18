@@ -22,7 +22,9 @@ bun install
 bun run start --help
 ```
 
-Replace `flightsim-things` with `bun run start` in any example to run from source.
+Replace `flightsim-things` with `bun run start` in command examples to run from
+source. Generated [shell completion](#shell-completion) scripts still register the
+stable executable name `flightsim-things`.
 
 ## First scan
 
@@ -45,6 +47,7 @@ OpenAIP and AI configuration are optional for scanning and listing.
 Values in `<angle-brackets>` are required. Items in `[square-brackets]` are optional.
 Replace placeholders with your values and omit the brackets.
 
+- [Shell completion](#shell-completion)
 - [Interactive menu](#interactive-menu)
 - [Community directory](#community-directory)
 - [Scan addons](#scan-addons)
@@ -95,6 +98,23 @@ flightsim-things airports --help
 flightsim-things aircraft list --help
 ```
 
+### Shell completion
+
+Generate a completion script for Bash, Zsh, or Fish:
+
+```sh
+flightsim-things --completions bash > flightsim-things.bash
+flightsim-things --completions zsh > _flightsim-things
+flightsim-things --completions fish > flightsim-things.fish
+```
+
+Install the executable as `flightsim-things` on `PATH` before using completion.
+The `sh` value is an alias for Bash output. PowerShell and `pwsh` are unsupported.
+Generation reads command metadata and does not run command handlers or query
+saved inventory. Regenerate scripts after upgrades.
+See [shell completion setup](docs/shell-completions.md) for session loading,
+persistent installation, refresh steps, and source usage.
+
 ### Interactive menu
 
 ```sh
@@ -113,7 +133,8 @@ prompt to close the session. Ctrl+C during a running command stops the command
 and ends the session.
 
 API key prompts hide your input. Selecting `openaip-key get` prints the saved key.
-The menu rejects values that look like help or version flags. To save such a
+The menu rejects values that look like CLI control flags such as
+`--help`, `--version`, or `--completions`. To save such a
 positional value through a direct command, put it after `--`:
 
 ```sh
@@ -401,8 +422,8 @@ encoding hints, and whether the file was skipped or the package rejected.
 They exclude XML source and absolute package paths. Raw configuration, JSON
 values, and private filesystem error details stay in the terminal.
 
-Help, version, argument errors, and Sentry, OpenAIP key, and AI configuration
-commands do not send telemetry. With tracing enabled, AI SDK calls record model
+Help, version, completion requests, argument errors, and Sentry, OpenAIP key, and
+AI configuration commands do not send telemetry. With tracing enabled, AI SDK calls record model
 and token usage, prompts, and generated outputs through the Vercel AI integration.
 
 ## Local data

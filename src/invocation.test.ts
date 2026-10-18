@@ -93,3 +93,72 @@ test('interactive invocation keeps command classification independent of SDK sta
     sensitiveCommand: Option.none(),
   });
 });
+
+test.each(['ai', 'openaip-key', 'sentry', '-', '-3', '-.5', '-2e-3', 'false'])(
+  'completion operand %s cannot become a command or sensitive fallback',
+  shell => {
+    expect(classifyInvocation(['--completions', shell], rootCommands)).toEqual({
+      command: Option.none(),
+      controlInvocation: true,
+      sensitiveCommand: Option.none(),
+    });
+    expect(
+      classifyInvocation(['--completions', shell, 'ai', 'set'], rootCommands)
+    ).toEqual({
+      command: Option.some('ai'),
+      controlInvocation: true,
+      sensitiveCommand: Option.some('ai'),
+    });
+  }
+);
+
+test.each(
+  [
+    ['--completions', 'bash', 'ai', 'set'],
+    ['--completions=private-value', 'ai', 'set'],
+    ['-completions=private-value', 'ai', 'set'],
+    ['--completions', '--help', 'false', 'ai', 'set'],
+    ['--unknown', 'private-value', '--completions', 'bash', 'ai', 'set'],
+  ].map((args: readonly string[]) => ({args}))
+)(
+  'completion controls preserve sensitive command classification for $args',
+  ({args}: Readonly<{args: readonly string[]}>) => {
+    expect(classifyInvocation(args, rootCommands)).toMatchObject({
+      controlInvocation: true,
+      sensitiveCommand: Option.some('ai'),
+    });
+  }
+);
+
+test.each(
+  [
+    ['--', '--completions', 'bash'],
+    ['ai', 'set', '--api-key=--completions'],
+    ['community-path', 'set', '--', '--completions'],
+  ].map((args: readonly string[]) => ({args}))
+)(
+  'completion text in values and after the delimiter is not a control for $args',
+  ({args}: Readonly<{args: readonly string[]}>) => {
+    expect(classifyInvocation(args, rootCommands).controlInvocation).toBe(false);
+  }
+);
+
+test('a known root wins over later sensitive values around completion operands', () => {
+  expect(
+    classifyInvocation(
+      ['--completions', 'bash', 'community-path', 'set', 'ai'],
+      rootCommands
+    )
+  ).toEqual({
+    command: Option.some('community-path'),
+    controlInvocation: true,
+    sensitiveCommand: Option.none(),
+  });
+});
+
+test.each(['--completions', '--completions=bash', '-completions=bash'])(
+  'interactive guard recognizes completion control %s',
+  argument => {
+    expect(invocationClassifier.isCliControlArgument(argument)).toBe(true);
+  }
+);
