@@ -54,8 +54,13 @@ function savedBrowserStart(saved: string): Effect.Effect<Option.Option<BrowserSt
 
 function browserStart(): Effect.Effect<BrowserStart> {
   return Effect.gen(function* findBrowserStart() {
-    const saved = yield* communityPath.get().pipe(
-      Effect.flatMap(savedBrowserStart),
+    const saved = yield* communityPath.find().pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.succeedNone,
+          onSome: savedBrowserStart,
+        })
+      ),
       Effect.catch(({message}: Readonly<{message: string}>) =>
         Console.error(message).pipe(Effect.as(Option.none<BrowserStart>()))
       )

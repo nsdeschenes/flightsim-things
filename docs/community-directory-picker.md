@@ -14,6 +14,7 @@ The browser highlights an existing, readable saved directory in its parent.
 For a saved filesystem root, it opens at that root without a highlighted default.
 An unusable saved path falls back to the working directory, then the home
 directory. If neither can be listed, manual entry remains available.
+An unset setting is normal and opens the picker without an error message.
 Saved-path read errors appear in the terminal rather than silently resetting
 configuration.
 
