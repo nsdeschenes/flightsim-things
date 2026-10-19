@@ -9,6 +9,7 @@
     "#acceptance-cli": "./acceptance/support/cli.ts",
     "#acceptance-scanner": "./acceptance/support/scanner.ts",
     "#command-input": "./src/command-input.ts",
+    "#ordinary-commands": "./src/commands/ordinary.ts",
     "#invocation": "./src/invocation.ts",
     "#ai": "./src/ai.ts",
     "#find-flight": "./src/find-flight.ts",

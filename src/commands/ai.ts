@@ -31,10 +31,38 @@ const setCommand = Command.make(
   },
   (input: AiConfiguration) =>
     ai.set(input).pipe(Effect.andThen(Console.log('AI configuration saved.')))
-).pipe(Command.withDescription('Save or replace the provider, model, and API key'));
+).pipe(
+  Command.withDescription('Save or replace the provider, model, and API key'),
+  Command.withExamples([
+    {
+      command:
+        'flightsim-things ai set --provider openai --model YOUR_MODEL_ID --api-key YOUR_API_KEY',
+      description: 'Replace YOUR_MODEL_ID and YOUR_API_KEY with your provider values.',
+    },
+    {
+      command: 'flightsim-things ai set --wizard',
+      description: 'Prompt for all values without putting your API key in shell history.',
+    },
+  ])
+);
 
 const aiCommand = Command.make('ai').pipe(
   Command.withDescription('Manage AI provider configuration'),
+  Command.withExamples([
+    {
+      command:
+        'flightsim-things ai set --provider openai --model YOUR_MODEL_ID --api-key YOUR_API_KEY',
+      description: 'Replace YOUR_MODEL_ID and YOUR_API_KEY. Set replaces all AI values.',
+    },
+    {
+      command: 'flightsim-things ai set --wizard',
+      description: 'Prompt for all values without putting your API key in shell history.',
+    },
+    {
+      command: 'flightsim-things ai get',
+      description: 'Show the saved provider and model with a masked key.',
+    },
+  ]),
   Command.withSubcommands([getCommand, setCommand])
 );
 

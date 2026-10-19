@@ -22,13 +22,35 @@ const getCommand = Command.make('get', {}, () =>
   communityPath.get().pipe(Effect.flatMap(Console.log))
 ).pipe(Command.withDescription('Print the saved Community directory'));
 const setCommand = Command.make('set', pathArgument, save).pipe(
-  Command.withDescription(saveDescription)
+  Command.withDescription(saveDescription),
+  Command.withExamples([
+    {
+      command: 'flightsim-things community-path set "C:/Flight Simulator/Community"',
+      description: 'Replace the quoted path with your existing Community directory.',
+    },
+  ])
 );
 const updateCommand = Command.make('update', pathArgument, save).pipe(
-  Command.withDescription(saveDescription)
+  Command.withDescription(saveDescription),
+  Command.withExamples([
+    {
+      command: 'flightsim-things community-path update "C:/Flight Simulator/Community"',
+      description: 'Replace the quoted path with your existing Community directory.',
+    },
+  ])
 );
 const communityPathCommand = Command.make('community-path').pipe(
   Command.withDescription('Manage the saved MSFS 2024 Community directory'),
+  Command.withExamples([
+    {
+      command: 'flightsim-things community-path set "C:/Flight Simulator/Community"',
+      description: 'Replace the quoted path with your existing Community directory.',
+    },
+    {
+      command: 'flightsim-things community-path update "C:/Flight Simulator/Community"',
+      description: 'Replace the saved path with another existing Community directory.',
+    },
+  ]),
   Command.withSubcommands([getCommand, setCommand, updateCommand])
 );
 
