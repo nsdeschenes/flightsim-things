@@ -26,14 +26,6 @@ function get(): Effect.Effect<
   });
 }
 
-function parseSampleRate(input: string): number {
-  if (input.trim() === '') {
-    return Number.NaN;
-  }
-
-  return Number(input);
-}
-
 const flags = {
   dsn: Flag.String('dsn').pipe(Flag.withDescription('Sentry DSN')),
   errors: Flag.String('errors').pipe(
@@ -53,10 +45,10 @@ const setCommand = Command.make('set', flags, input =>
     const configuration = yield* configurationStore.validate({
       dsn: input.dsn,
       sampleRates: {
-        errors: parseSampleRate(input.errors),
-        logs: parseSampleRate(input.logs),
-        metrics: parseSampleRate(input.metrics),
-        traces: parseSampleRate(input.traces),
+        errors: yield* configurationStore.parseSampleRate(input.errors),
+        logs: yield* configurationStore.parseSampleRate(input.logs),
+        metrics: yield* configurationStore.parseSampleRate(input.metrics),
+        traces: yield* configurationStore.parseSampleRate(input.traces),
       },
     });
     yield* configurationStore.write(configuration);
@@ -89,26 +81,28 @@ const updateCommand = Command.make(
       }
 
       yield* configurationStore.update(previous =>
-        configurationStore.validate({
-          dsn: Option.getOrElse(dsn, () => previous.dsn),
-          sampleRates: {
-            errors: Option.match(errors, {
-              onNone: () => previous.sampleRates.errors,
-              onSome: parseSampleRate,
-            }),
-            logs: Option.match(logs, {
-              onNone: () => previous.sampleRates.logs,
-              onSome: parseSampleRate,
-            }),
-            metrics: Option.match(metrics, {
-              onNone: () => previous.sampleRates.metrics,
-              onSome: parseSampleRate,
-            }),
-            traces: Option.match(traces, {
-              onNone: () => previous.sampleRates.traces,
-              onSome: parseSampleRate,
-            }),
-          },
+        Effect.gen(function* mergeSentryConfiguration() {
+          return yield* configurationStore.validate({
+            dsn: Option.getOrElse(dsn, () => previous.dsn),
+            sampleRates: {
+              errors: yield* Option.match(errors, {
+                onNone: () => Effect.succeed(previous.sampleRates.errors),
+                onSome: configurationStore.parseSampleRate,
+              }),
+              logs: yield* Option.match(logs, {
+                onNone: () => Effect.succeed(previous.sampleRates.logs),
+                onSome: configurationStore.parseSampleRate,
+              }),
+              metrics: yield* Option.match(metrics, {
+                onNone: () => Effect.succeed(previous.sampleRates.metrics),
+                onSome: configurationStore.parseSampleRate,
+              }),
+              traces: yield* Option.match(traces, {
+                onNone: () => Effect.succeed(previous.sampleRates.traces),
+                onSome: configurationStore.parseSampleRate,
+              }),
+            },
+          });
         })
       );
       yield* sentry.refresh;

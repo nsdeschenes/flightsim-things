@@ -1,8 +1,8 @@
 import {BunTerminal} from '@effect/platform-bun';
-import {Console, Data, Deferred, Effect, Option, Queue, Terminal} from 'effect';
-import type {Done} from 'effect/Cause';
+import {Cause, Console, Data, Deferred, Effect, Option, Queue, Terminal} from 'effect';
 import {Command, Prompt} from 'effect/cli';
 
+import commandInput from '#command-input';
 import invocationClassifier from '#invocation';
 import sentry from '#sentry';
 
@@ -20,6 +20,7 @@ type CommandTree = DeepReadonly<Command.Command.Any>;
 type RootCommand = DeepReadonly<typeof ordinary.command>;
 type PromptServices = Exclude<Command.Environment, Terminal.Terminal>;
 const {catch: catchEffect} = Effect;
+const {Done: done} = Cause;
 const {TaggedError: taggedError} = Data;
 const {Select: select} = Prompt;
 
@@ -203,7 +204,7 @@ function prepareSelection(
       return prepared.value;
     }
 
-    const args = yield* Command.wizard(command, {prefix: path});
+    const args = yield* commandInput.collect(command, path);
     return yield* prepareArguments(args);
   });
 }
@@ -304,10 +305,10 @@ function forwardInput(
 
 function readPromptInput(session: SessionInput): Terminal.Terminal['readInput'] {
   return Effect.gen(function* acquirePromptInput() {
-    const queue = yield* Queue.make<Terminal.UserInput, Done>();
+    const queue = yield* Queue.make<Terminal.UserInput, Cause.Done>();
     const sink: InputSink = {
       end() {
-        Queue.endUnsafe(queue);
+        Queue.failCauseUnsafe(queue, Cause.fail(done()));
       },
       offer(input) {
         Queue.offerUnsafe(queue, input);

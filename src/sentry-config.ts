@@ -16,6 +16,8 @@ const rawDsn =
   /^https?:\/\/[a-zA-Z0-9_]+@(?:\[[a-fA-F0-9:.%]+\]|[a-zA-Z0-9_.-]+)(?::[0-9]+)?\//u;
 const controlOrWhitespace = /[\p{Cc}\s]/u;
 const publicKey = /^[a-zA-Z0-9_]+$/u;
+const invalidConfigurationMessage =
+  'Provide an HTTP(S) Sentry DSN with a public key and numeric project ID, and finite sample rates from 0 to 1.';
 
 function isDsn(input: string): boolean {
   if (
@@ -96,8 +98,23 @@ function validateConfiguration(
     Effect.mapError(
       () =>
         new SentryConfigurationError({
-          message:
-            'Provide an HTTP(S) Sentry DSN with a public key and numeric project ID, and finite sample rates from 0 to 1.',
+          message: invalidConfigurationMessage,
+        })
+    )
+  );
+}
+
+function parseSampleRate(input: string): Effect.Effect<number, SentryConfigurationError> {
+  let value = Number.NaN;
+  if (input.trim() !== '') {
+    value = Number(input);
+  }
+
+  return Schema.decodeEffect(sampleRate)(value).pipe(
+    Effect.mapError(
+      () =>
+        new SentryConfigurationError({
+          message: invalidConfigurationMessage,
         })
     )
   );
@@ -163,6 +180,7 @@ function updateConfiguration(
 
 const configurationStore = {
   Error: SentryConfigurationError,
+  parseSampleRate,
   read: readConfiguration,
   schema: configurationSchema,
   update: updateConfiguration,
