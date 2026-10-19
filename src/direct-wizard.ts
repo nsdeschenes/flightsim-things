@@ -1,6 +1,8 @@
 import {Console, Data, Effect, Option, Redacted} from 'effect';
-import {Command, Prompt} from 'effect/cli';
+import {Prompt} from 'effect/cli';
+import type {Command, Environment} from 'effect/cli/Command';
 
+import commandInput from '#command-input';
 import invocationClassifier from '#invocation';
 
 import type ordinary from './commands/ordinary.ts';
@@ -10,7 +12,7 @@ type DeepReadonly<Value> = Value extends object
     ? Value
     : {readonly [Key in keyof Value]: DeepReadonly<Value[Key]>}
   : Value;
-type CommandTree = DeepReadonly<Command.Command.Any>;
+type CommandTree = DeepReadonly<Command.Any>;
 type RootCommand = DeepReadonly<typeof ordinary.command>;
 type PreparedRequest =
   | Readonly<{kind: 'Ordinary'; args: readonly string[]; sanitizeErrors: boolean}>
@@ -89,7 +91,9 @@ function hasWizardMarker(args: readonly string[]): boolean {
 }
 
 function sanitizeCollectionError(
-  error: DeepReadonly<Effect.Error<ReturnType<typeof Command.wizard>> | WizardFailure>
+  error: DeepReadonly<
+    Effect.Error<ReturnType<typeof commandInput.collect>> | WizardFailure
+  >
 ): Effect.Effect<never, WizardFailure> {
   if (error instanceof WizardFailure) {
     return Effect.fail(error);
@@ -106,9 +110,9 @@ function sanitizeCollectionError(
 function collect(
   root: RootCommand,
   target: WizardTarget
-): Effect.Effect<PreparedRequest, WizardFailure, Command.Environment> {
+): Effect.Effect<PreparedRequest, WizardFailure, Environment> {
   return Effect.gen(function* prepareWizard() {
-    const generated = yield* Command.wizard(target.command, {prefix: target.path});
+    const generated = yield* commandInput.collect(target.command, target.path);
     if (
       generated.some(
         argument =>
@@ -145,7 +149,7 @@ function collect(
 function prepare(
   args: readonly string[],
   root: RootCommand
-): Effect.Effect<PreparedRequest, WizardFailure, Command.Environment> {
+): Effect.Effect<PreparedRequest, WizardFailure, Environment> {
   if (!hasWizardMarker(args)) {
     return Effect.succeed({args, kind: 'Ordinary', sanitizeErrors: false});
   }
