@@ -1,5 +1,4 @@
 import {Console, Data, Effect, Option, Redacted} from 'effect';
-import {Prompt} from 'effect/cli';
 import type {Command, Environment} from 'effect/cli/Command';
 
 import commandInput from '#command-input';
@@ -32,7 +31,6 @@ const missingIndex = -1;
 const oneMarker = 1;
 const wizardMarker = /^--(?:no-)?wizard(?:=|$)/u;
 const stopped = {kind: 'Stopped'} as const;
-const {Confirm: confirm} = Prompt;
 const usageMessage =
   'Wizard accepts a command path only. Enter values at the prompts. Run flightsim-things --help for usage.';
 const {catch: catchEffect} = Effect;
@@ -129,9 +127,7 @@ function collect(
     }
 
     yield* Console.log(`Command: ${commandSummary(root, generated)} (values omitted)`);
-    const confirmed = yield* Prompt.run(
-      confirm({initial: false, message: 'Run this command?'})
-    );
+    const confirmed = yield* commandInput.confirm(generated, 'Wizard');
     if (!confirmed) {
       return stopped;
     }

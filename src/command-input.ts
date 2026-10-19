@@ -3,6 +3,8 @@ import {Command, Prompt} from 'effect/cli';
 
 import configurationStore from '#sentry-config';
 
+import commandConfirmation from './command-confirmation.ts';
+
 type DeepReadonly<Value> = Value extends object
   ? Value extends (...args: readonly never[]) => unknown
     ? Value
@@ -112,6 +114,6 @@ function collect(command: CommandTree, path: readonly string[]): Collection {
   return Command.wizard(command, {prefix: path});
 }
 
-const commandInput = {collect};
+const commandInput = {collect, confirm: commandConfirmation.confirm};
 
 export default commandInput;

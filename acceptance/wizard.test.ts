@@ -407,6 +407,30 @@ async function seedAirlines(): Promise<void> {
   envelopes.length = noCommands;
 }
 
+async function prepareAirlineClear(): Promise<ReturnType<typeof createTerminalSession>> {
+  await seedAirlines();
+  const session = start(['database', 'clear', '--wizard']);
+  await answer(session, 'packages', down + enter);
+  await session.waitFor('Clear these saved records?');
+  expectNoCommand();
+  return session;
+}
+
+test('declined database clear records no command attempt', async () => {
+  const session = await prepareAirlineClear();
+  session.send(enter);
+  expect(await session.exited).toBe(successExitCode);
+  expectNoCommand();
+});
+
+test('confirmed database clear records one semantic completion', async () => {
+  const session = await prepareAirlineClear();
+  session.send('y');
+  expect(await session.exited).toBe(successExitCode);
+  expect(session.output()).toContain('Cleared airlines from the saved addon database.');
+  expectOneCommand();
+});
+
 test('uses ordinary optional filters through the parser', async () => {
   await seedAirlines();
   const session = start(['airlines', '--wizard']);
