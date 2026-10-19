@@ -219,7 +219,31 @@ const command = Command.make(
 ).pipe(
   Command.withDescription(
     'Research potential flights using saved aircraft, liveries, and airports'
-  )
+  ),
+  Command.withExamples([
+    {
+      command: 'flightsim-things find-flight --dep EGLL',
+      description:
+        'Find potential flights from an airport. Searches need matching saved aircraft and liveries plus identified saved airports. Results are not confirmed schedules.',
+    },
+    {
+      command: 'flightsim-things find-flight --arr LFPG',
+      description: 'Find potential flights to an airport using saved inventory.',
+    },
+    {
+      command: 'flightsim-things find-flight --dep EGLL --arr LFPG',
+      description: 'Research a specific route using saved inventory.',
+    },
+    {
+      command: 'flightsim-things find-flight --aircraft A320 --airline BAW',
+      description:
+        'Search between identified saved airports. Use aircraft and airline ICAO codes.',
+    },
+    {
+      command: 'flightsim-things find-flight --dep EGLL --aircraft A320 --airline BAW',
+      description: 'Filter a departure search by aircraft and airline ICAO codes.',
+    },
+  ])
 );
 
 export default command;

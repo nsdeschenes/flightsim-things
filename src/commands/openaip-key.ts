@@ -21,12 +21,24 @@ const setCommand = Command.make(
 ).pipe(
   Command.withDescription(
     'Save or replace the OpenAIP API key. Sign in at https://www.openaip.net/, open API clients, create a client, and copy its API key.'
-  )
+  ),
+  Command.withExamples([
+    {
+      command: 'flightsim-things openaip-key set YOUR_OPENAIP_API_KEY',
+      description: 'Replace YOUR_OPENAIP_API_KEY with the key from your OpenAIP client.',
+    },
+  ])
 );
 const openaipKeyCommand = Command.make('openaip-key').pipe(
   Command.withDescription(
     'Manage the saved OpenAIP API key. Sign in at https://www.openaip.net/, open API clients, create a client, and copy its API key.'
   ),
+  Command.withExamples([
+    {
+      command: 'flightsim-things openaip-key set YOUR_OPENAIP_API_KEY',
+      description: 'Replace YOUR_OPENAIP_API_KEY with the key from your OpenAIP client.',
+    },
+  ]),
   Command.withSubcommands([getCommand, setCommand])
 );
 

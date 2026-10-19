@@ -55,7 +55,17 @@ const setCommand = Command.make('set', flags, input =>
     yield* sentry.refresh;
     yield* Console.log('Sentry configuration saved.');
   })
-).pipe(Command.withDescription('Save or replace the DSN and all four sample rates'));
+).pipe(
+  Command.withDescription('Save or replace the DSN and all four sample rates'),
+  Command.withExamples([
+    {
+      command:
+        'flightsim-things sentry set --dsn https://YOUR_PUBLIC_KEY@example.invalid/1 --errors 0 --logs 0 --metrics 0 --traces 0',
+      description:
+        'Replace the fake DSN with your Sentry DSN. All sample rates are zero.',
+    },
+  ])
+);
 
 const updateCommand = Command.make(
   'update',
@@ -108,7 +118,15 @@ const updateCommand = Command.make(
       yield* sentry.refresh;
       return yield* Console.log('Sentry configuration saved.');
     })
-).pipe(Command.withDescription('Update selected options in the saved configuration'));
+).pipe(
+  Command.withDescription('Update selected options in the saved configuration'),
+  Command.withExamples([
+    {
+      command: 'flightsim-things sentry update --traces 0',
+      description: 'Update one rate after saving a complete Sentry configuration.',
+    },
+  ])
+);
 
 const getCommand = Command.make('get', {}, () =>
   get().pipe(Effect.flatMap(configuration => Console.log(JSON.stringify(configuration))))
@@ -116,6 +134,22 @@ const getCommand = Command.make('get', {}, () =>
 
 const sentryCommand = Command.make('sentry').pipe(
   Command.withDescription('Manage Sentry telemetry configuration'),
+  Command.withExamples([
+    {
+      command:
+        'flightsim-things sentry set --dsn https://YOUR_PUBLIC_KEY@example.invalid/1 --errors 0 --logs 0 --metrics 0 --traces 0',
+      description:
+        'Replace the fake DSN with your Sentry DSN. Set requires all four rates.',
+    },
+    {
+      command: 'flightsim-things sentry update --traces 0',
+      description: 'Update one rate after saving a complete Sentry configuration.',
+    },
+    {
+      command: 'flightsim-things sentry get',
+      description: 'Show the saved DSN and sample rates.',
+    },
+  ]),
   Command.withSubcommands([setCommand, updateCommand, getCommand])
 );
 

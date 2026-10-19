@@ -34,7 +34,17 @@ const scanCommand = Command.make(
       return yield* Effect.void;
     })
 ).pipe(
-  Command.withDescription('Scan the saved Community directory into the addon database')
+  Command.withDescription('Scan the saved Community directory into the addon database'),
+  Command.withExamples([
+    {
+      command: 'flightsim-things scan',
+      description: 'Scan after saving an existing directory with community-path set.',
+    },
+    {
+      command: 'flightsim-things scan --verbose',
+      description: 'Scan the saved directory and show every warning detail.',
+    },
+  ])
 );
 
 export default scanCommand;
