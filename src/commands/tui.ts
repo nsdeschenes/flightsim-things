@@ -80,14 +80,26 @@ function runSelectedCommand(
 
 function prepareArguments(
   args: readonly string[]
-): Effect.Effect<PreparedCommand | Readonly<{kind: 'Retry'}>> {
+): Effect.Effect<
+  PreparedCommand | Readonly<{kind: 'Retry'}>,
+  Terminal.QuitError,
+  Prompt.Environment
+> {
   if (args.some(argument => invocationClassifier.isCliControlArgument(argument))) {
     return Console.error(
       'A value looks like a CLI control flag. Use the CLI directly to pass this value.'
     ).pipe(Effect.as({kind: 'Retry'} as const));
   }
 
-  return Effect.succeed({args, kind: 'Prepared'});
+  return commandInput.confirm(args, 'Tui').pipe(
+    Effect.map(confirmed => {
+      if (!confirmed) {
+        return {kind: 'Retry'} as const;
+      }
+
+      return {args, kind: 'Prepared'} as const;
+    })
+  );
 }
 
 function cancelInput(
@@ -140,7 +152,7 @@ function selectCommand(
 
 function prepareOutcome(
   outcome: Readonly<{kind: 'Back'}> | Readonly<{kind: 'Args'; args: readonly string[]}>
-): Effect.Effect<PreparationOutcome> {
+): Effect.Effect<PreparationOutcome, Terminal.QuitError, Prompt.Environment> {
   if (outcome.kind === 'Back') {
     return Effect.succeed({kind: 'Retry'});
   }

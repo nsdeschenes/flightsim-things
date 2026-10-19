@@ -578,6 +578,8 @@ test('clears saved airlines through the database target selection', async () => 
   const session = await startSession();
   await openDatabaseTarget(session);
   session.send(down + enter);
+  await session.waitFor('Clear these saved records?');
+  session.send('y');
   await session.waitFor('Cleared airlines from the saved addon database.');
   await session.waitFor('Command completed.');
   await waitForMainMenu(session);

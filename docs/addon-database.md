@@ -251,6 +251,10 @@ and a five-second busy timeout. `Effect.acquireRelease` closes each connection e
 when initialization or a query fails. New user storage uses private directory/file
 permissions. Settings remain in `~/.flightsim-things/config.json`.
 
+The TUI and direct `--wizard` show the consequences of `database clear` and ask for
+confirmation with No as the default. Explicit CLI commands such as
+`flightsim-things database clear packages` execute without a prompt.
+
 ORM and Kit are pinned to `1.0.0-rc.4`. This version exports the requested
 [`drizzle-orm/effect-schema`](https://orm.drizzle.team/docs/effect-schema) API and supports
 the installed Effect 4. The stable `0.45.4` package lacks that export. The generator

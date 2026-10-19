@@ -3,15 +3,9 @@ import {Argument, Command} from 'effect/cli';
 import {Literals as literalArgument} from 'effect/cli/Argument';
 
 import database from '#database';
-import schema from '#database-schema';
 
-const clearTables = [
-  {name: 'aircraft', table: schema.aircraft},
-  {name: 'airlines', table: schema.airlines},
-  {name: 'airports', table: schema.airports},
-  {name: 'liveries', table: schema.liveries},
-  {name: 'packages', table: schema.packages},
-] as const;
+import clearTables from './database-clear-targets.ts';
+
 const firstIndex = 0;
 type TableName = (typeof clearTables)[number]['name'];
 type ClearTarget = TableName | 'all';
