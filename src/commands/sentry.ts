@@ -62,7 +62,7 @@ const setCommand = Command.make('set', flags, input =>
       command:
         'flightsim-things sentry set --dsn https://YOUR_PUBLIC_KEY@example.invalid/1 --errors 0 --logs 0 --metrics 0 --traces 0',
       description:
-        'Replace the fake DSN with your Sentry DSN. All sample rates are zero.',
+        'Replace the fake DSN with yours and raise sample rates above zero to enable telemetry. Set requires all four rates.',
     },
   ])
 );
@@ -139,7 +139,7 @@ const sentryCommand = Command.make('sentry').pipe(
       command:
         'flightsim-things sentry set --dsn https://YOUR_PUBLIC_KEY@example.invalid/1 --errors 0 --logs 0 --metrics 0 --traces 0',
       description:
-        'Replace the fake DSN with your Sentry DSN. Set requires all four rates.',
+        'Replace the fake DSN with yours and raise sample rates above zero to enable telemetry. Set requires all four rates.',
     },
     {
       command: 'flightsim-things sentry update --traces 0',

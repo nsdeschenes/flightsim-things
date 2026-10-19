@@ -60,7 +60,7 @@ flightsim-things ai set --wizard
 flightsim-things openaip-key set YOUR_OPENAIP_API_KEY
 ```
 
-Sentry set requires the DSN and all four rates. Its fake DSN uses `.invalid`, and all rates are zero. Replace the DSN before real use. Partial update requires an existing complete configuration and at least one supplied option.
+Sentry set requires the DSN and all four rates. Its fake DSN uses `.invalid`, and all rates are zero, so the example leaves telemetry disabled. Replace the DSN and raise the rates for the signals you want to enable. Partial update requires an existing complete configuration and at least one supplied option.
 
 ```sh
 flightsim-things sentry set --dsn https://YOUR_PUBLIC_KEY@example.invalid/1 --errors 0 --logs 0 --metrics 0 --traces 0
