@@ -106,45 +106,12 @@ jobs:
             --timings="$RUNNER_TEMP/acceptance-timings/baseline.json" \
             --update-timings
       - uses: actions/upload-artifact@v7
+        if: ${{ success() && github.ref == 'refs/heads/main' && github.event_name == 'push' }}
         with:
-          name: acceptance-timings-${{ matrix.shard }}
+          name: acceptance-timings-v1-bun-1.4.2-${{ matrix.shard }}
           path: ${{ runner.temp }}/acceptance-timings/shard-${{ matrix.shard }}.json
-          retention-days: 1
+          retention-days: 8
           if-no-files-found: error
-
-  save-acceptance-timings:
-    needs: [checks, test-source, test-acceptance]
-    if: >-
-      ${{ success() && github.ref == 'refs/heads/main'
-          && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
-    continue-on-error: true
-    steps:
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: acceptance-timings-*
-          merge-multiple: true
-          path: ${{ runner.temp }}/acceptance-timing-fragments
-      - name: Merge complete acceptance timings
-        run: |
-          mkdir -p "$RUNNER_TEMP/acceptance-timings"
-          jq --slurp --exit-status '
-            if length == 4 and all(.[];
-              type == "object" and .version == 1 and (.files | type == "object")
-              and all(.files[]; type == "number" and isfinite and . >= 0)
-            ) then
-              [.[].files | keys[]] as $paths
-              | if ($paths | length) == ($paths | unique | length) then
-                  {version: 1, files: (map(.files) | add)}
-                else error("Acceptance timing shards overlap") end
-            else error("Expected four valid acceptance timing fragments") end
-          ' "$RUNNER_TEMP/acceptance-timing-fragments"/shard-{1..4}.json \
-            > "$RUNNER_TEMP/acceptance-timings/baseline.json"
-      - uses: actions/cache/save@v5
-        with:
-          path: ${{ runner.temp }}/acceptance-timings/baseline.json
-          key: acceptance-timings-v1-bun-1.4.2-${{ runner.os }}-main-${{ github.run_id }}-${{ github.run_attempt }}
 
   test:
     needs: [test-source, test-acceptance]

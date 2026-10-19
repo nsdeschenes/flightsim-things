@@ -1,0 +1,102 @@
+name: Refresh acceptance timings
+
+on:
+  schedule:
+    - cron: '17 3 * * 0'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: acceptance-timings-main
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Select latest successful main CI run
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+            -f branch=main -f event=push -f status=success -f per_page=1 \
+            | jq --raw-output '
+                .workflow_runs[]
+                | select(.head_branch == "main" and .event == "push"
+                    and .status == "completed" and .conclusion == "success")
+                | "run-id=\(.id)\nrun-attempt=\(.run_attempt)"
+              ' >> "$GITHUB_OUTPUT"
+          if [ ! -s "$GITHUB_OUTPUT" ]; then
+            echo "::notice::No successful main push CI run is available."
+          fi
+      - name: Check whether this source was already promoted
+        if: ${{ steps.source.outputs.run-id != '' }}
+        id: cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/acceptance-timings/baseline.json
+          key: acceptance-timings-v1-bun-1.4.2-${{ runner.os }}-main-${{ steps.source.outputs.run-id }}-${{ steps.source.outputs.run-attempt }}
+          lookup-only: true
+      - name: Find complete unexpired timing artifacts
+        if: ${{ steps.source.outputs.run-id != '' && steps.cache.outputs.cache-hit != 'true' }}
+        id: artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run-id }}
+        run: |
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100" \
+            | jq --raw-output '
+                [.[].artifacts[]
+                  | select(.name | startswith("acceptance-timings-v1-bun-1.4.2-"))]
+                | group_by(.name) | map(max_by(.id))
+                | if (map(.name) | sort) == [
+                    "acceptance-timings-v1-bun-1.4.2-1",
+                    "acceptance-timings-v1-bun-1.4.2-2",
+                    "acceptance-timings-v1-bun-1.4.2-3",
+                    "acceptance-timings-v1-bun-1.4.2-4"
+                  ] and all(.[]; .expired == false and (.expires_at | fromdateiso8601) > now)
+                  then "ids=\(map(.id | tostring) | join(","))"
+                  else empty end
+              ' >> "$GITHUB_OUTPUT"
+          if [ ! -s "$GITHUB_OUTPUT" ]; then
+            echo "::notice::The latest successful main CI run has no complete unexpired timing artifacts."
+          fi
+      - name: Download source timing artifacts
+        if: ${{ steps.artifacts.outputs.ids != '' }}
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.source.outputs.run-id }}
+          artifact-ids: ${{ steps.artifacts.outputs.ids }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/acceptance-timing-fragments
+      - name: Merge complete acceptance timings
+        if: ${{ steps.download.outcome == 'success' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/acceptance-timings"
+          jq --slurp --exit-status '
+            if length == 4 and all(.[];
+              type == "object" and .version == 1 and (.files | type == "object")
+              and all(.files[]; type == "number" and isfinite and . >= 0)
+            ) then
+              [.[].files | keys[]] as $paths
+              | if ($paths | length) == ($paths | unique | length) then
+                  {version: 1, files: (map(.files) | add)}
+                else error("Acceptance timing shards overlap") end
+            else error("Expected four valid acceptance timing fragments") end
+          ' "$RUNNER_TEMP/acceptance-timing-fragments"/shard-{1..4}.json \
+            > "$RUNNER_TEMP/acceptance-timings/baseline.json"
+      - uses: actions/cache/save@v5
+        if: ${{ steps.download.outcome == 'success' }}
+        with:
+          path: ${{ runner.temp }}/acceptance-timings/baseline.json
+          key: acceptance-timings-v1-bun-1.4.2-${{ runner.os }}-main-${{ steps.source.outputs.run-id }}-${{ steps.source.outputs.run-attempt }}
