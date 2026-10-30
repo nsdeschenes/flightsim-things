@@ -1,4 +1,39 @@
 # Changelog
+## 2.0.0
+
+### Breaking Changes 🛠
+
+- (cli) Always include directory hyperlinks in tables by @nsdeschenes in [#37](https://github.com/nsdeschenes/flightsim-things/pull/37)
+
+### New Features ✨
+
+#### Cli
+
+- Add practical command help examples by @nsdeschenes in [#56](https://github.com/nsdeschenes/flightsim-things/pull/56)
+- Confirm interactive database clears by @nsdeschenes in [#55](https://github.com/nsdeschenes/flightsim-things/pull/55)
+- Validate Sentry configuration during guided input by @nsdeschenes in [#53](https://github.com/nsdeschenes/flightsim-things/pull/53)
+- Add a direct command wizard by @nsdeschenes in [#52](https://github.com/nsdeschenes/flightsim-things/pull/52)
+- Add native shell completion scripts by @nsdeschenes in [#51](https://github.com/nsdeschenes/flightsim-things/pull/51)
+
+#### Tui
+
+- Add a Community directory picker by @nsdeschenes in [#50](https://github.com/nsdeschenes/flightsim-things/pull/50)
+- Guide flight search with saved inventory by @nsdeschenes in [#49](https://github.com/nsdeschenes/flightsim-things/pull/49)
+- Add autocomplete to saved inventory lists by @nsdeschenes in [#41](https://github.com/nsdeschenes/flightsim-things/pull/41)
+
+#### Other
+
+- (database) Add selective clear command by @nsdeschenes in [#38](https://github.com/nsdeschenes/flightsim-things/pull/38)
+
+### Bug Fixes 🐛
+
+- (scanner) Filter addon records by manifest content type by @nsdeschenes in [#39](https://github.com/nsdeschenes/flightsim-things/pull/39)
+- (sentry) Keep configured telemetry active in the TUI by @nsdeschenes in [#40](https://github.com/nsdeschenes/flightsim-things/pull/40)
+
+### Internal Changes 🔧
+
+- (ci) Shard acceptance tests by duration by @nsdeschenes in [#54](https://github.com/nsdeschenes/flightsim-things/pull/54)
+
 ## 1.0.0
 
 ### Breaking Changes 🛠
