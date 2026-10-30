@@ -171,16 +171,33 @@ function liveryObservation(
   };
 }
 
-function readAircraft(relative: string, contents: string): Contents {
-  const sections = parseConfiguration(contents);
-  const container = vfsKey(path.posix.dirname(relative));
+function isUserSelectable(section: ConfigurationSection): boolean {
+  const value = text(section.values.get('isuserselectable'));
+  return value !== '0' && (value === missing || value.toLowerCase() !== 'false');
+}
+
+function aircraftVariations(
+  relative: string,
+  sections: readonly ConfigurationSection[]
+): readonly ConfigurationSection[] {
   const variations = sections.filter(section => variationSection.test(section.name));
   if (new Set(variations.map(section => section.name)).size !== variations.length) {
     throw new Error(`Duplicate FLTSIM section in ${relative}`);
   }
 
+  return variations;
+}
+
+function readAircraft(relative: string, contents: string): Contents {
+  const sections = parseConfiguration(contents);
+  const container = vfsKey(path.posix.dirname(relative));
+  const variations = aircraftVariations(relative, sections);
+  const selectable = variations.filter(section => isUserSelectable(section));
   const aircraft: AircraftObservation[] = [];
-  if (!sections.some(section => liverySections.has(section.name))) {
+  if (
+    !sections.some(section => liverySections.has(section.name)) &&
+    (variations.length === firstIndex || selectable.length > firstIndex)
+  ) {
     aircraft.push(aircraftObservation(container, sections));
   }
 
@@ -188,7 +205,7 @@ function readAircraft(relative: string, contents: string): Contents {
   return {
     aircraft,
     airports: [],
-    liveries: variations.map(section => liveryObservation(relative, section, target)),
+    liveries: selectable.map(section => liveryObservation(relative, section, target)),
   };
 }
 
