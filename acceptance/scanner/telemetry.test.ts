@@ -263,8 +263,8 @@ function verifyPrivateOutput(
   expect(result.stderr).toContain(
     `JSON Parse error: Unexpected identifier "${privateValue}"`
   );
-  expect(result.stderr).toContain(path.join(target, 'aircraft.cfg'));
-  expect(result.stderr).toContain(path.join(fixture.community, 'malformed-config'));
+  expect(result.stderr).not.toContain(path.join(target, 'aircraft.cfg'));
+  expect(result.stderr).toContain('Skipped malformed-config:');
   verifyPrivateEnvelopes(target);
 }
 
@@ -274,7 +274,9 @@ function verifyPrivateDiagnostics(): void {
     'linked-missing'
   );
   const messages = diagnostics.map(item => item.attributes['diagnostic.message'].value);
-  expect(messages).toContain('ENOENT in aircraft.cfg');
+  expect(messages).toContain(
+    'Missing required metadata in aircraft.cfg; package skipped. Restore the file or repair the package installation and run scan again.'
+  );
   expect(messages).toContain(
     'Invalid aircraft configuration line (missing-section) at line 3'
   );
