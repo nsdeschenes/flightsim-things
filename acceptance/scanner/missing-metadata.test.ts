@@ -1,5 +1,5 @@
 import {afterEach, beforeEach, expect, test} from 'bun:test';
-import {unlink} from 'node:fs/promises';
+import {unlink, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 
 import createFixture from '#acceptance-scanner';
@@ -60,6 +60,49 @@ test.each([
       {icao_code: 'KAAA', name: 'Retained'},
     ]);
     expect(fixture.query('SELECT model FROM aircraft')).toEqual([{model: 'Base'}]);
+  },
+  cliTimeout
+);
+
+const servicesFilename = 'AirportServices/KBBB/Services.xml';
+const airportIdentityQuery =
+  "SELECT id, package_id, source_key, icao_code FROM airports WHERE icao_code = 'KBBB'";
+
+async function importedAirportSources(): Promise<string> {
+  const root = await fixture.addon(
+    'partial',
+    {
+      [servicesFilename]: '<Services/>',
+      'airport.xml': '<FSData><Airport ident="KAAA" name="Original"/></FSData>',
+    },
+    'SCENERY'
+  );
+  expect(await fixture.run('scan')).toMatchObject({exitCode: successExitCode});
+  expect(fixture.query('SELECT icao_code FROM airports ORDER BY icao_code')).toEqual([
+    {icao_code: 'KAAA'},
+    {icao_code: 'KBBB'},
+  ]);
+  return root;
+}
+
+test(
+  'an incomplete rescan retains prior explicit airports and updates readable sources',
+  async () => {
+    const root = await importedAirportSources();
+    const prior = fixture.query(airportIdentityQuery);
+    await unlink(path.join(root, servicesFilename));
+    await writeFile(
+      path.join(root, 'airport.xml'),
+      '<FSData><Airport ident="KAAA" name="Updated"/></FSData>'
+    );
+    const result = await fixture.run('scan');
+    expect(result.exitCode).toBe(successExitCode);
+    verifyMissingDiagnostic(result.stderr, 'optional discovery', servicesFilename);
+    expect(result.stderr).toContain('coverage may be incomplete');
+    expect(fixture.query(airportIdentityQuery)).toEqual(prior);
+    expect(fixture.query("SELECT name FROM airports WHERE icao_code = 'KAAA'")).toEqual([
+      {name: 'Updated'},
+    ]);
   },
   cliTimeout
 );
