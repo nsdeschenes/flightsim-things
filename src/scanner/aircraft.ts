@@ -2,6 +2,7 @@ import path from 'node:path';
 
 import {Option} from 'effect';
 
+import ConfigurationLineError from './configuration-line-error.ts';
 import type PackageSnapshot from './model.ts';
 
 type AircraftObservation = PackageSnapshot['aircraft'][number];
@@ -54,6 +55,7 @@ function uncomment(line: string): string {
 
 function addConfigurationLine(
   line: string,
+  lineNumber: number,
   sections: Readonly<Pick<ConfigurationSection[], 'at' | 'push'>>
 ): void {
   if (line.startsWith('[') && line.endsWith(']')) {
@@ -64,8 +66,12 @@ function addConfigurationLine(
   } else if (line !== '') {
     const section = sections.at(-nextIndex);
     const separator = line.indexOf('=');
-    if (!section || separator < firstIndex) {
-      throw new Error(`Invalid aircraft configuration line: ${line}`);
+    if (!section) {
+      throw new ConfigurationLineError('missing-section', lineNumber);
+    }
+
+    if (separator < firstIndex) {
+      throw new ConfigurationLineError('missing-equals', lineNumber);
     }
 
     section.values.set(
@@ -80,8 +86,8 @@ function addConfigurationLine(
 
 function parseConfiguration(contents: string): readonly ConfigurationSection[] {
   const sections: ConfigurationSection[] = [];
-  for (const rawLine of contents.replace(bom, '').split(lineBreak)) {
-    addConfigurationLine(uncomment(rawLine), sections);
+  for (const [index, rawLine] of contents.replace(bom, '').split(lineBreak).entries()) {
+    addConfigurationLine(uncomment(rawLine), index + nextIndex, sections);
   }
 
   if (

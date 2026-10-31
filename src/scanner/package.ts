@@ -5,6 +5,7 @@ import {Option} from 'effect';
 
 import configurations from './aircraft.ts';
 import airportFallback from './airport-fallback.ts';
+import ConfigurationLineError from './configuration-line-error.ts';
 import contentPolicy from './content-policy.ts';
 import type PackageSnapshot from './model.ts';
 import readScenery from './scenery.ts';
@@ -50,7 +51,6 @@ const validationReasons = [
   'Metadata file escapes its package',
   'Duplicate metadata path in layout.json',
   'layout.json requires a content array',
-  'Invalid aircraft configuration line',
   'Aircraft configuration requires GENERAL, LIVERY, or FLTSIM sections',
   'Invalid virtual aircraft container',
   'Duplicate FLTSIM section',
@@ -90,6 +90,11 @@ class MetadataReadError extends Error {
 
   public constructor(error: unknown, relative: string, reason = diagnosticReason(error)) {
     super(errorMessage(error));
+    if (error instanceof ConfigurationLineError) {
+      this.diagnosticMessage = error.message;
+      return;
+    }
+
     this.diagnosticMessage = `${reason} in ${relative}`;
   }
 }
