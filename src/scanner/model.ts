@@ -21,6 +21,8 @@ type PackageSnapshot = Readonly<{
   aircraft: readonly AircraftObservation[];
   airports: readonly AirportObservation[];
   liveries: readonly LiveryObservation[];
+  hasCompiledScenery: boolean;
+  skippedXmlFiles: readonly string[];
   warnings: readonly string[];
 }>;
 

@@ -24,7 +24,10 @@ type PackageRead =
       message: string;
       diagnosticMessage: string;
     }>;
-type Contents = Pick<PackageSnapshot, 'aircraft' | 'airports' | 'liveries' | 'warnings'>;
+type Contents = Pick<
+  PackageSnapshot,
+  'aircraft' | 'airports' | 'liveries' | 'skippedXmlFiles' | 'warnings'
+>;
 type FileLocator = Readonly<{
   key: string;
   relative: string;
@@ -266,12 +269,13 @@ async function parseMetadata(
 ): Promise<Contents> {
   const bytes = await readFile(root, locator.relative);
   if (locator.role === 'model') {
-    return {aircraft: [], airports: [], liveries: [], warnings: []};
+    return {aircraft: [], airports: [], liveries: [], skippedXmlFiles: [], warnings: []};
   }
 
   if (locator.key.endsWith('aircraft.cfg')) {
     return {
       ...configurations.aircraft(locator.relative, bytes.toString('utf8')),
+      skippedXmlFiles: [],
       warnings: [],
     };
   }
@@ -279,6 +283,7 @@ async function parseMetadata(
   if (locator.key.endsWith('livery.cfg')) {
     return {
       ...configurations.livery(locator.relative, bytes.toString('utf8')),
+      skippedXmlFiles: [],
       warnings: [],
     };
   }
@@ -287,7 +292,7 @@ async function parseMetadata(
     filePath: locator.relative,
     packageName,
   });
-  return {aircraft: [], liveries: [], ...scenery};
+  return {aircraft: [], liveries: [], warnings: [], ...scenery};
 }
 
 async function readMetadata(
@@ -308,6 +313,7 @@ async function readMetadata(
         aircraft: [],
         airports: [],
         liveries: [],
+        skippedXmlFiles: [],
         warnings: [
           `Missing optional discovery metadata in ${locator.relative}; file skipped and coverage may be incomplete. Restore the file or correct layout.json and run scan again.`,
         ],
@@ -327,19 +333,16 @@ async function readContents(
     aircraft: AircraftObservation[];
     airports: AirportObservation[];
     liveries: LiveryObservation[];
+    skippedXmlFiles: string[];
     warnings: string[];
-  } = {aircraft: [], airports: [], liveries: [], warnings: []};
+  } = {aircraft: [], airports: [], liveries: [], skippedXmlFiles: [], warnings: []};
   for (const locator of files) {
     const rows = await readMetadata(root, locator, packageName);
     contents.warnings.push(...rows.warnings);
+    contents.skippedXmlFiles.push(...rows.skippedXmlFiles);
     contents.aircraft.push(...rows.aircraft);
-    for (const row of rows.airports) {
-      contents.airports.push(row);
-    }
-
-    for (const row of rows.liveries) {
-      contents.liveries.push(row);
-    }
+    contents.airports.push(...rows.airports);
+    contents.liveries.push(...rows.liveries);
   }
 
   return contents;
@@ -372,18 +375,11 @@ async function snapshot(sourcePath: string, root: string): Promise<PackageSnapsh
     contents = {...contents, airports: airportFallback.infer(sourcePath)};
   }
 
-  const warnings: string[] = [];
-  if (hasCompiledScenery) {
-    warnings.push(
-      'Compiled scenery metadata is not decoded; airport coverage may be incomplete even with XML, AirportServices, or package-name fallback.'
-    );
-  }
-
   return {
     ...contents,
     aircraft: contents.aircraft.filter(() => policy.aircraft),
+    hasCompiledScenery,
     metadata: metadata(sourcePath, manifest),
-    warnings: [...warnings, ...contents.warnings],
   };
 }
 

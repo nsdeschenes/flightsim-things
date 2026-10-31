@@ -117,7 +117,7 @@ async function reportXmlDiagnostic(
     'xml.root': hints.root,
   };
   if (failure.recovery === 'skip-file') {
-    logger.warn('XML metadata diagnostic', attributes);
+    logger.info('XML metadata diagnostic', attributes);
   } else {
     logger.error('XML metadata diagnostic', attributes);
   }

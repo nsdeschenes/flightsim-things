@@ -10,13 +10,31 @@ class ScanIncompleteError extends taggedError('ScanIncompleteError')<{
   public override readonly [ErrorReporter.ignore] = true;
 }
 const noFailures = 0;
+const singleItem = 1;
+
+function pluralSuffix(count: number): string {
+  if (count === singleItem) {
+    return '';
+  }
+
+  return 's';
+}
+
+function skippedXmlSummary(count: number, verbose: boolean): string {
+  let message = `Skipped ${count} unrelated XML file${pluralSuffix(count)} in imported packages.`;
+  if (!verbose) {
+    message += ' Run scan --verbose to show file paths.';
+  }
+
+  return message;
+}
 
 const scanCommand = Command.make(
   'scan',
   {
     verbose: Flag.Boolean('verbose').pipe(
       Flag.withDefault(false),
-      Flag.withDescription('Show every warning detail')
+      Flag.withDescription('Show every warning and skipped XML file')
     ),
   },
   ({verbose}) =>
@@ -25,6 +43,16 @@ const scanCommand = Command.make(
       yield* Console.log(
         `Scanned ${summary.packages} packages, ${summary.aircraft} aircraft, ${summary.airports} airports, and ${summary.liveries} liveries. ${summary.failedPackages} packages failed. ${summary.warnings} warnings.`
       );
+      if (summary.compiledSceneryPackages > noFailures) {
+        yield* Console.log(
+          `Airport coverage may be incomplete in ${summary.compiledSceneryPackages} package${pluralSuffix(summary.compiledSceneryPackages)} with compiled scenery. BGL content is not decoded, even when XML, AirportServices, or package-name fallback discovers airports.`
+        );
+      }
+
+      if (summary.skippedXmlFiles > noFailures) {
+        yield* Console.log(skippedXmlSummary(summary.skippedXmlFiles, verbose));
+      }
+
       if (summary.failedPackages > noFailures) {
         return yield* new ScanIncompleteError({
           message: `${summary.failedPackages} packages could not be scanned. Fix the reported metadata and run scan again.`,
@@ -42,7 +70,8 @@ const scanCommand = Command.make(
     },
     {
       command: 'flightsim-things scan --verbose',
-      description: 'Scan the saved directory and show every warning detail.',
+      description:
+        'Scan the saved directory and show every warning and skipped XML file.',
     },
   ])
 );
