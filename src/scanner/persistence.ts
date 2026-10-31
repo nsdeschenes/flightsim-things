@@ -1,4 +1,4 @@
-import {and, eq, ne, sql} from 'drizzle-orm';
+import {and, eq, inArray, ne, sql} from 'drizzle-orm';
 import {Option} from 'effect';
 import type {Effect} from 'effect/Effect';
 
@@ -149,6 +149,31 @@ function removeDisallowedContent(tx: Transaction, rows: PackageRows): void {
 
   if (!rows.policy.airports) {
     tx.delete(schema.airports).where(eq(schema.airports.packageId, rows.packageId)).run();
+  }
+}
+
+function removeStaleAircraftContent(tx: Transaction, rows: PackageRows): void {
+  const contents = [
+    {keys: new Set(rows.liveries.map(row => row.sourceKey)), table: schema.liveries},
+    {keys: new Set(rows.aircraft.map(row => row.sourceKey)), table: schema.aircraft},
+  ];
+  for (const {table, keys} of contents) {
+    const stale = tx
+      .select({id: table.id, sourceKey: table.sourceKey})
+      .from(table)
+      .where(eq(table.packageId, rows.packageId))
+      .all()
+      .filter(row => !keys.has(row.sourceKey));
+    for (const batch of chunks(stale)) {
+      tx.delete(table)
+        .where(
+          inArray(
+            table.id,
+            batch.map(row => row.id)
+          )
+        )
+        .run();
+    }
   }
 }
 
@@ -337,6 +362,7 @@ function saveBatch(
         );
         for (const row of rows) {
           removeDisallowedContent(tx, row);
+          removeStaleAircraftContent(tx, row);
         }
 
         saveAirports(
