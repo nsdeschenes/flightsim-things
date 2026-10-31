@@ -221,6 +221,16 @@ Layout paths must remain within their package. Internal metadata symlinks cannot
 escape the package, although the package directory itself can be a symlink.
 These checks cover static paths. They do not guarantee containment during
 concurrent replacement of source files or directories.
+
+Airport discovery excludes XML in `SimObjects/<category>/<object>/model/` and
+`model.<variation>/` directories. It also excludes XML with a matching glTF entry
+in the same layout directory. The glTF stem must match the XML stem, with an
+optional `_LOD` and numeric suffix on the glTF stem. These are model assets under
+the [SDK model conventions](https://docs.flightsimulator.com/html/Content_Configuration/Models/Models.htm),
+regardless of XML encoding or parseability. Layout path and file containment
+checks still apply to these XML files. `AirportServices` XML is never excluded.
+
+Other XML remains an airport metadata candidate, regardless of its filename.
 Malformed XML with a recognizable unrelated root produces a warning without
 rejecting other package metadata. Airport XML, airport-specific Services XML,
 and XML with an uncertain root remain strict.
