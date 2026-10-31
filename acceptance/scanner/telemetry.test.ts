@@ -236,6 +236,15 @@ function verifyPrivateEnvelopes(target: string): void {
   expect(envelopes.join('\n')).not.toContain(fixture.home);
 }
 
+function verifyMalformedOutput(stderr: string): void {
+  const malformedLines = stderr
+    .split('\n')
+    .filter(line => line.includes('malformed-'))
+    .join('\n');
+  expect(malformedLines).not.toContain(privateValue);
+  expect(malformedLines).not.toContain('PRIVATE_CONFIG_PATH');
+}
+
 function verifyPrivateOutput(
   result: Awaited<ReturnType<typeof fixture.run>>,
   target: string
@@ -247,12 +256,7 @@ function verifyPrivateOutput(
   expect(result.stderr).toContain(
     'Invalid aircraft configuration line (missing-equals) at line 3'
   );
-  expect(
-    result.stderr
-      .split('\n')
-      .filter(line => line.includes('malformed-'))
-      .join('\n')
-  ).not.toContain(privateValue);
+  verifyMalformedOutput(result.stderr);
   expect(result.stderr).toContain(
     `Invalid virtual aircraft container: ../../../../${privateValue}`
   );
