@@ -31,6 +31,7 @@ test.each([
   ['SimObjects/Landmarks/Tower/model.night/Tower.xml', invalidUtf8],
   ['scenery/custom-library/Tower.xml', utf16Model],
   ['scenery/custom-library/Tower.xml', unknownRoot],
+  ['scenery/custom-library/Tower_LOD00.xml', unknownRoot],
 ])(
   'scan imports airports despite unreadable model XML at %s',
   async (filename, bytes) => {

@@ -24,7 +24,11 @@ type PackageRead =
       diagnosticMessage: string;
     }>;
 type Contents = Pick<PackageSnapshot, 'aircraft' | 'airports' | 'liveries' | 'warnings'>;
-type FileLocator = Readonly<{key: string; relative: string}>;
+type FileLocator = Readonly<{
+  key: string;
+  relative: string;
+  role: 'metadata' | 'model';
+}>;
 type Inventory = Readonly<{
   files: readonly FileLocator[];
   hasCompiledScenery: boolean;
@@ -33,6 +37,9 @@ const firstIndex = 0;
 const missing = Option.getOrNull(Option.none());
 const configurationFiles = /(?:^|\/)(?:aircraft|livery)\.cfg$/iu;
 const sceneryFiles = /\.xml$|(?:^|\/)airportservices\/[^/]+\/services\.spb$/iu;
+const simObjectModel = /^simobjects\/[^/]+\/[^/]+\/model(?:\.[^/]+)?\/.*\.xml$/u;
+const airportServices = /(?:^|\/)airportservices\//u;
+const modelLod = /_lod\d+$/u;
 const drivePrefix = /^[a-z]:/iu;
 const bom = /^\uFEFF/u;
 const systemCode = /^[A-Z][A-Z\d_]+$/u;
@@ -169,6 +176,35 @@ function addMetadataFile(
   files.set(key, relative);
 }
 
+function modelXmlKeys(entries: readonly string[]): Readonly<Pick<Set<string>, 'has'>> {
+  return new Set(
+    entries.flatMap(relative => {
+      const key = vfsKey(relative);
+      if (!key.endsWith('.gltf')) {
+        return [];
+      }
+
+      const stem = key.slice(firstIndex, -'.gltf'.length);
+      return [`${stem}.xml`, `${stem.replace(modelLod, '')}.xml`];
+    })
+  );
+}
+
+function sceneryRole(
+  key: string,
+  models: Readonly<Pick<Set<string>, 'has'>>
+): FileLocator['role'] {
+  if (
+    key.endsWith('.xml') &&
+    !airportServices.test(key) &&
+    (simObjectModel.test(key) || models.has(key))
+  ) {
+    return 'model';
+  }
+
+  return 'metadata';
+}
+
 function inventory(
   layout: Readonly<Record<string, unknown>>,
   policy: ContentPolicy
@@ -177,9 +213,13 @@ function inventory(
     throw new TypeError('layout.json requires a content array');
   }
 
-  const selected = {files: new Map<string, string>(), hasCompiledScenery: false};
-  for (const entry of layout.content) {
-    const relative = relativeFile(object(entry).path);
+  const entries = layout.content.map(entry => relativeFile(object(entry).path));
+  const selected = {
+    files: new Map<string, string>(),
+    hasCompiledScenery: false,
+    models: modelXmlKeys(entries),
+  };
+  for (const relative of entries) {
     const key = vfsKey(relative);
     selected.hasCompiledScenery ||= policy.airports && key.endsWith('.bgl');
 
@@ -194,7 +234,11 @@ function inventory(
   return {
     files: Array.from(
       selected.files.entries(),
-      ([key, relative]: readonly [string, string]) => ({key, relative})
+      ([key, relative]: readonly [string, string]): FileLocator => ({
+        key,
+        relative,
+        role: sceneryRole(key, selected.models),
+      })
     ),
     hasCompiledScenery: selected.hasCompiledScenery,
   };
@@ -206,6 +250,10 @@ async function parseMetadata(
   packageName: string
 ): Promise<Contents> {
   const bytes = await readFile(root, locator.relative);
+  if (locator.role === 'model') {
+    return {aircraft: [], airports: [], liveries: [], warnings: []};
+  }
+
   if (locator.key.endsWith('aircraft.cfg')) {
     return {
       ...configurations.aircraft(locator.relative, bytes.toString('utf8')),
