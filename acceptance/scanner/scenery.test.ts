@@ -7,6 +7,7 @@ import createFixture from '#acceptance-scanner';
 
 const successExitCode = 0;
 const failureExitCode = 1;
+const singleNotice = 1;
 const location = {elevationMeters: 35.5, latitude: -33.946111, longitude: 151.177222};
 
 let fixture: Awaited<ReturnType<typeof createFixture>>;
@@ -19,6 +20,75 @@ beforeEach(async () => {
 afterEach(async () => {
   await fixture.dispose();
 });
+
+async function seedCoveragePackages(): Promise<void> {
+  await fixture.addon('compiled-only', {'world.bgl': 'compiled'}, 'SCENERY');
+  await fixture.addon(
+    'vendor-airport-kbbb-fallback',
+    {'world.bgl': 'compiled'},
+    'SCENERY'
+  );
+  await fixture.addon(
+    'explicit',
+    {
+      'Sound.xml': '<Sound><broken',
+      'airport.xml': '<FSData><Airport ident="KAAA"/></FSData>',
+      'world.bgl': 'compiled',
+    },
+    'SCENERY'
+  );
+  await fixture.addon(
+    'services',
+    {
+      'AirportServices/KCCC/Services.spb': 'compiled',
+      'world.bgl': 'compiled',
+    },
+    'SCENERY'
+  );
+  await fixture.addon(
+    'rejected',
+    {
+      'airport.xml': '<FSData><Airport',
+      'world.bgl': 'compiled',
+    },
+    'SCENERY'
+  );
+}
+
+function verifyCoverageOutput(result: Awaited<ReturnType<typeof fixture.run>>): void {
+  expect(result.exitCode).toBe(failureExitCode);
+  expect(result.stdout).toContain(
+    'Scanned 4 packages, 0 aircraft, 3 airports, and 0 liveries. 1 packages failed. 0 warnings.'
+  );
+  expect(result.stdout.match(/Airport coverage may be incomplete/gu)).toHaveLength(
+    singleNotice
+  );
+  expect(result.stdout).toContain(
+    '4 packages with compiled scenery. BGL content is not decoded, even when XML, AirportServices, or package-name fallback discovers airports.'
+  );
+  expect(result.stdout).toContain('Skipped 1 unrelated XML files in imported packages.');
+  expect(result.stderr).toContain('Skipped rejected:');
+  expect(result.stderr).not.toContain('Warning for');
+  expect(result.stderr).not.toContain('Sound.xml');
+}
+
+test(
+  'compiled coverage is summarized independently of discoveries, XML skips, and rejected packages',
+  async () => {
+    await seedCoveragePackages();
+    expect(await fixture.run('community-path', 'set', fixture.community)).toMatchObject({
+      exitCode: successExitCode,
+    });
+    const result = await fixture.run('scan');
+    verifyCoverageOutput(result);
+    expect(fixture.query('SELECT icao_code FROM airports ORDER BY icao_code')).toEqual([
+      {icao_code: 'KAAA'},
+      {icao_code: 'KBBB'},
+      {icao_code: 'KCCC'},
+    ]);
+  },
+  cliTimeout
+);
 
 function enrichAirportLocation(): void {
   using db = new Database(path.join(fixture.home, '.flightsim-things/addons.sqlite'));
@@ -78,7 +148,7 @@ test(
 );
 
 test.each(['<Sound><broken'])(
-  'unrelated malformed XML warns without rejecting aircraft or arbitrary airport XML for %s',
+  'unrelated malformed XML is summarized without rejecting aircraft or arbitrary airport XML for %s',
   async xml => {
     await fixture.addon(
       'aircraft',
@@ -101,9 +171,12 @@ test.each(['<Sound><broken'])(
     const result = await fixture.run('scan');
     expect(result.exitCode).toBe(successExitCode);
     expect(result.stdout).toContain(
-      'Scanned 2 packages, 1 aircraft, 1 airports, and 1 liveries. 0 packages failed. 1 warnings.'
+      'Scanned 2 packages, 1 aircraft, 1 airports, and 1 liveries. 0 packages failed. 0 warnings.'
     );
-    expect(result.stderr).toContain('simobjects/airplanes/base/sound.xml');
+    expect(result.stdout).toContain(
+      'Skipped 1 unrelated XML files in imported packages.'
+    );
+    expect(result.stderr).toBe('');
     expect(fixture.query('SELECT icao_code FROM airports')).toEqual([
       {icao_code: 'KAAA'},
     ]);

@@ -364,7 +364,7 @@ function verifyCase(input: XmlCase): void {
   const item = Option.getOrThrow(Option.fromUndefinedOr(matching.at(firstIndex)));
   let level = 'error';
   if (input.recovery === 'skip-file') {
-    level = 'warn';
+    level = 'info';
   }
 
   expect(item.level).toBe(level);

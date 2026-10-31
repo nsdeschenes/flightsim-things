@@ -6,15 +6,14 @@ test.each([
   '<malformed',
   '<Sound><broken',
   '\uFEFF<?xml version="1.0" encoding="UTF-8"?><!-- <FSData> --><Sound><broken',
-])('unrelated malformed XML produces a warning for %s', async xml => {
+])('unrelated malformed XML records a skipped file for %s', async xml => {
   const result = await readScenery(
     'simobjects/airplanes/base/sound.xml',
     new Blob([xml]),
     {filePath: 'simobjects/airplanes/base/sound.xml', packageName: 'test-package'}
   );
   expect(result.airports).toEqual([]);
-  expect(result.warnings).toHaveLength(1);
-  expect(result.warnings.join('\n')).toContain('simobjects/airplanes/base/sound.xml');
+  expect(result.skippedXmlFiles).toEqual(['simobjects/airplanes/base/sound.xml']);
 });
 
 test.each([

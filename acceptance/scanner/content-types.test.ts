@@ -57,7 +57,7 @@ test(
     const result = await fixture.run('scan');
     expect(result.exitCode).toBe(successExitCode);
     expect(result.stdout).toContain(
-      'Scanned 7 packages, 1 aircraft, 1 airports, and 4 liveries. 0 packages failed. 1 warnings.'
+      'Scanned 7 packages, 1 aircraft, 1 airports, and 4 liveries. 0 packages failed. 0 warnings.'
     );
     expect(
       fixture.query(
@@ -132,7 +132,7 @@ test(
     const result = await fixture.run('scan');
     expect(result.exitCode).toBe(successExitCode);
     expect(result.stdout).toContain(
-      'Scanned 6 packages, 1 aircraft, 2 airports, and 2 liveries. 0 packages failed. 1 warnings.'
+      'Scanned 6 packages, 1 aircraft, 2 airports, and 2 liveries. 0 packages failed. 0 warnings.'
     );
     expect(fixture.query('SELECT icao_code FROM airports ORDER BY icao_code')).toEqual([
       {icao_code: 'KAAA'},

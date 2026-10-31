@@ -5,7 +5,7 @@ import type XmlContext from './xml-context.ts';
 import reportXmlDiagnostic from './xml-diagnostic.ts';
 
 type AirportObservation = PackageSnapshot['airports'][number];
-type SceneryRead = Pick<PackageSnapshot, 'airports' | 'warnings'>;
+type SceneryRead = Pick<PackageSnapshot, 'airports' | 'skippedXmlFiles'>;
 type XmlContents = Readonly<Pick<Blob, keyof Blob>>;
 type AirportElement = Readonly<{
   name: string;
@@ -117,12 +117,11 @@ function airportObservations(
 }
 
 async function parseAirports(
-  key: string,
   contents: XmlContents,
   context: XmlContext
-): Promise<Readonly<{document: Bun.XML.Node | null; warnings: readonly string[]}>> {
+): Promise<Bun.XML.Node | null> {
   try {
-    return {document: Bun.XML.parse(contents, {compact: false}), warnings: []};
+    return Bun.XML.parse(contents, {compact: false});
   } catch (error) {
     const skipped = await unrelatedRoot(contents);
     let recovery: 'skip-file' | 'reject-package' = 'reject-package';
@@ -139,10 +138,7 @@ async function parseAirports(
       throw error;
     }
 
-    return {
-      document: missing,
-      warnings: [`Skipped malformed unrelated XML in ${key}: ${String(error)}`],
-    };
+    return missing;
   }
 }
 
@@ -151,13 +147,13 @@ async function readAirports(
   contents: XmlContents,
   context: XmlContext
 ): Promise<SceneryRead> {
-  const {document, warnings} = await parseAirports(key, contents, context);
+  const document = await parseAirports(contents, context);
   if (document === missing) {
-    return {airports: [], warnings};
+    return {airports: [], skippedXmlFiles: [context.filePath]};
   }
 
   try {
-    return {airports: airportObservations(key, document), warnings: []};
+    return {airports: airportObservations(key, document), skippedXmlFiles: []};
   } catch (error) {
     await reportXmlDiagnostic(context, contents, {
       category: 'xml.airport-validation',
@@ -202,7 +198,7 @@ async function readScenery(
           sourceKey: key,
         },
       ],
-      warnings: [],
+      skippedXmlFiles: [],
     };
   }
 
@@ -211,7 +207,7 @@ async function readScenery(
     return result;
   }
 
-  return {airports: [], warnings: []};
+  return {airports: [], skippedXmlFiles: []};
 }
 
 export default readScenery;

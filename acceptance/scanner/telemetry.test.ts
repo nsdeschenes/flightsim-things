@@ -51,15 +51,17 @@ beforeEach(async () => {
     port: 0,
   });
   dsn = `http://publickey@127.0.0.1:${server.port}/123`;
-  await fixture.addon(
+  const warningPackage = await fixture.addon(
     'warning-package',
     Object.fromEntries(
-      Array.from({length: warningCount}, (_value, index) => [
-        `sound-${index}.xml`,
-        '<Sound><broken',
-      ])
+      Array.from({length: warningCount}, (_value, index) => [`sound-${index}.xml`, ''])
     ),
     'SCENERY'
+  );
+  await Promise.all(
+    Array.from({length: warningCount}, async (_value, index) => {
+      await rm(path.join(warningPackage, `sound-${index}.xml`));
+    })
   );
   await fixture.addon(
     'malformed-airport',

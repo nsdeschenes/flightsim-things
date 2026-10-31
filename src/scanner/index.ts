@@ -15,9 +15,11 @@ type PackageRead = Awaited<ReturnType<typeof packageReader.read>>;
 type ScanSummary = Readonly<{
   aircraft: number;
   airports: number;
+  compiledSceneryPackages: number;
   failedPackages: number;
   liveries: number;
   packages: number;
+  skippedXmlFiles: number;
   warnings: number;
 }>;
 type DatabaseError = Effect.Error<ReturnType<typeof persistence.save>>;
@@ -97,12 +99,12 @@ function reportDiagnostic(
   });
 }
 
-function reportWarnings(
+function reportMetadataDiagnostics(
   snapshot: PackageSnapshot,
   priorWarnings: number,
   verbose: boolean
 ): Effect.Effect<void> {
-  return Effect.gen(function* reportPackageWarnings() {
+  return Effect.gen(function* reportPackageDiagnostics() {
     yield* Effect.forEach(
       snapshot.warnings,
       warning =>
@@ -117,6 +119,16 @@ function reportWarnings(
         ),
       {discard: true}
     );
+    if (verbose) {
+      yield* Effect.forEach(
+        snapshot.skippedXmlFiles,
+        file =>
+          Console.error(
+            `Skipped unrelated XML for ${path.basename(snapshot.metadata.sourcePath)}: ${file}`
+          ),
+        {discard: true}
+      );
+    }
   });
 }
 
@@ -144,7 +156,11 @@ function reportReads(
         );
       } else {
         snapshots.push(read.snapshot);
-        yield* reportWarnings(read.snapshot, priorWarnings + counts.warnings, verbose);
+        yield* reportMetadataDiagnostics(
+          read.snapshot,
+          priorWarnings + counts.warnings,
+          verbose
+        );
         counts.warnings += read.snapshot.warnings.length;
       }
     }
@@ -163,6 +179,10 @@ function summarize(
     summary.airports += snapshot.airports.length;
     summary.liveries += snapshot.liveries.length;
     summary.packages += nextIndex;
+    summary.skippedXmlFiles += snapshot.skippedXmlFiles.length;
+    if (snapshot.hasCompiledScenery) {
+      summary.compiledSceneryPackages += nextIndex;
+    }
   }
 
   return summary;
@@ -228,9 +248,11 @@ function scanBatches(
     let summary: ScanSummary = {
       aircraft: firstIndex,
       airports: firstIndex,
+      compiledSceneryPackages: firstIndex,
       failedPackages: firstIndex,
       liveries: firstIndex,
       packages: firstIndex,
+      skippedXmlFiles: firstIndex,
       warnings: firstIndex,
     };
     const written = {aircraft: [] as number[], liveries: [] as number[]};
