@@ -34,7 +34,7 @@ test(
       {
         'SimObjects/Airplanes/Legacy/aircraft.cfg': '[GENERAL]\nicao_model=Legacy\n',
         'SimObjects/Airplanes/Mixed/aircraft.cfg':
-          '[GENERAL]\nicao_model=Mixed\n[FLTSIM.0]\nui_variation=Hidden\nisUserSelectable="FALSE" ; hidden\n[FLTSIM.1]\nui_variation=Flyable AI\nisUserSelectable=1\nisAirTraffic=1\ncanBeUsedByAITraffic=1\n[FLTSIM.2]\nui_variation=Legacy AI\nisAirTraffic=1\n[FLTSIM.3]\nui_variation=Legacy\n[FLTSIM.4]\nui_variation=Flyable\nisUserSelectable=True\nisAirTraffic=0\n',
+          '[GENERAL]\nicao_model=Mixed\n[FLTSIM.0]\nui_variation=Hidden\nui_type=Hidden type\nui_manufacturer=Hidden manufacturer\nisUserSelectable="FALSE" ; hidden\n[FLTSIM.1]\nui_variation=Flyable AI\nui_type=Flyable type\nui_manufacturer=Flyable manufacturer\nisUserSelectable=1\nisAirTraffic=1\ncanBeUsedByAITraffic=1\n[FLTSIM.2]\nui_variation=Legacy AI\nisAirTraffic=1\n[FLTSIM.3]\nui_variation=Legacy\n[FLTSIM.4]\nui_variation=Flyable\nisUserSelectable=True\nisAirTraffic=0\n',
       },
       'AIRCRAFT'
     );
@@ -54,10 +54,9 @@ test(
     expect(result.stdout).toContain(
       'Scanned 3 packages, 2 aircraft, 0 airports, and 4 liveries.'
     );
-    expect(fixture.query('SELECT model FROM aircraft ORDER BY model')).toEqual([
-      {model: 'Legacy'},
-      {model: 'Mixed'},
-    ]);
+    expect(
+      fixture.query("SELECT manufacturer, name FROM aircraft WHERE model='Mixed'")
+    ).toEqual([{manufacturer: 'Flyable manufacturer', name: 'Flyable type'}]);
     expect(fixture.query('SELECT name FROM liveries ORDER BY name')).toEqual([
       {name: 'Flyable'},
       {name: 'Flyable AI'},

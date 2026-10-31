@@ -114,10 +114,15 @@ function sectionValues(
 
 function aircraftObservation(
   container: string,
-  sections: readonly ConfigurationSection[]
+  sections: readonly ConfigurationSection[],
+  variation: ConfigurationSection | undefined
 ): AircraftObservation {
   const general = sectionValues(sections, 'general');
-  const first = sectionValues(sections, 'fltsim.0');
+  let first = sectionValues(sections, 'fltsim.0');
+  if (variation) {
+    first = variation.values;
+  }
+
   return {
     icaoTypeDesignator: text(general.get('icao_type_designator')),
     manufacturer:
@@ -198,7 +203,7 @@ function readAircraft(relative: string, contents: string): Contents {
     !sections.some(section => liverySections.has(section.name)) &&
     (variations.length === firstIndex || selectable.length > firstIndex)
   ) {
-    aircraft.push(aircraftObservation(container, sections));
+    aircraft.push(aircraftObservation(container, sections, selectable.at(firstIndex)));
   }
 
   const target = targetContainer(container, sections);
