@@ -50,10 +50,11 @@ async function warningFixtures(): Promise<void> {
   }
 }
 
-function verifyCoverage(stdout: string): void {
+function verifyCoverage(stdout: string, verbose: boolean): void {
   expect(stdout.match(/Airport coverage may be incomplete/gu)).toHaveLength(singleNotice);
   expect(stdout).toContain('18 packages with compiled scenery');
   expect(stdout).toContain('Skipped 18 unrelated XML files');
+  expect(stdout.includes('Run scan --verbose to show file paths.')).toBe(!verbose);
 }
 
 async function verifyDefaultWarnings(): Promise<void> {
@@ -61,7 +62,7 @@ async function verifyDefaultWarnings(): Promise<void> {
   expect(result.exitCode).toBe(failureExitCode);
   expect(result.stdout).toContain('Scanned 18 packages');
   expect(result.stdout).toContain('7 packages failed. 36 warnings.');
-  verifyCoverage(result.stdout);
+  verifyCoverage(result.stdout, false);
   expect(result.stderr).not.toContain('sound.xml');
   expect(result.stderr.match(/Warning for /gu)).toHaveLength(detailLimit);
   expect(
@@ -74,16 +75,21 @@ async function verifyDefaultWarnings(): Promise<void> {
   }
 }
 
+function verifySkippedXmlPaths(stderr: string): void {
+  expect(stderr.match(/Skipped unrelated XML for /gu)).toHaveLength(warningPackages);
+  for (const index of Array.from({length: warningPackages}).keys()) {
+    expect(stderr).toContain(`Skipped unrelated XML for warning-${index}: sound.xml`);
+  }
+}
+
 async function verifyVerboseWarnings(): Promise<void> {
   const verbose = await fixture.run('scan', '--verbose');
   expect(verbose.exitCode).toBe(failureExitCode);
   expect(verbose.stdout).toContain('7 packages failed. 36 warnings.');
   expect(verbose.stderr.match(/Warning for /gu)).toHaveLength(totalWarnings);
-  verifyCoverage(verbose.stdout);
+  verifyCoverage(verbose.stdout, true);
   expect(verbose.stderr).not.toContain('Compiled scenery');
-  expect(verbose.stderr.match(/Skipped unrelated XML for /gu)).toHaveLength(
-    warningPackages
-  );
+  verifySkippedXmlPaths(verbose.stderr);
   expect(verbose.stderr).toContain('coverage may be incomplete');
   expect(verbose.stderr).not.toContain('additional warnings omitted');
 }

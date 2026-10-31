@@ -10,6 +10,24 @@ class ScanIncompleteError extends taggedError('ScanIncompleteError')<{
   public override readonly [ErrorReporter.ignore] = true;
 }
 const noFailures = 0;
+const singleItem = 1;
+
+function pluralSuffix(count: number): string {
+  if (count === singleItem) {
+    return '';
+  }
+
+  return 's';
+}
+
+function skippedXmlSummary(count: number, verbose: boolean): string {
+  let message = `Skipped ${count} unrelated XML file${pluralSuffix(count)} in imported packages.`;
+  if (!verbose) {
+    message += ' Run scan --verbose to show file paths.';
+  }
+
+  return message;
+}
 
 const scanCommand = Command.make(
   'scan',
@@ -27,14 +45,12 @@ const scanCommand = Command.make(
       );
       if (summary.compiledSceneryPackages > noFailures) {
         yield* Console.log(
-          `Airport coverage may be incomplete in ${summary.compiledSceneryPackages} packages with compiled scenery. BGL content is not decoded, even when XML, AirportServices, or package-name fallback discovers airports.`
+          `Airport coverage may be incomplete in ${summary.compiledSceneryPackages} package${pluralSuffix(summary.compiledSceneryPackages)} with compiled scenery. BGL content is not decoded, even when XML, AirportServices, or package-name fallback discovers airports.`
         );
       }
 
       if (summary.skippedXmlFiles > noFailures) {
-        yield* Console.log(
-          `Skipped ${summary.skippedXmlFiles} unrelated XML files in imported packages. Run scan --verbose to show file paths.`
-        );
+        yield* Console.log(skippedXmlSummary(summary.skippedXmlFiles, verbose));
       }
 
       if (summary.failedPackages > noFailures) {

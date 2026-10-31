@@ -66,7 +66,7 @@ function verifyCoverageOutput(result: Awaited<ReturnType<typeof fixture.run>>): 
   expect(result.stdout).toContain(
     '4 packages with compiled scenery. BGL content is not decoded, even when XML, AirportServices, or package-name fallback discovers airports.'
   );
-  expect(result.stdout).toContain('Skipped 1 unrelated XML files in imported packages.');
+  expect(result.stdout).toContain('Skipped 1 unrelated XML file in imported packages.');
   expect(result.stderr).toContain('Skipped rejected:');
   expect(result.stderr).not.toContain('Warning for');
   expect(result.stderr).not.toContain('Sound.xml');
@@ -173,9 +173,7 @@ test.each(['<Sound><broken'])(
     expect(result.stdout).toContain(
       'Scanned 2 packages, 1 aircraft, 1 airports, and 1 liveries. 0 packages failed. 0 warnings.'
     );
-    expect(result.stdout).toContain(
-      'Skipped 1 unrelated XML files in imported packages.'
-    );
+    expect(result.stdout).toContain('Skipped 1 unrelated XML file in imported packages.');
     expect(result.stderr).toBe('');
     expect(fixture.query('SELECT icao_code FROM airports')).toEqual([
       {icao_code: 'KAAA'},

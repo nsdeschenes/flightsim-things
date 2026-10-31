@@ -61,7 +61,7 @@ function verifyImported(result: Awaited<ReturnType<typeof fixture.run>>): void {
   expect(result.stdout).toContain(
     'Scanned 20 packages, 1 aircraft, 4 airports, and 38 liveries. 0 packages failed. 0 warnings.'
   );
-  expect(result.stdout).toContain('1 packages with compiled scenery');
+  expect(result.stdout).toContain('1 package with compiled scenery');
   const airports: unknown = JSON.parse(
     '[{"iata_code":"AAA","icao_code":"KAAA","name":"A & B"},{"iata_code":null,"icao_code":"KBBB","name":"Second"},{"iata_code":null,"icao_code":"KCCC","name":null},{"iata_code":null,"icao_code":"KDDD","name":null}]'
   );
