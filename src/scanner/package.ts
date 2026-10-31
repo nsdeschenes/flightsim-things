@@ -28,7 +28,7 @@ type Contents = Pick<PackageSnapshot, 'aircraft' | 'airports' | 'liveries' | 'wa
 type FileLocator = Readonly<{
   key: string;
   relative: string;
-  role: 'metadata' | 'model';
+  role: 'configuration' | 'discovery' | 'model';
 }>;
 type Inventory = Readonly<{
   files: readonly FileLocator[];
@@ -92,6 +92,12 @@ class MetadataReadError extends Error {
     super(errorMessage(error));
     if (error instanceof ConfigurationLineError) {
       this.diagnosticMessage = error.message;
+      return;
+    }
+
+    if (reason === 'ENOENT') {
+      this.diagnosticMessage = `Missing required metadata in ${relative}; package skipped. Restore the file or repair the package installation and run scan again.`;
+      this.message = this.diagnosticMessage;
       return;
     }
 
@@ -195,10 +201,14 @@ function modelXmlKeys(entries: readonly string[]): Readonly<Pick<Set<string>, 'h
   );
 }
 
-function sceneryRole(
+function metadataRole(
   key: string,
   models: Readonly<Pick<Set<string>, 'has'>>
 ): FileLocator['role'] {
+  if (configurationFiles.test(key)) {
+    return 'configuration';
+  }
+
   if (
     key.endsWith('.xml') &&
     !airportServices.test(key) &&
@@ -207,7 +217,7 @@ function sceneryRole(
     return 'model';
   }
 
-  return 'metadata';
+  return 'discovery';
 }
 
 function inventory(
@@ -242,7 +252,7 @@ function inventory(
       ([key, relative]: readonly [string, string]): FileLocator => ({
         key,
         relative,
-        role: sceneryRole(key, selected.models),
+        role: metadataRole(key, selected.models),
       })
     ),
     hasCompiledScenery: selected.hasCompiledScenery,
@@ -288,6 +298,22 @@ async function readMetadata(
   try {
     return await parseMetadata(root, locator, packageName);
   } catch (error) {
+    if (
+      locator.role !== 'configuration' &&
+      error instanceof Error &&
+      'code' in error &&
+      error.code === 'ENOENT'
+    ) {
+      return {
+        aircraft: [],
+        airports: [],
+        liveries: [],
+        warnings: [
+          `Missing optional discovery metadata in ${locator.relative}; file skipped and coverage may be incomplete. Restore the file or correct layout.json and run scan again.`,
+        ],
+      };
+    }
+
     throw new MetadataReadError(error, locator.relative);
   }
 }

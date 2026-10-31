@@ -111,7 +111,10 @@ function reportWarnings(
     );
     yield* Effect.forEach(
       warningDetails(snapshot.warnings, priorWarnings, verbose),
-      warning => Console.error(`Warning for ${snapshot.metadata.sourcePath}: ${warning}`),
+      warning =>
+        Console.error(
+          `Warning for ${path.basename(snapshot.metadata.sourcePath)}: ${warning}`
+        ),
       {discard: true}
     );
   });
@@ -135,7 +138,9 @@ function reportReads(
       if (read.status === 'failure') {
         counts.failedPackages += nextIndex;
         yield* reportDiagnostic(read.sourcePath, read.diagnosticMessage, 'error').pipe(
-          Effect.andThen(Console.error(`Skipped ${read.sourcePath}: ${read.message}`))
+          Effect.andThen(() =>
+            Console.error(`Skipped ${path.basename(read.sourcePath)}: ${read.message}`)
+          )
         );
       } else {
         snapshots.push(read.snapshot);
