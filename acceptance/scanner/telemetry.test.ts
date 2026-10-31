@@ -207,11 +207,15 @@ async function addPrivateFailures(): Promise<string> {
   await fixture.addon(
     'malformed-config',
     {
-      'SimObjects/Airplanes/Example/aircraft.cfg': privateValue,
+      'SimObjects/Airplanes/PRIVATE_CONFIG_PATH/aircraft.cfg': `; header\r\n\r\n${privateValue}=value`,
     },
     'AIRCRAFT'
   );
-  await fixture.addon('malformed-livery', {'livery.cfg': privateValue}, 'LIVERY');
+  await fixture.addon(
+    'malformed-livery',
+    {'livery.cfg': `[GENERAL]\n\n${privateValue}`},
+    'LIVERY'
+  );
   await fixture.addon(
     'invalid-container',
     {
@@ -224,12 +228,35 @@ async function addPrivateFailures(): Promise<string> {
   return addLinkedFailure();
 }
 
+function verifyPrivateEnvelopes(target: string): void {
+  expect(envelopeItems().some(item => item.type === 'event')).toBe(false);
+  expect(envelopes.join('\n')).not.toContain(privateValue);
+  expect(envelopes.join('\n')).not.toContain('PRIVATE_CONFIG_PATH');
+  expect(envelopes.join('\n')).not.toContain(target);
+  expect(envelopes.join('\n')).not.toContain(fixture.home);
+}
+
+function verifyMalformedOutput(stderr: string): void {
+  const malformedLines = stderr
+    .split('\n')
+    .filter(line => line.includes('malformed-'))
+    .join('\n');
+  expect(malformedLines).not.toContain(privateValue);
+  expect(malformedLines).not.toContain('PRIVATE_CONFIG_PATH');
+}
+
 function verifyPrivateOutput(
   result: Awaited<ReturnType<typeof fixture.run>>,
   target: string
 ): void {
   expect(result.exitCode).toBe(failureExitCode);
-  expect(result.stderr).toContain(`Invalid aircraft configuration line: ${privateValue}`);
+  expect(result.stderr).toContain(
+    'Invalid aircraft configuration line (missing-section) at line 3'
+  );
+  expect(result.stderr).toContain(
+    'Invalid aircraft configuration line (missing-equals) at line 3'
+  );
+  verifyMalformedOutput(result.stderr);
   expect(result.stderr).toContain(
     `Invalid virtual aircraft container: ../../../../${privateValue}`
   );
@@ -238,10 +265,7 @@ function verifyPrivateOutput(
   );
   expect(result.stderr).toContain(path.join(target, 'aircraft.cfg'));
   expect(result.stderr).toContain(path.join(fixture.community, 'malformed-config'));
-  expect(envelopeItems().some(item => item.type === 'event')).toBe(false);
-  expect(envelopes.join('\n')).not.toContain(privateValue);
-  expect(envelopes.join('\n')).not.toContain(target);
-  expect(envelopes.join('\n')).not.toContain(fixture.home);
+  verifyPrivateEnvelopes(target);
 }
 
 function verifyPrivateDiagnostics(): void {
@@ -252,9 +276,11 @@ function verifyPrivateDiagnostics(): void {
   const messages = diagnostics.map(item => item.attributes['diagnostic.message'].value);
   expect(messages).toContain('ENOENT in aircraft.cfg');
   expect(messages).toContain(
-    'Invalid aircraft configuration line in SimObjects/Airplanes/Example/aircraft.cfg'
+    'Invalid aircraft configuration line (missing-section) at line 3'
   );
-  expect(messages).toContain('Invalid aircraft configuration line in livery.cfg');
+  expect(messages).toContain(
+    'Invalid aircraft configuration line (missing-equals) at line 3'
+  );
   expect(messages).toContain(
     'Invalid virtual aircraft container in SimObjects/Airplanes/Example/aircraft.cfg'
   );
