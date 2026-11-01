@@ -1,4 +1,16 @@
 # Changelog
+## 2.0.1
+
+### Bug Fixes 🐛
+
+#### Scanner
+
+- Separate coverage limits from scan warnings by @nsdeschenes in [#66](https://github.com/nsdeschenes/flightsim-things/pull/66)
+- Recover from missing discovery metadata by @nsdeschenes in [#65](https://github.com/nsdeschenes/flightsim-things/pull/65)
+- Explain invalid configuration lines safely by @nsdeschenes in [#64](https://github.com/nsdeschenes/flightsim-things/pull/64)
+- Exclude model XML from airport discovery by @nsdeschenes in [#63](https://github.com/nsdeschenes/flightsim-things/pull/63)
+- Ignore non-selectable AI liveries by @nsdeschenes in [#58](https://github.com/nsdeschenes/flightsim-things/pull/58)
+
 ## 2.0.0
 
 ### Breaking Changes 🛠
