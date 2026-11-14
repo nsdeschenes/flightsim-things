@@ -86,7 +86,8 @@ Desktop application reads the target matrix from `scripts/release-targets.json`.
 Linux ARM64, macOS ARM64, and Windows x64 each install dependencies natively, then
 run format, lint, type checks, unit tests, and builds in separate jobs. Caches include
 the target, OS, architecture, runtime, and dependency manifests. Native dependencies
-never cross operating systems. Desktop smoke and package proof reuse only their
+never cross operating systems. Windows caches the pnpm store and installs from the
+lockfile in each job to recreate native dependency links. Desktop smoke and package proof reuse only their
 own target's same-commit build, identified by its full SHA.
 
 The final acceptance jobs require every target's checks to pass. Staging requires

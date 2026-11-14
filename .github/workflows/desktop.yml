@@ -36,16 +36,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: pnpm
       - id: key
         run: echo "value=workspace-v2-${{ matrix.id }}-${{ runner.os }}-${{ runner.arch }}-node24-pnpm12.9.1-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'packages/*/package.json') }}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
+        if: runner.os != 'Windows'
         id: cache
         with:
           path: |
             node_modules
             packages/*/node_modules
           key: ${{ steps.key.outputs.value }}
-      - if: steps.cache.outputs.cache-hit != 'true'
+      - if: runner.os == 'Windows' || steps.cache.outputs.cache-hit != 'true'
         run: pnpm install --frozen-lockfile
   checks:
     name: Format, lint and type checks (${{ matrix.id }})
@@ -60,13 +62,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: pnpm
       - uses: actions/cache/restore@v4
+        if: runner.os != 'Windows'
         with:
           path: |
             node_modules
             packages/*/node_modules
           key: workspace-v2-${{ matrix.id }}-${{ runner.os }}-${{ runner.arch }}-node24-pnpm12.9.1-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'packages/*/package.json') }}
           fail-on-cache-miss: true
+      - name: Install locked dependencies with native Windows links
+        if: runner.os == 'Windows'
+        run: pnpm install --frozen-lockfile
       - run: pnpm fmt:check
       - run: pnpm lint
       - run: pnpm typecheck
@@ -83,13 +90,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: pnpm
       - uses: actions/cache/restore@v4
+        if: runner.os != 'Windows'
         with:
           path: |
             node_modules
             packages/*/node_modules
           key: workspace-v2-${{ matrix.id }}-${{ runner.os }}-${{ runner.arch }}-node24-pnpm12.9.1-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'packages/*/package.json') }}
           fail-on-cache-miss: true
+      - name: Install locked dependencies with native Windows links
+        if: runner.os == 'Windows'
+        run: pnpm install --frozen-lockfile
       - run: pnpm test
   build:
     name: Build application (${{ matrix.id }})
@@ -104,13 +116,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: pnpm
       - uses: actions/cache/restore@v4
+        if: runner.os != 'Windows'
         with:
           path: |
             node_modules
             packages/*/node_modules
           key: workspace-v2-${{ matrix.id }}-${{ runner.os }}-${{ runner.arch }}-node24-pnpm12.9.1-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'packages/*/package.json') }}
           fail-on-cache-miss: true
+      - name: Install locked dependencies with native Windows links
+        if: runner.os == 'Windows'
+        run: pnpm install --frozen-lockfile
       - run: |
           pnpm build
           git rev-parse HEAD > "$RUNNER_TEMP/build.commit"
@@ -137,13 +154,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: pnpm
       - uses: actions/cache/restore@v4
+        if: runner.os != 'Windows'
         with:
           path: |
             node_modules
             packages/*/node_modules
           key: workspace-v2-${{ matrix.id }}-${{ runner.os }}-${{ runner.arch }}-node24-pnpm12.9.1-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'packages/*/package.json') }}
           fail-on-cache-miss: true
+      - name: Install locked dependencies with native Windows links
+        if: runner.os == 'Windows'
+        run: pnpm install --frozen-lockfile
       - uses: actions/download-artifact@v4
         with:
           name: application-build-${{ matrix.id }}-${{ github.sha }}
@@ -176,13 +198,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: pnpm
       - uses: actions/cache/restore@v4
+        if: runner.os != 'Windows'
         with:
           path: |
             node_modules
             packages/*/node_modules
           key: workspace-v2-${{ matrix.id }}-${{ runner.os }}-${{ runner.arch }}-node24-pnpm12.9.1-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'packages/*/package.json') }}
           fail-on-cache-miss: true
+      - name: Install locked dependencies with native Windows links
+        if: runner.os == 'Windows'
+        run: pnpm install --frozen-lockfile
       - uses: actions/download-artifact@v4
         with:
           name: application-build-${{ matrix.id }}-${{ github.sha }}
