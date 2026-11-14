@@ -9,14 +9,19 @@ statusProvider:
   name: github
   config:
     contexts:
-      - Linux arm64 build and acceptance
+      - linux-arm64 build and acceptance
+      - darwin-arm64 build and acceptance
+      - win32-x64 build and acceptance
+      - Verify and stage all release targets
       - Script tooling checks
 artifactProvider:
   name: github
 requireNames:
   - /^flightsim-things-[0-9]+\.[0-9]+\.[0-9]+-linux-arm64\.deb$/
+  - /^flightsim-things-[0-9]+\.[0-9]+\.[0-9]+-macos-arm64\.dmg$/
+  - /^flightsim-things-[0-9]+\.[0-9]+\.[0-9]+-win32-x64\.exe$/
   - /^SHA256SUMS$/
 targets:
   - name: github
     tagPrefix: v
-    includeNames: /^(flightsim-things-[0-9]+\.[0-9]+\.[0-9]+-linux-arm64\.deb|SHA256SUMS)$/
+    includeNames: /^(flightsim-things-[0-9]+\.[0-9]+\.[0-9]+-linux-arm64\.deb|flightsim-things-[0-9]+\.[0-9]+\.[0-9]+-macos-arm64\.dmg|flightsim-things-[0-9]+\.[0-9]+\.[0-9]+-win32-x64\.exe|SHA256SUMS)$/

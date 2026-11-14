@@ -65,11 +65,11 @@ jobs:
           set -euo pipefail
           BODY_FILE=$(mktemp)
           cat > "$BODY_FILE" <<EOF
-          Prepare version $VERSION for the Linux arm64 Debian release.
+          Prepare version $VERSION for the Linux ARM64 Debian, macOS ARM64 DMG, and Windows x64 NSIS release.
 
           Synchronizes the root and all workspace package versions and updates CHANGELOG.md through Craft.
 
-          Review and squash-merge this PR after Desktop application and Script tooling pass. Then wait for both workflows on the resulting main commit and run Publish release with version $VERSION and that full commit SHA. Publication uses its tested installer and SHA256SUMS.
+          Review and squash-merge this PR after Desktop application and Script tooling pass. Then wait for both workflows on the resulting main commit and run Publish release with version $VERSION and that full commit SHA. Publication uses all tested installers and SHA256SUMS.
           EOF
           gh pr create --base main --head "$RELEASE_BRANCH" --title "chore(release): $VERSION" --body-file "$BODY_FILE"
           # GITHUB_TOKEN-created branches/PRs do not trigger push/pull_request workflows.

@@ -82,11 +82,18 @@ test. Monitoring, domain features, and vendored repositories are not included.
 
 ## CI and releases
 
-Desktop application installs once, then runs checks, unit tests, and the build in
-separate jobs. Desktop smoke and Debian package proof reuse that same-commit build.
-The final Linux arm64 acceptance job requires every job to pass and verifies the
-installer digest against the native packaged-app smoke evidence. Script tooling
-runs real version-bump and release-staging tests separately.
+Desktop application reads the target matrix from `scripts/release-targets.json`.
+Linux ARM64, macOS ARM64, and Windows x64 each install dependencies natively, then
+run format, lint, type checks, unit tests, and builds in separate jobs. Caches include
+the target, OS, architecture, runtime, and dependency manifests. Native dependencies
+never cross operating systems. Desktop smoke and package proof reuse only their
+own target's same-commit build, identified by its full SHA.
+
+The final acceptance jobs require every target's checks to pass. Staging requires
+exactly one installer and native smoke proof per target, all for the same SHA and
+version. It verifies the tested bytes before publishing the complete artifact set
+with `SHA256SUMS`. Script tooling tests version bumps, complete staging, and rejection
+of missing, duplicate, changed, or foreign artifacts and evidence.
 
 Craft 2.33.1 manages automatic versions and changelogs. Enable Actions write
 permissions and **Allow GitHub Actions to create and approve pull requests** in
@@ -102,18 +109,30 @@ repository Settings > Actions > General. No additional release token is needed.
 4. Dispatch **Publish release** from `main` with that version and full SHA.
    Publication requires synchronized versions, main ancestry, the merged release
    PR, successful push runs, and staged assets from that exact desktop run. Craft
-   publishes a `v<version>` GitHub release containing the tested Linux arm64 Debian
-   installer and `SHA256SUMS`. It does not rebuild the application.
+   publishes a `v<version>` GitHub release containing the tested Linux ARM64 Debian
+   installer, macOS ARM64 DMG, Windows x64 NSIS installer, and `SHA256SUMS`. It does not rebuild the application.
 
 Changelog preview uses Craft's pinned reusable workflow. Release preparation and
 publication share a concurrency group. Assets expire under the repository artifact
 retention policy; rerun the original main push run of Desktop application if they have expired.
 A manual dispatch validates acceptance but does not stage publishable assets.
 
-For local Linux package verification after `pnpm build`, run `pnpm package:linux`,
-save the output of `git rev-parse HEAD` in a file outside the repo, and set `BUILD_COMMIT_FILE`
-to that file when running `xvfb-run -a pnpm test:package`. Local packaging uses the
-host architecture; CI's publishable target is native Linux arm64. The smoke check
-extracts the actual Debian installer, verifies its architecture and bundled MIT
-license, launches its executable, and checks database health through isolated IPC.
+For local package verification on a supported native host, run `pnpm build`, then
+`pnpm package:desktop`. Save `git rev-parse HEAD` in a file outside the repo and
+set `BUILD_COMMIT_FILE` to that file when running `pnpm test:package`. On headless
+Linux, use `xvfb-run -a pnpm test:package`. Packaging refuses a foreign host platform
+or architecture. Local Linux x64 is not a release target.
+
+The package smoke check extracts the Debian installer, mounts the DMG and copies
+its app, or silently installs NSIS into a temporary directory. It verifies the
+package architecture and bundled MIT license, launches the installed executable,
+and checks database health through isolated IPC. Temporary installations are removed
+after the application closes. macOS uses the native `macos-15` ARM64 runner; Windows
+uses `windows-2025` x64. Intel macOS, Windows ARM64, and Windows 32-bit are not targets.
+The database driver remains unchanged.
+
+Windows installers have no publisher signature. macOS uses ad hoc signing for
+Apple Silicon execution, without a Developer ID signature or notarization. No signing credentials are configured. Gatekeeper and
+Windows SmartScreen can warn or block downloaded applications. CI verifies the
+local packaged payload, not acceptance by these distribution trust services.
 The package uses Electron's default icon until product artwork exists.

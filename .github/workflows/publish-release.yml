@@ -70,13 +70,16 @@ jobs:
           ARTIFACT=$(gh api --method GET "repos/$GITHUB_REPOSITORY/actions/artifacts" -f name="$RELEASE_SHA" --jq '.artifacts[0]')
           echo "$ARTIFACT" | jq -e --argjson run "$RUN_ID" --arg sha "$RELEASE_SHA" '.name == $sha and .expired == false and .workflow_run.id == $run and .workflow_run.head_sha == $sha'
           gh run download "$RUN_ID" --name "$RELEASE_SHA" --dir release/assets
-          gh run download "$RUN_ID" --name "tested-installer-$RELEASE_SHA" --dir release
+          node --input-type=module -e 'import targets from "./scripts/release-targets.json" with {type:"json"}; for (const id of Object.keys(targets)) console.log(id);' > "$RUNNER_TEMP/targets"
+          while read -r target; do
+            gh run download "$RUN_ID" --name "tested-installer-$target-$RELEASE_SHA" --dir "release/tested/$target"
+          done < "$RUNNER_TEMP/targets"
           node scripts/verify-release-assets.mjs
       - name: Install Craft
         run: |
           curl -fsSL --retry 3 https://github.com/getsentry/craft/releases/download/2.33.1/craft -o "$RUNNER_TEMP/craft.cjs"
           node "$RUNNER_TEMP/craft.cjs" --version
-      - name: Publish the tested installer and checksums
+      - name: Publish all tested installers and checksums
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ inputs.version }}

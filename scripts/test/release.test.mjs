@@ -61,49 +61,142 @@ test('Craft bump synchronizes every manifest and retains metadata', () =>
     command(cwd, 'check-release-version.mjs', {VERSION: '1.2.3'}, false);
   }));
 
-test('staging preserves tested bytes and refuses stale, failed or foreign evidence', () =>
-  fixture(cwd => {
-    mkdirSync(join(cwd, 'release'));
-    const filename = 'flightsim-things-0.1.0-linux-arm64.deb';
-    writeFileSync(join(cwd, 'release', filename), 'tested installer');
-    const sha256 = createHash('sha256').update('tested installer').digest('hex');
+const installers = [
+  ['linux-arm64', 'linux', 'arm64', 'flightsim-things-0.1.0-linux-arm64.deb'],
+  ['darwin-arm64', 'darwin', 'arm64', 'flightsim-things-0.1.0-macos-arm64.dmg'],
+  ['win32-x64', 'win32', 'x64', 'flightsim-things-0.1.0-win32-x64.exe'],
+];
+function packageFixture(cwd) {
+  return installers.map(([target, platform, arch, filename]) => {
+    const directory = join(cwd, 'release/tested', target);
+    mkdirSync(directory, {recursive: true});
+    const bytes = `tested ${target} installer`;
+    const sha256 = createHash('sha256').update(bytes).digest('hex');
     const report = {
       status: 'passed',
       commit,
-      target: 'linux-arm64',
+      target,
+      runtime: {platform, arch},
       installer: {filename, sha256},
     };
-    const save = data =>
-      writeFileSync(join(cwd, 'release/package-proof.json'), JSON.stringify(data));
-    save(report);
+    const proof = join(directory, 'package-proof.json');
+    writeFileSync(join(directory, filename), bytes);
+    writeFileSync(proof, JSON.stringify(report));
+    return {directory, proof, report, bytes};
+  });
+}
+test('staging and publication preserve the complete native tested installer set', () =>
+  fixture(cwd => {
+    const packages = packageFixture(cwd);
     command(cwd, 'stage-release.mjs', {GITHUB_SHA: commit});
     command(cwd, 'verify-release-assets.mjs', {RELEASE_SHA: commit});
-    assert.equal(
-      readFileSync(join(cwd, 'release/assets', filename), 'utf8'),
-      'tested installer'
-    );
+    for (const {report, bytes} of packages) {
+      assert.equal(
+        readFileSync(join(cwd, 'release/assets', report.installer.filename), 'utf8'),
+        bytes
+      );
+    }
     assert.equal(
       readFileSync(join(cwd, 'release/assets/SHA256SUMS'), 'utf8'),
-      `${sha256}  ${filename}\n`
+      packages
+        .map(({report}) => `${report.installer.sha256}  ${report.installer.filename}\n`)
+        .join('')
     );
-    for (const patch of [
-      {status: 'failed'},
-      {commit: 'b'.repeat(40)},
-      {target: 'linux-x64'},
-      {installer: {filename, sha256: 'bad'}},
-    ]) {
-      save({...report, ...patch});
-      command(cwd, 'stage-release.mjs', {GITHUB_SHA: commit}, false);
+    for (const {proof, report} of packages) {
+      for (const patch of [
+        {status: 'failed'},
+        {commit: 'b'.repeat(40)},
+        {target: 'wrong-target'},
+        {runtime: {...report.runtime, arch: 'wrong'}},
+        {runtime: {...report.runtime, platform: 'wrong'}},
+        {installer: {...report.installer, sha256: 'bad'}},
+        {installer: {...report.installer, filename: 'foreign'}},
+      ]) {
+        writeFileSync(proof, JSON.stringify({...report, ...patch}));
+        command(cwd, 'stage-release.mjs', {GITHUB_SHA: commit}, false);
+        command(cwd, 'verify-release-assets.mjs', {RELEASE_SHA: commit}, false);
+      }
+      writeFileSync(proof, JSON.stringify(report));
     }
-    save(report);
     command(cwd, 'stage-release.mjs', {GITHUB_SHA: 'abc'}, false);
-    writeFileSync(join(cwd, 'release/assets', filename), 'tampered asset');
+    const asset = join(cwd, 'release/assets', packages[1].report.installer.filename);
+    writeFileSync(asset, 'changed');
     command(cwd, 'verify-release-assets.mjs', {RELEASE_SHA: commit}, false);
     command(cwd, 'stage-release.mjs', {GITHUB_SHA: commit});
     writeFileSync(join(cwd, 'release/assets/SHA256SUMS'), 'forged');
     command(cwd, 'verify-release-assets.mjs', {RELEASE_SHA: commit}, false);
-    writeFileSync(join(cwd, 'release', filename), 'changed bytes');
-    command(cwd, 'stage-release.mjs', {GITHUB_SHA: commit}, false);
-    writeFileSync(join(cwd, 'release/extra.deb'), 'extra');
+  }));
+for (const [target, , , filename] of installers) {
+  test(`release rejects missing, duplicate, stale and changed ${target} artifacts`, () =>
+    fixture(cwd => {
+      const packages = packageFixture(cwd);
+      const {directory, proof, report, bytes} = packages.find(
+        ({report}) => report.target === target
+      );
+      const fail = () => command(cwd, 'stage-release.mjs', {GITHUB_SHA: commit}, false);
+      rmSync(proof);
+      fail();
+      writeFileSync(proof, JSON.stringify(report));
+      rmSync(join(directory, filename));
+      fail();
+      writeFileSync(join(directory, filename), 'changed installer');
+      fail();
+      writeFileSync(join(directory, filename), bytes);
+      const duplicate = join(directory, filename.replace('0.1.0', '0.2.0'));
+      writeFileSync(duplicate, bytes);
+      fail();
+      rmSync(duplicate);
+      rmSync(join(directory, filename));
+      writeFileSync(duplicate, bytes);
+      fail();
+      rmSync(directory, {recursive: true});
+      fail();
+    }));
+}
+test('release rejects an unexpected or duplicated target directory', () =>
+  fixture(cwd => {
+    packageFixture(cwd);
+    mkdirSync(join(cwd, 'release/tested/duplicate-linux-arm64'));
     command(cwd, 'stage-release.mjs', {GITHUB_SHA: commit}, false);
   }));
+
+test('Craft requires and publishes every registered target and its acceptance context', () => {
+  const targets = JSON.parse(readFileSync(join(scripts, 'release-targets.json'), 'utf8'));
+  assert.deepEqual(Object.keys(targets).sort(), [
+    'darwin-arm64',
+    'linux-arm64',
+    'win32-x64',
+  ]);
+  const craft = readFileSync(join(scripts, '../.craft.yml'), 'utf8');
+  const required = [
+    ...craft
+      .split('requireNames:')[1]
+      .split('targets:')[0]
+      .matchAll(/  - \/(.+)\/\n/g),
+  ].map(match => new RegExp(match[1]));
+  const included = new RegExp(craft.match(/includeNames: \/(.+)\//)[1]);
+  const expected = [...installers.map(([, , , filename]) => filename), 'SHA256SUMS'];
+  assert.equal(required.length, expected.length);
+  for (const name of expected) {
+    assert.equal(required.filter(pattern => pattern.test(name)).length, 1, name);
+    assert.ok(included.test(name), name);
+  }
+  for (const name of [
+    'package-proof.json',
+    'flightsim-things-0.1.0-linux-amd64.deb',
+    'flightsim-things-0.1.0-win32-ia32.exe',
+    'flightsim-things-0.1.0-macos-x64.dmg',
+    'installer.exe.blockmap',
+  ]) {
+    assert.equal(
+      required.some(pattern => pattern.test(name)),
+      false,
+      name
+    );
+    assert.equal(included.test(name), false, name);
+  }
+  for (const [id, target] of Object.entries(targets)) {
+    assert.ok(craft.includes(`- ${id} build and acceptance\n`));
+    assert.ok(expected.includes(target.artifactName.replace('${version}', '0.1.0')));
+  }
+});

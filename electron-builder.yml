@@ -20,3 +20,19 @@ linux:
 deb:
   packageName: flightsim-things
   compression: xz
+mac:
+  target: dmg
+  artifactName: flightsim-things-${version}-macos-${arch}.${ext}
+  category: public.app-category.utilities
+  identity: '-'
+  hardenedRuntime: false
+  notarize: false
+win:
+  target: nsis
+  artifactName: flightsim-things-${version}-win32-${arch}.${ext}
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  runAfterFinish: false

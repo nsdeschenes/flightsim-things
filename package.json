@@ -17,7 +17,10 @@
     "fmt:check": "oxfmt --check",
     "postinstall": "pnpm --filter @flightsim-things/electron exec install-electron",
     "test:scripts": "node --test scripts/test/*.test.mjs",
-    "package:linux": "node scripts/package.mjs",
+    "package:linux": "node scripts/package.mjs linux-arm64",
+    "package:windows": "node scripts/package.mjs win32-x64",
+    "package:macos": "node scripts/package.mjs darwin-arm64",
+    "package:desktop": "node scripts/package.mjs",
     "test:package": "node scripts/package-smoke.mjs",
     "release:stage": "node scripts/stage-release.mjs"
   },
