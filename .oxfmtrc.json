@@ -9,6 +9,7 @@
   "ignorePatterns": [
     "**/dist/**",
     "pnpm-lock.yaml",
+    "CHANGELOG.md",
     "test-results",
     "playwright-report",
     "LICENSE",
