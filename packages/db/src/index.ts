@@ -1,6 +1,9 @@
+import {fileURLToPath} from 'node:url';
+
 import {connect} from '@tursodatabase/database';
 import {defineRelations, eq} from 'drizzle-orm';
 import {drizzle} from 'drizzle-orm/tursodatabase/database';
+import {migrate} from 'drizzle-orm/tursodatabase/migrator';
 
 import {simulators} from '@flightsim-things/contract';
 import type {Addon, SimulatorId, SimulatorInventory} from '@flightsim-things/contract';
@@ -11,25 +14,9 @@ export async function openDatabase(path: string) {
   const client = await connect(path);
   const db = drizzle({client, relations: defineRelations(schema)});
   try {
-    await client.exec(`
-      CREATE TABLE IF NOT EXISTS simulator_settings (
-        simulator TEXT PRIMARY KEY NOT NULL,
-        communityPath TEXT,
-        scannedPath TEXT,
-        scannedAt TEXT
-      );
-      CREATE TABLE IF NOT EXISTS addons (
-        simulator TEXT NOT NULL,
-        folderName TEXT NOT NULL,
-        folderPath TEXT NOT NULL,
-        name TEXT NOT NULL,
-        version TEXT,
-        creator TEXT,
-        contentType TEXT,
-        manifestJson TEXT NOT NULL,
-        PRIMARY KEY (simulator, folderName)
-      );
-    `);
+    await migrate(db, {
+      migrationsFolder: fileURLToPath(new URL('../drizzle', import.meta.url)),
+    });
   } catch (error) {
     client.close();
     throw error;

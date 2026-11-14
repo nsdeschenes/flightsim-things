@@ -1,6 +1,6 @@
 # Flightsim Things
 
-A minimal Electron application with a React interface and an empty SQLite database.
+An Electron application with a React interface and SQLite storage for MSFS addons.
 The window displays runtime health through a typed, isolated preload API.
 
 ## Run locally
@@ -30,7 +30,7 @@ To run the production output, run `pnpm build`, then `pnpm start`.
 | `packages/interface` | React UI, StyleX styles, Vite                                 | contract               |
 | `packages/electron`  | Main process, sandboxed preload, window and database lifetime | contract, db           |
 | `packages/contract`  | `DesktopApi`, `RuntimeHealth`, and the IPC channel name       | None                   |
-| `packages/db`        | Drizzle connection and empty schema                           | None                   |
+| `packages/db`        | Drizzle schema, migrations, and addon storage                 | contract               |
 
 The renderer cannot import the database or Node APIs. Its preload API exposes one
 method, `getRuntimeHealth()`. Vite allows inline scripts during development for React
@@ -38,10 +38,14 @@ refresh. Production keeps `script-src 'self'`. Main accepts requests only from t
 frame and expected URL, executes `SELECT 1`, and returns the typed response. New
 windows, renderer navigation, and permission requests are denied.
 
-The database lives at `app.getPath('userData')/flightsim.sqlite`. There are no tables
-or migrations yet. Add table definitions to `packages/db/src/schema.ts` and introduce
-migrations when adding the first persistent feature. Library callers use
-`await openDatabase(path)`, access `handle.db`, and call `handle.close()` when finished.
+The database lives at `app.getPath('userData')/flightsim.sqlite`. `openDatabase()`
+applies pending Drizzle migrations before returning the handle. Table definitions
+live in `packages/db/src/schema.ts`. After changing the schema, run
+`pnpm --filter @flightsim-things/db db:generate --name=<change>` and commit the
+generated SQL and snapshot under `packages/db/drizzle`. That directory ships with
+the database package so desktop startup can migrate independently of the working
+directory. Library callers use `await openDatabase(path)`, access `handle.db`, and
+call `handle.close()` when finished.
 
 ## Commands
 
@@ -51,7 +55,7 @@ migrations when adding the first persistent feature. Library callers use
 | `pnpm dev`          | Builds once and runs Vite with the desktop shell                            |
 | `pnpm start`        | Opens the built desktop app                                                 |
 | `pnpm typecheck`    | Builds shared declarations and checks all packages and desktop tests        |
-| `pnpm test`         | Checks real SQLite creation, empty schema, writes, and persistence          |
+| `pnpm test`         | Checks SQLite migrations, addon scanning, and persistence                   |
 | `pnpm test:desktop` | Checks production and Vite desktop UI, IPC, extracted styles, and isolation |
 | `pnpm lint`         | Runs Oxlint                                                                 |
 | `pnpm fmt`          | Formats source and configuration with Oxfmt                                 |
