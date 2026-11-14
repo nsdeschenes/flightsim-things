@@ -2,10 +2,18 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 import {app, BrowserWindow, ipcMain, session} from 'electron';
+import type {IpcMainInvokeEvent} from 'electron';
 
-import {runtimeHealthChannel} from '@flightsim-things/contract';
+import {
+  addonLibraryChannel,
+  runtimeHealthChannel,
+  saveCommunityPathChannel,
+  scanAddonsChannel,
+} from '@flightsim-things/contract';
 import type {RuntimeHealth} from '@flightsim-things/contract';
 import {openDatabase} from '@flightsim-things/db';
+
+import {createAddonLibrary, parseCommunityPath, parseSimulator} from './addons.js';
 
 const development = process.argv.includes('--dev');
 const rendererUrl = development
@@ -18,20 +26,43 @@ app
     const database = await openDatabase(
       join(app.getPath('userData'), 'flightsim.sqlite')
     );
+    const library = createAddonLibrary(database);
 
-    session.defaultSession.setPermissionRequestHandler(
-      (_contents, _permission, callback) => callback(false)
-    );
-    session.defaultSession.setPermissionCheckHandler(() => false);
-    ipcMain.handle(runtimeHealthChannel, async (event): Promise<RuntimeHealth> => {
+    function assertTrustedSender(event: IpcMainInvokeEvent) {
       if (
         event.senderFrame !== event.sender.mainFrame ||
         event.senderFrame?.url !== rendererUrl
       ) {
         throw new Error('Untrusted IPC sender');
       }
+    }
+
+    session.defaultSession.setPermissionRequestHandler(
+      (_contents, _permission, callback) => callback(false)
+    );
+    session.defaultSession.setPermissionCheckHandler(() => false);
+    ipcMain.handle(runtimeHealthChannel, async (event): Promise<RuntimeHealth> => {
+      assertTrustedSender(event);
       await database.db.$client.exec('SELECT 1');
       return {status: 'ready', database: 'connected'};
+    });
+    ipcMain.handle(addonLibraryChannel, event => {
+      assertTrustedSender(event);
+      return library.getLibrary();
+    });
+    ipcMain.handle(
+      saveCommunityPathChannel,
+      (event, simulator: unknown, path: unknown) => {
+        assertTrustedSender(event);
+        return library.saveCommunityPath(
+          parseSimulator(simulator),
+          parseCommunityPath(path)
+        );
+      }
+    );
+    ipcMain.handle(scanAddonsChannel, (event, simulator: unknown) => {
+      assertTrustedSender(event);
+      return library.scan(parseSimulator(simulator));
     });
 
     function createWindow() {

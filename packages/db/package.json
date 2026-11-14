@@ -4,6 +4,10 @@
   "private": true,
   "license": "MIT",
   "author": "nsdeschenes",
+  "files": [
+    "dist",
+    "drizzle"
+  ],
   "type": "module",
   "exports": {
     ".": {
@@ -14,13 +18,16 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsdown",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@flightsim-things/contract": "workspace:*",
     "@tursodatabase/database": "0.7.2",
     "drizzle-orm": "1.0.0-rc.4"
   },
   "devDependencies": {
+    "drizzle-kit": "1.0.0-rc.4",
     "tsdown": "0.23.0",
     "vitest": "5.0.2"
   }
