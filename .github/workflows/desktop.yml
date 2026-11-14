@@ -131,7 +131,7 @@ jobs:
       - run: |
           pnpm build
           git rev-parse HEAD > "$RUNNER_TEMP/build.commit"
-          (cd "$RUNNER_TEMP" && tar -cf build.tar -C "$GITHUB_WORKSPACE" packages/contract/dist packages/db/dist packages/electron/dist)
+          tar -cf - packages/contract/dist packages/db/dist packages/electron/dist > "$RUNNER_TEMP/build.tar"
       - uses: actions/upload-artifact@v4
         with:
           name: application-build-${{ matrix.id }}-${{ github.sha }}
@@ -173,7 +173,7 @@ jobs:
       - name: Restore the same-commit application
         run: |
           test "$(cat "$RUNNER_TEMP/build/build.commit")" = "$(git rev-parse HEAD)"
-          (cd "$RUNNER_TEMP/build" && tar -xpf build.tar -C "$GITHUB_WORKSPACE")
+          tar -xpf - < "$RUNNER_TEMP/build/build.tar"
       - name: Install desktop runtime dependencies
         if: runner.os == 'Linux'
         run: |
@@ -217,7 +217,7 @@ jobs:
       - name: Restore the same-commit application
         run: |
           test "$(cat "$RUNNER_TEMP/build/build.commit")" = "$(git rev-parse HEAD)"
-          (cd "$RUNNER_TEMP/build" && tar -xpf build.tar -C "$GITHUB_WORKSPACE")
+          tar -xpf - < "$RUNNER_TEMP/build/build.tar"
       - name: Install desktop runtime dependencies
         if: runner.os == 'Linux'
         run: |
