@@ -1,4 +1,4 @@
-import {primaryKey, sqliteTable, text} from 'drizzle-orm/sqlite-core';
+import {index, primaryKey, real, sqliteTable, text} from 'drizzle-orm/sqlite-core';
 
 import type {SimulatorId} from '@flightsim-things/contract';
 
@@ -22,4 +22,24 @@ export const addons = sqliteTable(
     manifestJson: text().notNull(),
   },
   table => [primaryKey({columns: [table.simulator, table.folderName]})]
+);
+
+export const airports = sqliteTable(
+  'airports',
+  {
+    simulator: text().$type<SimulatorId>().notNull(),
+    folderName: text().notNull(),
+    sourceKey: text().notNull(),
+    icaoCode: text(),
+    iataCode: text(),
+    name: text(),
+    elevationMeters: real(),
+    latitude: real(),
+    longitude: real(),
+  },
+  table => [
+    primaryKey({columns: [table.simulator, table.folderName, table.sourceKey]}),
+    index('airports_icao').on(table.icaoCode),
+    index('airports_iata').on(table.iataCode),
+  ]
 );

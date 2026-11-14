@@ -4,11 +4,16 @@ import {isAbsolute, join} from 'node:path';
 import {simulators} from '@flightsim-things/contract';
 import type {
   Addon,
+  Airport,
+  EnrichmentResult,
   ScanResult,
   ScanWarning,
   SimulatorId,
 } from '@flightsim-things/contract';
 import type {AddonDatabase} from '@flightsim-things/db';
+
+import {discoverAirports} from './airport-discovery.js';
+import {enrichInstalledAirports} from './airport-enrichment.js';
 
 export function parseSimulator(value: unknown): SimulatorId {
   if (value !== 'msfs2020' && value !== 'msfs2024') {
@@ -46,6 +51,8 @@ export async function scanCommunityDirectory(
     );
   }
   const addons: Addon[] = [];
+  const airports: Airport[] = [];
+  const incompleteAirportFolders: string[] = [];
   const warnings: ScanWarning[] = [];
   for (const entry of entries.sort((left, right) =>
     left.name.localeCompare(right.name)
@@ -68,7 +75,7 @@ export async function scanCommunityDirectory(
       if (!name) {
         throw new Error('Manifest must include a nonempty title.');
       }
-      addons.push({
+      const addon: Addon = {
         simulator,
         folderName: entry.name,
         folderPath,
@@ -77,7 +84,16 @@ export async function scanCommunityDirectory(
         creator: optionalText(fields.creator),
         contentType: optionalText(fields.content_type),
         manifestJson,
-      });
+      };
+      addons.push(addon);
+      const discovered = await discoverAirports(addon);
+      airports.push(...discovered.airports);
+      if (!discovered.complete) {
+        incompleteAirportFolders.push(addon.folderName);
+      }
+      warnings.push(
+        ...discovered.warnings.map(message => ({folderName: addon.folderName, message}))
+      );
     } catch (error) {
       warnings.push({
         folderName: entry.name,
@@ -86,7 +102,7 @@ export async function scanCommunityDirectory(
       });
     }
   }
-  return {addons, warnings};
+  return {addons, airports, incompleteAirportFolders, warnings};
 }
 
 export function createAddonLibrary(database: AddonDatabase) {
@@ -106,13 +122,18 @@ export function createAddonLibrary(database: AddonDatabase) {
         if (!communityPath) {
           throw new Error('Save a Community folder path before scanning.');
         }
-        const {addons, warnings} = await scanCommunityDirectory(simulator, communityPath);
+        const {addons, airports, incompleteAirportFolders, warnings} =
+          await scanCommunityDirectory(simulator, communityPath);
         const inventory = await database.replaceInventory(
           simulator,
           communityPath,
-          addons
+          addons,
+          airports,
+          incompleteAirportFolders
         );
         return {inventory, warnings};
       }),
+    enrichAirports: (simulator: SimulatorId, apiKey: string): Promise<EnrichmentResult> =>
+      serialize(() => enrichInstalledAirports(database, simulator, apiKey)),
   };
 }

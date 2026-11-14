@@ -2,6 +2,7 @@ import {contextBridge, ipcRenderer} from 'electron';
 
 import {
   addonLibraryChannel,
+  enrichAirportsChannel,
   runtimeHealthChannel,
   saveCommunityPathChannel,
   scanAddonsChannel,
@@ -14,5 +15,7 @@ const desktop: DesktopApi = {
   saveCommunityPath: (simulator, path) =>
     ipcRenderer.invoke(saveCommunityPathChannel, simulator, path),
   scanAddons: simulator => ipcRenderer.invoke(scanAddonsChannel, simulator),
+  enrichAirports: (simulator, apiKey) =>
+    ipcRenderer.invoke(enrichAirportsChannel, simulator, apiKey),
 };
 contextBridge.exposeInMainWorld('desktop', desktop);

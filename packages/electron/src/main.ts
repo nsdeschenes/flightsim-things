@@ -6,6 +6,7 @@ import type {IpcMainInvokeEvent} from 'electron';
 
 import {
   addonLibraryChannel,
+  enrichAirportsChannel,
   runtimeHealthChannel,
   saveCommunityPathChannel,
   scanAddonsChannel,
@@ -14,6 +15,7 @@ import type {RuntimeHealth} from '@flightsim-things/contract';
 import {openDatabase} from '@flightsim-things/db';
 
 import {createAddonLibrary, parseCommunityPath, parseSimulator} from './addons.js';
+import {parseOpenAipKey} from './airport-enrichment.js';
 
 const development = process.argv.includes('--dev');
 const rendererUrl = development
@@ -64,6 +66,13 @@ app
       assertTrustedSender(event);
       return library.scan(parseSimulator(simulator));
     });
+    ipcMain.handle(
+      enrichAirportsChannel,
+      (event, simulator: unknown, apiKey: unknown) => {
+        assertTrustedSender(event);
+        return library.enrichAirports(parseSimulator(simulator), parseOpenAipKey(apiKey));
+      }
+    );
 
     function createWindow() {
       const window = new BrowserWindow({

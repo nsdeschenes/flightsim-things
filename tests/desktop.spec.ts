@@ -21,6 +21,24 @@ test('desktop scans and persists simulator inventories through the isolated prel
         JSON.stringify({title, creator: 'Desktop Test', package_version: '2.0.0'})
       );
     }
+    await mkdir(join(community2024, 'sample-addon', 'scenery'), {recursive: true});
+    await writeFile(
+      join(community2024, 'sample-addon', 'layout.json'),
+      JSON.stringify({content: [{path: 'scenery/airport.xml'}]})
+    );
+    await writeFile(
+      join(community2024, 'sample-addon', 'scenery/airport.xml'),
+      '<FSData><Airport ident="KAAA" name="Scanned airport" /></FSData>'
+    );
+    await writeFile(
+      join(community2024, 'sample-addon', 'manifest.json'),
+      JSON.stringify({
+        title: 'Desktop Airport',
+        content_type: 'SCENERY',
+        creator: 'Desktop Test',
+        package_version: '2.0.0',
+      })
+    );
     await mkdir(join(community2020, 'broken-addon'));
     await writeFile(join(community2020, 'broken-addon', 'manifest.json'), '{');
     const launch = () =>
@@ -56,6 +74,7 @@ test('desktop scans and persists simulator inventories through the isolated prel
           'getAddonLibrary',
           'saveCommunityPath',
           'scanAddons',
+          'enrichAirports',
         ],
       });
       expect(
@@ -90,6 +109,36 @@ test('desktop scans and persists simulator inventories through the isolated prel
       await msfs2024.getByRole('button', {name: 'Scan addons'}).click();
       await expect(
         msfs2024.getByRole('cell', {name: 'Desktop Airport', exact: true})
+      ).toBeVisible();
+      await expect(msfs2024.getByRole('cell', {name: 'KAAA', exact: true})).toBeVisible();
+      await app.evaluate(() => {
+        globalThis.fetch = async () =>
+          new Response(
+            JSON.stringify({
+              items: [
+                {
+                  _id: 'desktop-airport',
+                  icaoCode: 'KAAA',
+                  name: 'Enriched airport',
+                  geometry: {type: 'Point', coordinates: [-73, 45]},
+                  elevation: {value: 25, unit: 0, referenceDatum: 1},
+                },
+              ],
+              page: 1,
+              limit: 100,
+              totalCount: 1,
+              totalPages: 1,
+            }),
+            {status: 200}
+          );
+      });
+      await msfs2024.getByLabel('OpenAIP API key').fill('desktop-test-key');
+      await msfs2024.getByRole('button', {name: 'Enrich airports'}).click();
+      await expect(
+        msfs2024.getByText('Updated 1 airports.', {exact: false})
+      ).toBeVisible();
+      await expect(
+        msfs2024.getByRole('cell', {name: 'Enriched airport', exact: true})
       ).toBeVisible();
       await msfs2020.getByRole('button', {name: 'Scan addons'}).click();
       await expect(msfs2020.getByRole('row')).toHaveCount(2);
@@ -129,6 +178,14 @@ test('desktop scans and persists simulator inventories through the isolated prel
       await expect(
         reopened.getByRole('cell', {name: 'Desktop Aircraft', exact: true})
       ).toBeVisible();
+      await expect(
+        reopened.getByRole('cell', {name: 'Enriched airport', exact: true})
+      ).toBeVisible();
+      await expect(
+        reopened
+          .getByRole('region', {name: 'MSFS 2024', exact: true})
+          .getByLabel('OpenAIP API key')
+      ).toHaveValue('');
       await expect(
         reopened
           .getByRole('region', {name: 'MSFS 2024', exact: true})

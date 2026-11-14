@@ -2,22 +2,31 @@ import * as stylex from '@stylexjs/stylex';
 import {StrictMode, useEffect, useState} from 'react';
 import {createRoot} from 'react-dom/client';
 
-import type {ScanWarning, SimulatorInventory} from '@flightsim-things/contract';
+import type {
+  EnrichmentSummary,
+  ScanWarning,
+  SimulatorInventory,
+} from '@flightsim-things/contract';
 
 import './reset.css';
 
 type Activity =
   | {kind: 'idle'}
-  | {kind: 'saving' | 'scanning'}
+  | {kind: 'saving' | 'scanning' | 'enriching'}
   | {kind: 'saved'}
   | {kind: 'scanned'; warnings: ScanWarning[]}
+  | {kind: 'enriched'; summary: EnrichmentSummary}
   | {kind: 'error'; message: string};
 
 function SimulatorAddons({initial}: {initial: SimulatorInventory}) {
   const [inventory, setInventory] = useState(initial);
+  const [apiKey, setApiKey] = useState('');
   const [path, setPath] = useState(initial.communityPath ?? '');
   const [activity, setActivity] = useState<Activity>({kind: 'idle'});
-  const busy = activity.kind === 'saving' || activity.kind === 'scanning';
+  const busy =
+    activity.kind === 'saving' ||
+    activity.kind === 'scanning' ||
+    activity.kind === 'enriching';
   const dirty = path !== (inventory.communityPath ?? '');
   const label = inventory.simulator === 'msfs2020' ? 'MSFS 2020' : 'MSFS 2024';
 
@@ -47,6 +56,20 @@ function SimulatorAddons({initial}: {initial: SimulatorInventory}) {
         kind: 'error',
         message:
           error instanceof Error ? error.message : 'Could not scan the Community folder.',
+      });
+    }
+  }
+
+  async function enrich() {
+    setActivity({kind: 'enriching'});
+    try {
+      const result = await window.desktop!.enrichAirports(inventory.simulator, apiKey);
+      setInventory(result.inventory);
+      setActivity({kind: 'enriched', summary: result.summary});
+    } catch (error) {
+      setActivity({
+        kind: 'error',
+        message: error instanceof Error ? error.message : 'Could not enrich airports.',
       });
     }
   }
@@ -91,6 +114,36 @@ function SimulatorAddons({initial}: {initial: SimulatorInventory}) {
           </button>
         </div>
       </form>
+      <form
+        onSubmit={event => {
+          event.preventDefault();
+          void enrich();
+        }}
+      >
+        <label htmlFor={`${inventory.simulator}-openaip-key`}>OpenAIP API key</label>
+        <div {...stylex.props(styles.controls)}>
+          <input
+            id={`${inventory.simulator}-openaip-key`}
+            type="password"
+            autoComplete="off"
+            value={apiKey}
+            onChange={event => setApiKey(event.target.value)}
+            disabled={busy}
+            {...stylex.props(styles.input)}
+          />
+          <button
+            type="submit"
+            disabled={busy || !apiKey.trim() || inventory.airports.length === 0}
+            {...stylex.props(styles.button)}
+          >
+            {activity.kind === 'enriching' ? 'Enriching…' : 'Enrich airports'}
+          </button>
+        </div>
+        <p>
+          The key is kept in memory until you close the app. Scan addons before enriching
+          airports.
+        </p>
+      </form>
       <div aria-live="polite" {...stylex.props(styles.feedback)}>
         {dirty && <p>Save the path before scanning.</p>}
         {activity.kind === 'saved' && <p>Community folder saved.</p>}
@@ -98,6 +151,13 @@ function SimulatorAddons({initial}: {initial: SimulatorInventory}) {
           <p>
             Scan complete. Found {inventory.addons.length} addons. Skipped{' '}
             {activity.warnings.length} folders.
+          </p>
+        )}
+        {activity.kind === 'enriched' && (
+          <p>
+            Updated {activity.summary.enriched} airports. Unmatched{' '}
+            {activity.summary.unmatched}. Ambiguous {activity.summary.ambiguous}. Skipped{' '}
+            {activity.summary.skipped}.
           </p>
         )}
         {activity.kind === 'error' && <p role="alert">{activity.message}</p>}
@@ -119,6 +179,43 @@ function SimulatorAddons({initial}: {initial: SimulatorInventory}) {
           Last scan {new Date(inventory.scannedAt).toLocaleString()} from{' '}
           {inventory.scannedPath}
         </p>
+      )}
+      {inventory.airports.length > 0 && (
+        <div {...stylex.props(styles.tableContainer)}>
+          <table {...stylex.props(styles.table)}>
+            <caption {...stylex.props(styles.caption)}>
+              {label} Airports ({inventory.airports.length})
+            </caption>
+            <thead>
+              <tr>
+                {['Code', 'Airport name', 'Latitude', 'Longitude', 'Elevation (m)'].map(
+                  label => (
+                    <th key={label} scope="col" {...stylex.props(styles.cell)}>
+                      {label}
+                    </th>
+                  )
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {inventory.airports.map(airport => (
+                <tr key={`${airport.folderName}/${airport.sourceKey}`}>
+                  {[
+                    airport.icaoCode ?? airport.iataCode,
+                    airport.name,
+                    airport.latitude,
+                    airport.longitude,
+                    airport.elevationMeters,
+                  ].map((value, index) => (
+                    <td key={index} {...stylex.props(styles.cell)}>
+                      {value ?? 'Unknown'}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
       {inventory.addons.length > 0 ? (
         <div {...stylex.props(styles.tableContainer)}>

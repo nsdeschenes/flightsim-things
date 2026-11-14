@@ -16,7 +16,8 @@
   },
   "dependencies": {
     "@flightsim-things/contract": "workspace:*",
-    "@flightsim-things/db": "workspace:*"
+    "@flightsim-things/db": "workspace:*",
+    "@xmldom/xmldom": "0.8.15"
   },
   "devDependencies": {
     "electron": "44.4.5",
