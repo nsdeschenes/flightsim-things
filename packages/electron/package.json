@@ -1,0 +1,21 @@
+{
+  "name": "@flightsim-things/electron",
+  "version": "0.1.0",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node scripts/build.mjs",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "@flightsim-things/contract": "workspace:*",
+    "@flightsim-things/db": "workspace:*"
+  },
+  "devDependencies": {
+    "electron": "44.4.5",
+    "esbuild": "0.28.0"
+  }
+}

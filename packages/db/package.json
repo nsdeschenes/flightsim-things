@@ -1,0 +1,26 @@
+{
+  "name": "@flightsim-things/db",
+  "version": "0.1.0",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsdown",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tursodatabase/database": "0.7.2",
+    "drizzle-orm": "1.0.0-rc.4"
+  },
+  "devDependencies": {
+    "tsdown": "0.23.0",
+    "vitest": "5.0.2"
+  }
+}
