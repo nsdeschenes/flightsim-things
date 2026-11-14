@@ -31,12 +31,17 @@ test('migrates a fresh database once and preserves inventory across connections'
       ).toEqual([
         {name: '__drizzle_migrations'},
         {name: 'addons'},
+        {name: 'airports'},
         {name: 'simulator_settings'},
       ]);
       migrations = await first.db.all(sql`SELECT * FROM __drizzle_migrations`);
       expect(migrations).toEqual([
         expect.objectContaining({
           name: expect.stringMatching(/^\d{14}_addon-library$/),
+          hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        }),
+        expect.objectContaining({
+          name: expect.stringMatching(/^\d{14}_airport-metadata$/),
           hash: expect.stringMatching(/^[a-f0-9]{64}$/),
         }),
       ]);
@@ -53,6 +58,7 @@ test('migrates a fresh database once and preserves inventory across connections'
         scannedPath: '/Community',
         scannedAt: expect.any(String),
         addons: [addon],
+        airports: [],
       });
       expect(await second.db.all(sql`SELECT * FROM __drizzle_migrations`)).toEqual(
         migrations

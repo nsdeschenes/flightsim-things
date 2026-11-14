@@ -233,6 +233,9 @@ importers:
       '@flightsim-things/db':
         specifier: workspace:*
         version: link:../db
+      '@xmldom/xmldom':
+        specifier: 0.8.15
+        version: 0.8.15
     devDependencies:
       electron:
         specifier: 44.4.5

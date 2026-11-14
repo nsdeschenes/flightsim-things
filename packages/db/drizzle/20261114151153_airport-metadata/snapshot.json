@@ -1,0 +1,280 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "id": "490f5262-655a-40b8-8998-c742867fd69e",
+  "prevIds": ["6fd82bcc-48b2-4e96-8ee1-bbc6ad6f9862"],
+  "ddl": [
+    {
+      "name": "addons",
+      "entityType": "tables"
+    },
+    {
+      "name": "airports",
+      "entityType": "tables"
+    },
+    {
+      "name": "simulator_settings",
+      "entityType": "tables"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "simulator",
+      "entityType": "columns",
+      "table": "addons"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "folderName",
+      "entityType": "columns",
+      "table": "addons"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "folderPath",
+      "entityType": "columns",
+      "table": "addons"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "name",
+      "entityType": "columns",
+      "table": "addons"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "version",
+      "entityType": "columns",
+      "table": "addons"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "creator",
+      "entityType": "columns",
+      "table": "addons"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "contentType",
+      "entityType": "columns",
+      "table": "addons"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "manifestJson",
+      "entityType": "columns",
+      "table": "addons"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "simulator",
+      "entityType": "columns",
+      "table": "airports"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "folderName",
+      "entityType": "columns",
+      "table": "airports"
+    },
+    {
+      "type": "text",
+      "notNull": true,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "sourceKey",
+      "entityType": "columns",
+      "table": "airports"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "icaoCode",
+      "entityType": "columns",
+      "table": "airports"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "iataCode",
+      "entityType": "columns",
+      "table": "airports"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "name",
+      "entityType": "columns",
+      "table": "airports"
+    },
+    {
+      "type": "real",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "elevationMeters",
+      "entityType": "columns",
+      "table": "airports"
+    },
+    {
+      "type": "real",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "latitude",
+      "entityType": "columns",
+      "table": "airports"
+    },
+    {
+      "type": "real",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "longitude",
+      "entityType": "columns",
+      "table": "airports"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "simulator",
+      "entityType": "columns",
+      "table": "simulator_settings"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "communityPath",
+      "entityType": "columns",
+      "table": "simulator_settings"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "scannedPath",
+      "entityType": "columns",
+      "table": "simulator_settings"
+    },
+    {
+      "type": "text",
+      "notNull": false,
+      "autoincrement": false,
+      "default": null,
+      "generated": null,
+      "name": "scannedAt",
+      "entityType": "columns",
+      "table": "simulator_settings"
+    },
+    {
+      "columns": ["simulator", "folderName"],
+      "nameExplicit": false,
+      "name": "addons_pk",
+      "entityType": "pks",
+      "table": "addons"
+    },
+    {
+      "columns": ["simulator", "folderName", "sourceKey"],
+      "nameExplicit": false,
+      "name": "airports_pk",
+      "entityType": "pks",
+      "table": "airports"
+    },
+    {
+      "columns": ["simulator"],
+      "nameExplicit": false,
+      "name": "simulator_settings_pk",
+      "table": "simulator_settings",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        {
+          "value": "icaoCode",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "airports_icao",
+      "entityType": "indexes",
+      "table": "airports"
+    },
+    {
+      "columns": [
+        {
+          "value": "iataCode",
+          "isExpression": false
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "origin": "manual",
+      "name": "airports_iata",
+      "entityType": "indexes",
+      "table": "airports"
+    }
+  ],
+  "renames": []
+}
