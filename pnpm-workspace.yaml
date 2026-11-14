@@ -1,6 +1,7 @@
 packages:
   - packages/*
 allowBuilds:
+  electron-winstaller: false
   electron: true
   esbuild: true
 minimumReleaseAgeExclude:

@@ -2,7 +2,10 @@
   "name": "@flightsim-things/electron",
   "version": "0.1.0",
   "private": true,
-  "license": "GPL-3.0-only",
+  "description": "A minimal flight simulation desktop foundation",
+  "homepage": "https://github.com/nsdeschenes/flightsim-things",
+  "license": "MIT",
+  "author": "nsdeschenes",
   "type": "module",
   "main": "dist/main.js",
   "scripts": {

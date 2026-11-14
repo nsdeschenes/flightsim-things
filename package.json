@@ -2,7 +2,8 @@
   "name": "flightsim-things",
   "version": "0.1.0",
   "private": true,
-  "license": "GPL-3.0-only",
+  "license": "MIT",
+  "author": "nsdeschenes",
   "type": "module",
   "scripts": {
     "build": "pnpm --filter @flightsim-things/contract build && pnpm --filter @flightsim-things/db build && pnpm --filter @flightsim-things/electron build && pnpm --filter @flightsim-things/interface build",
@@ -14,12 +15,17 @@
     "lint": "oxlint",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
-    "postinstall": "pnpm --filter @flightsim-things/electron exec install-electron"
+    "postinstall": "pnpm --filter @flightsim-things/electron exec install-electron",
+    "test:scripts": "node --test scripts/test/*.test.mjs",
+    "package:linux": "node scripts/package.mjs",
+    "test:package": "node scripts/package-smoke.mjs",
+    "release:stage": "node scripts/stage-release.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1",
     "@types/node": "24.13.3",
     "concurrently": "9.2.1",
+    "electron-builder": "26.15.3",
     "esbuild": "0.28.0",
     "oxfmt": "0.70.0",
     "oxlint": "1.85.0",

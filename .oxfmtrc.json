@@ -11,6 +11,7 @@
     "pnpm-lock.yaml",
     "test-results",
     "playwright-report",
-    "LICENSE"
+    "LICENSE",
+    "release"
   ]
 }

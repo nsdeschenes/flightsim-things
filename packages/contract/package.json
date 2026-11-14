@@ -2,7 +2,8 @@
   "name": "@flightsim-things/contract",
   "version": "0.1.0",
   "private": true,
-  "license": "GPL-3.0-only",
+  "license": "MIT",
+  "author": "nsdeschenes",
   "type": "module",
   "exports": {
     ".": {
