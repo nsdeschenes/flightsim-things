@@ -205,6 +205,9 @@ importers:
 
   packages/db:
     dependencies:
+      '@flightsim-things/contract':
+        specifier: workspace:*
+        version: link:../contract
       '@tursodatabase/database':
         specifier: 0.7.2
         version: 0.7.2
@@ -234,6 +237,9 @@ importers:
       esbuild:
         specifier: 0.28.0
         version: 0.28.0
+      vitest:
+        specifier: 5.0.2
+        version: 5.0.2(@types/node@24.13.3)(vite@8.3.0(@types/node@24.13.3)(esbuild@0.28.0)(jiti@2.7.0))
 
   packages/interface:
     dependencies:

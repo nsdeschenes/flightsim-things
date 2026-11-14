@@ -7,15 +7,17 @@ import {expect, test} from 'vitest';
 
 import {openDatabase} from './index.js';
 
-test('opens an empty SQLite database and persists SQL across connections', async () => {
+test('initializes SQLite idempotently and persists SQL across connections', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'flightsim-db-'));
   const path = join(directory, 'test.sqlite');
   try {
     const first = await openDatabase(path);
     try {
       expect(
-        await first.db.all(sql`SELECT name FROM sqlite_master WHERE type = 'table'`)
-      ).toEqual([]);
+        await first.db.all(
+          sql`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`
+        )
+      ).toEqual([{name: 'addons'}, {name: 'simulator_settings'}]);
       await first.db.run(sql`CREATE TABLE probe (value TEXT NOT NULL)`);
       await first.db.run(sql`INSERT INTO probe VALUES ('persisted')`);
     } finally {

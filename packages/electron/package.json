@@ -9,6 +9,7 @@
   "type": "module",
   "main": "dist/main.js",
   "scripts": {
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "build": "node scripts/build.mjs",
     "start": "electron ."
@@ -19,6 +20,7 @@
   },
   "devDependencies": {
     "electron": "44.4.5",
-    "esbuild": "0.28.0"
+    "esbuild": "0.28.0",
+    "vitest": "5.0.2"
   }
 }
