@@ -1,0 +1,22 @@
+minVersion: '2.33.1'
+versioning:
+  policy: auto
+changelog:
+  policy: auto
+preReleaseCommand: node scripts/bump-version.mjs
+postReleaseCommand: ''
+statusProvider:
+  name: github
+  config:
+    contexts:
+      - Linux arm64 build and acceptance
+      - Script tooling checks
+artifactProvider:
+  name: github
+requireNames:
+  - /^flightsim-things-[0-9]+\.[0-9]+\.[0-9]+-linux-arm64\.deb$/
+  - /^SHA256SUMS$/
+targets:
+  - name: github
+    tagPrefix: v
+    includeNames: /^(flightsim-things-[0-9]+\.[0-9]+\.[0-9]+-linux-arm64\.deb|SHA256SUMS)$/

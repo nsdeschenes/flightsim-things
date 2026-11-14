@@ -1,0 +1,22 @@
+name: Script tooling
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scripts:
+    name: Script tooling checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec oxfmt --check scripts
+      - run: pnpm exec oxlint scripts
+      - run: pnpm test:scripts
