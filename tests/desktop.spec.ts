@@ -41,8 +41,8 @@ test('desktop scans and persists simulator inventories through the isolated prel
     );
     await mkdir(join(community2020, 'broken-addon'));
     await writeFile(join(community2020, 'broken-addon', 'manifest.json'), '{');
-    const launch = () =>
-      electron.launch({
+    const launch = async () => {
+      const launched = await electron.launch({
         executablePath: createRequire(resolve('packages/electron/package.json'))(
           'electron'
         ),
@@ -53,6 +53,38 @@ test('desktop scans and persists simulator inventories through the isolated prel
           ...(process.env.SMOKE_NO_SANDBOX === '1' ? ['--no-sandbox'] : []),
         ],
       });
+      await launched.evaluate(async ({safeStorage}) => {
+        const {createCipheriv, createDecipheriv, randomBytes} =
+          process.getBuiltinModule('node:crypto');
+        const testKey = Buffer.alloc(32, 7);
+        safeStorage.isEncryptionAvailable = () => true;
+        safeStorage.getSelectedStorageBackend = () => 'gnome_libsecret';
+        safeStorage.encryptString = value => {
+          const iv = randomBytes(12);
+          const cipher = createCipheriv('aes-256-gcm', testKey, iv);
+          const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
+          return Buffer.concat([iv, cipher.getAuthTag(), encrypted]);
+        };
+        safeStorage.decryptString = value => {
+          const decipher = createDecipheriv(
+            'aes-256-gcm',
+            testKey,
+            value.subarray(0, 12)
+          );
+          decipher.setAuthTag(value.subarray(12, 28));
+          return Buffer.concat([
+            decipher.update(value.subarray(28)),
+            decipher.final(),
+          ]).toString('utf8');
+        };
+      });
+      const window = await launched.firstWindow();
+      await expect(window.getByRole('status')).toHaveText(
+        'Runtime ready. Database connected.'
+      );
+      await window.reload();
+      return launched;
+    };
     let app = await launch();
     try {
       const page = await app.firstWindow();
@@ -70,6 +102,9 @@ test('desktop scans and persists simulator inventories through the isolated prel
         require: 'undefined',
         process: 'undefined',
         methods: [
+          'getOpenAipKeyStatus',
+          'saveOpenAipKey',
+          'removeOpenAipKey',
           'getRuntimeHealth',
           'getAddonLibrary',
           'saveCommunityPath',
@@ -132,7 +167,31 @@ test('desktop scans and persists simulator inventories through the isolated prel
             {status: 200}
           );
       });
-      await msfs2024.getByLabel('OpenAIP API key').fill('desktop-test-key');
+      await app.evaluate(({safeStorage}) => {
+        safeStorage.isEncryptionAvailable = () => false;
+      });
+      await page.reload();
+      await expect(
+        page.getByText(
+          'Secure storage is unavailable. Enter a key to use for this session.'
+        )
+      ).toBeVisible();
+      await page.getByLabel('OpenAIP API key').fill('desktop-test-key');
+      await expect(
+        page.getByRole('button', {name: 'Save API key', exact: true})
+      ).toBeDisabled();
+      await msfs2024.getByRole('button', {name: 'Enrich airports'}).click();
+      await expect(
+        msfs2024.getByText('Updated 1 airports.', {exact: false})
+      ).toBeVisible();
+      await app.evaluate(({safeStorage}) => {
+        safeStorage.isEncryptionAvailable = () => true;
+      });
+      await page.reload();
+      await page.getByLabel('OpenAIP API key').fill('desktop-test-key');
+      await page.getByRole('button', {name: 'Save API key', exact: true}).click();
+      await expect(page.getByText('API key saved.', {exact: true})).toBeVisible();
+      await expect(page.getByLabel('OpenAIP API key')).toHaveValue('');
       await msfs2024.getByRole('button', {name: 'Enrich airports'}).click();
       await expect(
         msfs2024.getByText('Updated 1 airports.', {exact: false})
@@ -181,11 +240,39 @@ test('desktop scans and persists simulator inventories through the isolated prel
       await expect(
         reopened.getByRole('cell', {name: 'Enriched airport', exact: true})
       ).toBeVisible();
+      await expect(reopened.getByLabel('OpenAIP API key')).toHaveValue('');
+      await expect(
+        reopened.getByText('An API key is saved for both simulators.')
+      ).toBeVisible();
+      await app.evaluate(() => {
+        globalThis.fetch = async (_url, init) => {
+          if (
+            new Headers(init?.headers).get('x-openaip-api-key') !== 'desktop-test-key'
+          ) {
+            throw new Error('Saved API key was not reused');
+          }
+          return new Response(
+            JSON.stringify({items: [], page: 1, limit: 100, totalCount: 0, totalPages: 0})
+          );
+        };
+      });
+      await reopened
+        .getByRole('region', {name: 'MSFS 2024', exact: true})
+        .getByRole('button', {name: 'Enrich airports'})
+        .click();
+      await expect(
+        reopened.getByText('Updated 0 airports.', {exact: false})
+      ).toBeVisible();
+      await reopened.getByRole('button', {name: 'Remove saved key'}).click();
+      await expect(
+        reopened.getByText('Saved API key removed.', {exact: true})
+      ).toBeVisible();
+      await expect(reopened.getByText('No API key is saved.')).toBeVisible();
       await expect(
         reopened
           .getByRole('region', {name: 'MSFS 2024', exact: true})
-          .getByLabel('OpenAIP API key')
-      ).toHaveValue('');
+          .getByRole('button', {name: 'Enrich airports'})
+      ).toBeDisabled();
       await expect(
         reopened
           .getByRole('region', {name: 'MSFS 2024', exact: true})
