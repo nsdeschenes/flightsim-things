@@ -1,0 +1,21 @@
+{
+  "name": "@flightsim-things/contract",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "author": "nsdeschenes",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsdown"
+  },
+  "devDependencies": {
+    "tsdown": "0.23.0"
+  }
+}

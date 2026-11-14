@@ -1,0 +1,29 @@
+{
+  "linux-arm64": {
+    "platform": "linux",
+    "arch": "arm64",
+    "runner": "ubuntu-24.04-arm",
+    "builderPlatform": "linux",
+    "format": "deb",
+    "artifactName": "flightsim-things-${version}-linux-arm64.deb",
+    "builderTarget": "deb"
+  },
+  "darwin-arm64": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "runner": "macos-15",
+    "builderPlatform": "mac",
+    "format": "dmg",
+    "artifactName": "flightsim-things-${version}-macos-arm64.dmg",
+    "builderTarget": "dmg"
+  },
+  "win32-x64": {
+    "platform": "win32",
+    "arch": "x64",
+    "runner": "windows-2025",
+    "builderPlatform": "win",
+    "format": "exe",
+    "artifactName": "flightsim-things-${version}-win32-x64.exe",
+    "builderTarget": "nsis"
+  }
+}

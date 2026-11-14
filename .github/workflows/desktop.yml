@@ -1,0 +1,287 @@
+name: Desktop application
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  targets:
+    name: Release targets
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.targets.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: targets
+        run: node --input-type=module -e 'import targets from "./scripts/release-targets.json" with {type:"json"}; console.log("matrix=" + JSON.stringify({include:Object.entries(targets).map(([id,target]) => ({id,...target}))}));' >> "$GITHUB_OUTPUT"
+  install:
+    needs: targets
+    name: Install dependencies (${{ matrix.id }})
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.targets.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: ${{ runner.os == 'Windows' && 'pnpm' || '' }}
+      - id: key
+        run: echo "value=workspace-v2-${{ matrix.id }}-${{ runner.os }}-${{ runner.arch }}-node24-pnpm12.9.1-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'packages/*/package.json') }}" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        if: runner.os != 'Windows'
+        id: cache
+        with:
+          path: |
+            node_modules
+            packages/*/node_modules
+          key: ${{ steps.key.outputs.value }}
+      - if: runner.os == 'Windows' || steps.cache.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
+  checks:
+    name: Format, lint and type checks (${{ matrix.id }})
+    needs: [targets, install]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.targets.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: ${{ runner.os == 'Windows' && 'pnpm' || '' }}
+      - uses: actions/cache/restore@v4
+        if: runner.os != 'Windows'
+        with:
+          path: |
+            node_modules
+            packages/*/node_modules
+          key: workspace-v2-${{ matrix.id }}-${{ runner.os }}-${{ runner.arch }}-node24-pnpm12.9.1-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'packages/*/package.json') }}
+          fail-on-cache-miss: true
+      - name: Install locked dependencies with native Windows links
+        if: runner.os == 'Windows'
+        run: pnpm install --frozen-lockfile
+      - run: pnpm fmt:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+  unit-tests:
+    name: Unit tests (${{ matrix.id }})
+    needs: [targets, install]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.targets.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: ${{ runner.os == 'Windows' && 'pnpm' || '' }}
+      - uses: actions/cache/restore@v4
+        if: runner.os != 'Windows'
+        with:
+          path: |
+            node_modules
+            packages/*/node_modules
+          key: workspace-v2-${{ matrix.id }}-${{ runner.os }}-${{ runner.arch }}-node24-pnpm12.9.1-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'packages/*/package.json') }}
+          fail-on-cache-miss: true
+      - name: Install locked dependencies with native Windows links
+        if: runner.os == 'Windows'
+        run: pnpm install --frozen-lockfile
+      - run: pnpm test
+  build:
+    name: Build application (${{ matrix.id }})
+    needs: [targets, install]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.targets.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: ${{ runner.os == 'Windows' && 'pnpm' || '' }}
+      - uses: actions/cache/restore@v4
+        if: runner.os != 'Windows'
+        with:
+          path: |
+            node_modules
+            packages/*/node_modules
+          key: workspace-v2-${{ matrix.id }}-${{ runner.os }}-${{ runner.arch }}-node24-pnpm12.9.1-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'packages/*/package.json') }}
+          fail-on-cache-miss: true
+      - name: Install locked dependencies with native Windows links
+        if: runner.os == 'Windows'
+        run: pnpm install --frozen-lockfile
+      - run: |
+          pnpm build
+          git rev-parse HEAD > "$RUNNER_TEMP/build.commit"
+          tar -cf - packages/contract/dist packages/db/dist packages/electron/dist > "$RUNNER_TEMP/build.tar"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: application-build-${{ matrix.id }}-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/build.tar
+            ${{ runner.temp }}/build.commit
+          overwrite: true
+          if-no-files-found: error
+          compression-level: 0
+  desktop:
+    name: Desktop smoke (${{ matrix.id }})
+    needs: [targets, install, build]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.targets.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: ${{ runner.os == 'Windows' && 'pnpm' || '' }}
+      - uses: actions/cache/restore@v4
+        if: runner.os != 'Windows'
+        with:
+          path: |
+            node_modules
+            packages/*/node_modules
+          key: workspace-v2-${{ matrix.id }}-${{ runner.os }}-${{ runner.arch }}-node24-pnpm12.9.1-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'packages/*/package.json') }}
+          fail-on-cache-miss: true
+      - name: Install locked dependencies with native Windows links
+        if: runner.os == 'Windows'
+        run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: application-build-${{ matrix.id }}-${{ github.sha }}
+          path: ${{ runner.temp }}/build
+      - name: Restore the same-commit application
+        run: |
+          test "$(cat "$RUNNER_TEMP/build/build.commit")" = "$(git rev-parse HEAD)"
+          tar -xpf - < "$RUNNER_TEMP/build/build.tar"
+      - name: Install desktop runtime dependencies
+        if: runner.os == 'Linux'
+        run: |
+          pnpm exec playwright install-deps chromium
+          sudo apt-get install -y libgtk-3-0
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          unshare --user --map-root-user true
+      - if: runner.os == 'Linux'
+        run: xvfb-run -a pnpm test:desktop
+      - if: runner.os != 'Linux'
+        run: pnpm test:desktop
+  package-proof:
+    name: Package proof (${{ matrix.id }})
+    needs: [targets, install, build]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.targets.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: ${{ runner.os == 'Windows' && 'pnpm' || '' }}
+      - uses: actions/cache/restore@v4
+        if: runner.os != 'Windows'
+        with:
+          path: |
+            node_modules
+            packages/*/node_modules
+          key: workspace-v2-${{ matrix.id }}-${{ runner.os }}-${{ runner.arch }}-node24-pnpm12.9.1-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'packages/*/package.json') }}
+          fail-on-cache-miss: true
+      - name: Install locked dependencies with native Windows links
+        if: runner.os == 'Windows'
+        run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: application-build-${{ matrix.id }}-${{ github.sha }}
+          path: ${{ runner.temp }}/build
+      - name: Restore the same-commit application
+        run: |
+          test "$(cat "$RUNNER_TEMP/build/build.commit")" = "$(git rev-parse HEAD)"
+          tar -xpf - < "$RUNNER_TEMP/build/build.tar"
+      - name: Install desktop runtime dependencies
+        if: runner.os == 'Linux'
+        run: |
+          pnpm exec playwright install-deps chromium
+          sudo apt-get install -y libgtk-3-0
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          unshare --user --map-root-user true
+      - run: pnpm package:desktop
+      - name: Launch the installed package natively
+        env:
+          BUILD_COMMIT_FILE: ${{ runner.temp }}/build/build.commit
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run -a pnpm test:package
+          else
+            pnpm test:package
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tested-installer-${{ matrix.id }}-${{ github.sha }}
+          path: |
+            release/*.deb
+            release/*.dmg
+            release/*.exe
+            release/package-proof.json
+          overwrite: true
+          if-no-files-found: error
+          compression-level: 0
+  acceptance:
+    name: ${{ matrix.id }} build and acceptance
+    needs: [targets, install, checks, unit-tests, build, desktop, package-proof]
+    if: always() && needs.targets.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.targets.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Require every check on every target
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: echo "$RESULTS" | jq -e 'all(.[]; .result == "success")'
+  stage:
+    name: Verify and stage all release targets
+    needs: [targets, acceptance]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Download exactly the expected target proofs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module -e 'import targets from "./scripts/release-targets.json" with {type:"json"}; for (const id of Object.keys(targets)) console.log(id);' > "$RUNNER_TEMP/targets"
+          while read -r target; do
+            gh run download "$GITHUB_RUN_ID" --name "tested-installer-$target-$GITHUB_SHA" --dir "release/tested/$target"
+          done < "$RUNNER_TEMP/targets"
+      - name: Validate and stage the full tested installer set
+        run: node scripts/stage-release.mjs
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          name: ${{ github.sha }}
+          path: release/assets/*
+          overwrite: true
+          if-no-files-found: error

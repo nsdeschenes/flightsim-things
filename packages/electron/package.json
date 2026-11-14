@@ -1,0 +1,24 @@
+{
+  "name": "@flightsim-things/electron",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A minimal flight simulation desktop foundation",
+  "homepage": "https://github.com/nsdeschenes/flightsim-things",
+  "license": "MIT",
+  "author": "nsdeschenes",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node scripts/build.mjs",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "@flightsim-things/contract": "workspace:*",
+    "@flightsim-things/db": "workspace:*"
+  },
+  "devDependencies": {
+    "electron": "44.4.5",
+    "esbuild": "0.28.0"
+  }
+}

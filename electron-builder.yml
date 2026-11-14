@@ -1,0 +1,38 @@
+appId: com.nsdeschenes.flightsimthings
+productName: Flightsim Things
+electronVersion: 44.4.5
+npmRebuild: false
+directories:
+  app: release/app
+  output: release
+files:
+  - dist/**/*
+  - package.json
+extraResources:
+  - from: LICENSE
+    to: LICENSE
+linux:
+  executableName: flightsim-things
+  category: Utility
+  maintainer: nsdeschenes <nsdeschenes@users.noreply.github.com>
+  target: deb
+  artifactName: flightsim-things-${version}-linux-${arch}.${ext}
+deb:
+  packageName: flightsim-things
+  compression: xz
+mac:
+  target: dmg
+  artifactName: flightsim-things-${version}-macos-${arch}.${ext}
+  category: public.app-category.utilities
+  identity: '-'
+  hardenedRuntime: false
+  notarize: false
+win:
+  target: nsis
+  artifactName: flightsim-things-${version}-win32-${arch}.${ext}
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  runAfterFinish: false

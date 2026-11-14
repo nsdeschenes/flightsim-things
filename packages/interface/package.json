@@ -1,0 +1,26 @@
+{
+  "name": "@flightsim-things/interface",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "author": "nsdeschenes",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@flightsim-things/contract": "workspace:*",
+    "@stylexjs/stylex": "0.19.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@stylexjs/unplugin": "0.19.1",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "6.1.1",
+    "vite": "8.3.0"
+  }
+}

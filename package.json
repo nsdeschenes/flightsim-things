@@ -1,0 +1,43 @@
+{
+  "name": "flightsim-things",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "author": "nsdeschenes",
+  "type": "module",
+  "scripts": {
+    "build": "pnpm --filter @flightsim-things/contract build && pnpm --filter @flightsim-things/db build && pnpm --filter @flightsim-things/electron build && pnpm --filter @flightsim-things/interface build",
+    "dev": "pnpm build && concurrently --kill-others \"pnpm --filter @flightsim-things/interface dev\" \"wait-on http://127.0.0.1:5173 && pnpm --filter @flightsim-things/electron start --dev\"",
+    "start": "pnpm --filter @flightsim-things/electron start",
+    "test": "pnpm --filter @flightsim-things/db test",
+    "test:desktop": "playwright test",
+    "typecheck": "pnpm --filter @flightsim-things/contract build && pnpm --filter @flightsim-things/db build && pnpm -r typecheck && tsc --noEmit -p tsconfig.json",
+    "lint": "oxlint",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
+    "postinstall": "pnpm --filter @flightsim-things/electron exec install-electron",
+    "test:scripts": "node --test scripts/test/*.test.mjs",
+    "package:linux": "node scripts/package.mjs linux-arm64",
+    "package:windows": "node scripts/package.mjs win32-x64",
+    "package:macos": "node scripts/package.mjs darwin-arm64",
+    "package:desktop": "node scripts/package.mjs",
+    "test:package": "node scripts/package-smoke.mjs",
+    "release:stage": "node scripts/stage-release.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.1",
+    "@types/node": "24.13.3",
+    "concurrently": "9.2.1",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.28.0",
+    "oxfmt": "0.70.0",
+    "oxlint": "1.85.0",
+    "typescript": "6.0.2",
+    "vitest": "5.0.2",
+    "wait-on": "8.0.4"
+  },
+  "engines": {
+    "node": ">=24.13.0 <25"
+  },
+  "packageManager": "pnpm@12.9.1"
+}
