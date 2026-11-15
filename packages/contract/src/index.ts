@@ -1,4 +1,9 @@
+import {createSelectSchema} from 'drizzle-orm/effect-schema';
 import {Schema, Struct} from 'effect';
+
+import {simulators} from './simulators.js';
+import type {SimulatorId} from './simulators.js';
+import {addons, airports} from './tables.js';
 
 export const runtimeHealthChannel = 'runtime:health';
 export const addonLibraryChannel = 'addons:library';
@@ -9,32 +14,17 @@ export const openAipKeyStatusChannel = 'openaip:key-status';
 export const saveOpenAipKeyChannel = 'openaip:save-key';
 export const removeOpenAipKeyChannel = 'openaip:remove-key';
 
-export const simulators = ['msfs2020', 'msfs2024'] as const;
+export {simulators} from './simulators.js';
+export type {SimulatorId} from './simulators.js';
 export const simulatorIdSchema = Schema.Literals(simulators);
-export type SimulatorId = typeof simulatorIdSchema.Type;
 
-export const addonSchema = Schema.Struct({
+export const addonSchema = createSelectSchema(addons, {
   simulator: simulatorIdSchema,
-  folderName: Schema.String,
-  folderPath: Schema.String,
-  name: Schema.String,
-  version: Schema.NullOr(Schema.String),
-  creator: Schema.NullOr(Schema.String),
-  contentType: Schema.NullOr(Schema.String),
-  manifestJson: Schema.String,
 }).mapFields(Struct.map(Schema.mutableKey));
 export type Addon = typeof addonSchema.Type;
 
-export const airportSchema = Schema.Struct({
+export const airportSchema = createSelectSchema(airports, {
   simulator: simulatorIdSchema,
-  folderName: Schema.String,
-  sourceKey: Schema.String,
-  icaoCode: Schema.NullOr(Schema.String),
-  iataCode: Schema.NullOr(Schema.String),
-  name: Schema.NullOr(Schema.String),
-  elevationMeters: Schema.NullOr(Schema.Number),
-  latitude: Schema.NullOr(Schema.Number),
-  longitude: Schema.NullOr(Schema.Number),
 }).mapFields(Struct.map(Schema.mutableKey));
 export type Airport = typeof airportSchema.Type;
 

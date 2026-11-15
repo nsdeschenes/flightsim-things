@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./tables": {
+      "types": "./dist/tables.d.ts",
+      "import": "./dist/tables.js"
     }
   },
   "scripts": {
@@ -16,6 +20,7 @@
     "build": "tsdown"
   },
   "dependencies": {
+    "drizzle-orm": "1.0.0-rc.4",
     "effect": "4.0.6"
   },
   "devDependencies": {
