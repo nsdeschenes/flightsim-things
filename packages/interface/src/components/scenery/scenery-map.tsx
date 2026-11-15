@@ -237,7 +237,8 @@ export function SceneryMap({
 const styles = stylex.create({
   map: {
     width: '100%',
-    height: {default: 440, '@media (max-width: 650px)': 300},
+    aspectRatio: '2 / 1',
+    minHeight: 240,
     overflow: 'hidden',
     backgroundColor: '#101e2b',
     borderRadius: 8,

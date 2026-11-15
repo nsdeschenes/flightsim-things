@@ -67,6 +67,8 @@ test('scenery links filtered installations and map without moving the camera on 
   await page.goto('http://127.0.0.1:5173/#/scenery');
   const map = page.getByTestId('scenery-map');
   await expect(map.locator('svg').first()).toBeVisible();
+  const initialBox = await map.boundingBox();
+  expect(initialBox!.height).toBeCloseTo(Math.max(initialBox!.width / 2, 240), 0);
   await expect(
     page.getByText(
       '11 installations · 3 mapped · 8 without coordinates · 2 map locations',
@@ -146,6 +148,7 @@ test('scenery links filtered installations and map without moving the camera on 
   await expect(map).toHaveAttribute('data-camera', '0,0,1');
   await expect(map.locator('svg').first()).toBeVisible();
   const resizedBox = await map.boundingBox();
+  expect(resizedBox!.height).toBeCloseTo(Math.max(resizedBox!.width / 2, 240), 0);
   await page.mouse.move(resizedBox!.x + 100, resizedBox!.y + 100);
   await page.mouse.down();
   await page.mouse.move(resizedBox!.x + 120, resizedBox!.y + 110);
