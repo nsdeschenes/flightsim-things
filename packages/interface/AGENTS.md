@@ -6,6 +6,12 @@ These rules apply to `packages/interface/` and its subdirectories.
 
 - Use Base UI components whenever a suitable component exists. Prefer composing Base UI components over implementing equivalent interactions from scratch.
 
+## Forms
+
+- Use TanStack Form (`@tanstack/react-form`) for UI form state and validation.
+- Follow the [Base UI TanStack Form integration](https://base-ui.com/react/handbook/forms#tanstack-form). Use native `<form noValidate>` with `form.handleSubmit`, forward field name and invalid/dirty/touched metadata to `Field.Root`, and wire controlled values with `onValueChange` and `onBlur`.
+- Render TanStack validation errors with `Field.Error match`. Keep server state and mutation lifecycles in TanStack Query.
+
 ## Data fetching
 
 - Use TanStack Query (`@tanstack/react-query`) for data fetching and server state, including loading, error, caching, and mutation handling.
