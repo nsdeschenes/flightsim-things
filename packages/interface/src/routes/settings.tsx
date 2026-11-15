@@ -38,15 +38,13 @@ function Settings() {
       keyForm.reset();
     },
   });
-  const keyStatus = savedKey.data;
-  const library = inventories.data ?? [];
   return (
     <>
       <Heading>Settings</Heading>
       <Section aria-label="OpenAIP settings">
         <Heading>OpenAIP</Heading>
         <p>
-          {keyStatus?.saved
+          {savedKey.data?.saved
             ? 'An API key is saved for both simulators.'
             : 'No API key is saved.'}
         </p>
@@ -89,7 +87,7 @@ function Settings() {
                   <Button
                     type="submit"
                     disabled={
-                      keyMutation.isPending || !keyStatus?.available || !apiKey.trim()
+                      keyMutation.isPending || !savedKey.data?.available || !apiKey.trim()
                     }
                   >
                     {keyMutation.isPending && keyMutation.variables === 'save'
@@ -99,7 +97,7 @@ function Settings() {
                   <Button
                     type="button"
                     onClick={() => keyMutation.mutate('remove')}
-                    disabled={keyMutation.isPending || !keyStatus?.saved}
+                    disabled={keyMutation.isPending || !savedKey.data?.saved}
                   >
                     {keyMutation.isPending && keyMutation.variables === 'remove'
                       ? 'Removing…'
@@ -117,7 +115,7 @@ function Settings() {
           Unsaved keys clear when you leave Settings. Leave the field empty to use the key
           saved securely on this device.
         </p>
-        {keyStatus && !keyStatus.available && (
+        {savedKey.data && !savedKey.data.available && (
           <p>Secure storage is unavailable. Enter a key to use while Settings is open.</p>
         )}
         <div aria-live="polite">
@@ -134,12 +132,12 @@ function Settings() {
         </div>
       </Section>
       {inventories.isError && <p role="alert">Could not load addon library.</p>}
-      {library.map(inventory => (
+      {inventories.data?.map(inventory => (
         <SimulatorSettings
           key={inventory.simulator}
           inventory={inventory}
           apiKey={apiKey}
-          canUseSavedKey={Boolean(keyStatus?.saved && keyStatus.available)}
+          canUseSavedKey={Boolean(savedKey.data?.saved && savedKey.data.available)}
         />
       ))}
     </>
