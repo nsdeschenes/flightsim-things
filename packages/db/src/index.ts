@@ -1,11 +1,12 @@
 import {fileURLToPath} from 'node:url';
 
-import {connect} from '@tursodatabase/database';
+import * as SqliteClient from '@effect/sql-sqlite-node/SqliteClient';
 import {and, defineRelations, eq, isNull} from 'drizzle-orm';
-import {drizzle} from 'drizzle-orm/tursodatabase/database';
-import {migrate} from 'drizzle-orm/tursodatabase/migrator';
-import {Effect, Semaphore} from 'effect';
+import {makeWithDefaults} from 'drizzle-orm/effect-sqlite-node';
+import {migrate} from 'drizzle-orm/effect-sqlite-node/migrator';
+import {Effect} from 'effect';
 import type {Scope} from 'effect';
+import * as Reactivity from 'effect/reactivity/Reactivity';
 
 import {simulators} from '@flightsim-things/contract';
 import type {
@@ -39,18 +40,8 @@ export class DatabaseError extends Error {
   }
 }
 
-function native<A>(operation: string, work: () => PromiseLike<A>) {
-  // Turso cannot cancel in-flight queries. Wait before rollback or connection cleanup.
-  return Effect.uninterruptible(
-    Effect.tryPromise({
-      try: () => Promise.resolve(work()),
-      catch: cause => new DatabaseError(operation, cause),
-    })
-  );
-}
-
-function createDatabase(client: Awaited<ReturnType<typeof connect>>) {
-  return drizzle({client, relations: defineRelations(schema)});
+function createDatabase() {
+  return makeWithDefaults({relations: defineRelations(schema)});
 }
 
 function airportIdentity(airport: Airport) {
@@ -65,65 +56,36 @@ export function openDatabase(
   path: string
 ): Effect.Effect<AddonDatabase, DatabaseError, Scope.Scope> {
   return Effect.gen(function* () {
-    const client = yield* Effect.acquireRelease(
-      native('connect', () => connect(path)),
-      client => Effect.sync(() => client.close())
+    const client = yield* SqliteClient.make({filename: path}).pipe(
+      Effect.provide(Reactivity.layer),
+      Effect.mapError(cause => new DatabaseError('connect', cause))
     );
-    const db = createDatabase(client);
-    yield* native('migrate', () =>
-      migrate(db, {
-        migrationsFolder: fileURLToPath(new URL('../drizzle', import.meta.url)),
-      })
+    const db = yield* createDatabase().pipe(
+      Effect.provideService(SqliteClient.SqliteClient, client)
     );
-    const exclusive = Semaphore.withPermit(yield* Semaphore.make(1));
-
-    function transaction<A>(body: Effect.Effect<A, DatabaseError>) {
-      return Effect.uninterruptibleMask(restore =>
-        Effect.gen(function* () {
-          yield* native('begin transaction', () => db.run('BEGIN'));
-          const result = yield* restore(body).pipe(
-            Effect.catchCause(cause =>
-              native('rollback transaction', () => db.run('ROLLBACK')).pipe(
-                Effect.flatMap(() => Effect.failCause(cause))
-              )
-            )
-          );
-          yield* native('commit transaction', () => db.run('COMMIT')).pipe(
-            Effect.catchCause(cause =>
-              native('rollback transaction', () => db.run('ROLLBACK')).pipe(
-                Effect.flatMap(() => Effect.failCause(cause))
-              )
-            )
-          );
-          return result;
-        })
-      );
-    }
+    yield* migrate(db, {
+      migrationsFolder: fileURLToPath(new URL('../drizzle', import.meta.url)),
+    }).pipe(Effect.mapError(cause => new DatabaseError('migrate', cause)));
 
     function getInventory(
-      simulator: SimulatorId
-    ): Effect.Effect<SimulatorInventory, DatabaseError> {
+      simulator: SimulatorId,
+      connection: Pick<Effect.Success<ReturnType<typeof createDatabase>>, 'select'>
+    ) {
       return Effect.gen(function* () {
-        const [settings] = yield* native('read settings', () =>
-          db
-            .select()
-            .from(schema.simulatorSettings)
-            .where(eq(schema.simulatorSettings.simulator, simulator))
-        );
-        const addons = yield* native('read addons', () =>
-          db
-            .select()
-            .from(schema.addons)
-            .where(eq(schema.addons.simulator, simulator))
-            .orderBy(schema.addons.name, schema.addons.folderName)
-        );
-        const airports = yield* native('read airports', () =>
-          db
-            .select()
-            .from(schema.airports)
-            .where(eq(schema.airports.simulator, simulator))
-            .orderBy(schema.airports.folderName, schema.airports.sourceKey)
-        );
+        const [settings] = yield* connection
+          .select()
+          .from(schema.simulatorSettings)
+          .where(eq(schema.simulatorSettings.simulator, simulator));
+        const addons = yield* connection
+          .select()
+          .from(schema.addons)
+          .where(eq(schema.addons.simulator, simulator))
+          .orderBy(schema.addons.name, schema.addons.folderName);
+        const airports = yield* connection
+          .select()
+          .from(schema.airports)
+          .where(eq(schema.airports.simulator, simulator))
+          .orderBy(schema.airports.folderName, schema.airports.sourceKey);
         return {
           simulator,
           communityPath: settings?.communityPath ?? null,
@@ -137,23 +99,33 @@ export function openDatabase(
 
     return {
       db,
-      getInventory: simulator => exclusive(getInventory(simulator)),
-      getLibrary: () => exclusive(Effect.forEach(simulators, getInventory)),
+      getInventory: simulator =>
+        db
+          .transaction(tx => getInventory(simulator, tx))
+          .pipe(Effect.mapError(cause => new DatabaseError('read inventory', cause))),
+      getLibrary: () =>
+        db
+          .transaction(tx =>
+            Effect.forEach(simulators, simulator => getInventory(simulator, tx))
+          )
+          .pipe(Effect.mapError(cause => new DatabaseError('read library', cause))),
       saveCommunityPath: (simulator, communityPath) =>
-        exclusive(
-          Effect.gen(function* () {
-            yield* native('save community path', () =>
-              db
+        db
+          .transaction(tx =>
+            Effect.gen(function* () {
+              yield* tx
                 .insert(schema.simulatorSettings)
                 .values({simulator, communityPath})
                 .onConflictDoUpdate({
                   target: schema.simulatorSettings.simulator,
                   set: {communityPath},
-                })
-            );
-            return yield* getInventory(simulator);
-          })
-        ),
+                });
+              return yield* getInventory(simulator, tx);
+            })
+          )
+          .pipe(
+            Effect.mapError(cause => new DatabaseError('save community path', cause))
+          ),
       replaceInventory: (
         simulator,
         scannedPath,
@@ -161,108 +133,93 @@ export function openDatabase(
         airports = [],
         incompleteAirportFolders = []
       ) =>
-        exclusive(
-          Effect.gen(function* () {
-            const scannedAt = new Date().toISOString();
-            yield* transaction(
-              Effect.gen(function* () {
-                const previousAirports = yield* native('read previous airports', () =>
-                  db
-                    .select()
-                    .from(schema.airports)
-                    .where(eq(schema.airports.simulator, simulator))
+        db
+          .transaction(tx =>
+            Effect.gen(function* () {
+              const scannedAt = new Date().toISOString();
+              const previousAirports = yield* tx
+                .select()
+                .from(schema.airports)
+                .where(eq(schema.airports.simulator, simulator));
+              yield* tx
+                .delete(schema.addons)
+                .where(eq(schema.addons.simulator, simulator));
+              for (const addon of addons) {
+                yield* tx.insert(schema.addons).values({...addon, simulator});
+              }
+              yield* tx
+                .delete(schema.airports)
+                .where(eq(schema.airports.simulator, simulator));
+              const retained = previousAirports.filter(
+                airport =>
+                  incompleteAirportFolders.includes(airport.folderName) &&
+                  addons.some(addon => addon.folderName === airport.folderName)
+              );
+              for (const airport of [...retained, ...airports]) {
+                const previous = previousAirports.find(
+                  row =>
+                    row.folderName === airport.folderName &&
+                    ((row.sourceKey === airport.sourceKey &&
+                      (row.icaoCode === airport.icaoCode || airport.icaoCode === null)) ||
+                      (row.sourceKey === '#package-name-airport' &&
+                        row.icaoCode === airport.icaoCode))
                 );
-                yield* native('delete addons', () =>
-                  db.delete(schema.addons).where(eq(schema.addons.simulator, simulator))
-                );
-                for (const addon of addons) {
-                  yield* native('insert addon', () =>
-                    db.insert(schema.addons).values({...addon, simulator})
-                  );
-                }
-                yield* native('delete airports', () =>
-                  db
-                    .delete(schema.airports)
-                    .where(eq(schema.airports.simulator, simulator))
-                );
-                const retained = previousAirports.filter(
-                  airport =>
-                    incompleteAirportFolders.includes(airport.folderName) &&
-                    addons.some(addon => addon.folderName === airport.folderName)
-                );
-                for (const airport of [...retained, ...airports]) {
-                  const previous = previousAirports.find(
-                    row =>
-                      row.folderName === airport.folderName &&
-                      ((row.sourceKey === airport.sourceKey &&
-                        (row.icaoCode === airport.icaoCode ||
-                          airport.icaoCode === null)) ||
-                        (row.sourceKey === '#package-name-airport' &&
-                          row.icaoCode === airport.icaoCode))
-                  );
-                  yield* native('insert airport', () =>
-                    db.insert(schema.airports).values({
-                      ...airport,
-                      simulator,
-                      icaoCode: airport.icaoCode ?? previous?.icaoCode ?? null,
-                      iataCode: airport.iataCode ?? previous?.iataCode ?? null,
-                      name: previous?.name ?? airport.name,
-                      elevationMeters:
-                        airport.elevationMeters ?? previous?.elevationMeters ?? null,
-                      latitude: airport.latitude ?? previous?.latitude ?? null,
-                      longitude: airport.longitude ?? previous?.longitude ?? null,
-                    })
-                  );
-                }
-                yield* native('save scan settings', () =>
-                  db
-                    .insert(schema.simulatorSettings)
-                    .values({simulator, scannedPath, scannedAt})
-                    .onConflictDoUpdate({
-                      target: schema.simulatorSettings.simulator,
-                      set: {scannedPath, scannedAt},
-                    })
-                );
-              })
-            );
-            return yield* getInventory(simulator);
-          })
-        ),
+                yield* tx.insert(schema.airports).values({
+                  ...airport,
+                  simulator,
+                  icaoCode: airport.icaoCode ?? previous?.icaoCode ?? null,
+                  iataCode: airport.iataCode ?? previous?.iataCode ?? null,
+                  name: previous?.name ?? airport.name,
+                  elevationMeters:
+                    airport.elevationMeters ?? previous?.elevationMeters ?? null,
+                  latitude: airport.latitude ?? previous?.latitude ?? null,
+                  longitude: airport.longitude ?? previous?.longitude ?? null,
+                });
+              }
+              yield* tx
+                .insert(schema.simulatorSettings)
+                .values({simulator, scannedPath, scannedAt})
+                .onConflictDoUpdate({
+                  target: schema.simulatorSettings.simulator,
+                  set: {scannedPath, scannedAt},
+                });
+              return yield* getInventory(simulator, tx);
+            })
+          )
+          .pipe(Effect.mapError(cause => new DatabaseError('replace inventory', cause))),
       applyAirportEnrichment: updates =>
-        exclusive(
-          transaction(
+        db
+          .transaction(tx =>
             Effect.gen(function* () {
               let enriched = 0;
               for (const {airport, metadata} of updates) {
-                const changed = yield* native('enrich airport', () =>
-                  db
-                    .update(schema.airports)
-                    .set(metadata)
-                    .where(
-                      and(
-                        airportIdentity(airport),
-                        airport.icaoCode === null
-                          ? isNull(schema.airports.icaoCode)
-                          : eq(schema.airports.icaoCode, airport.icaoCode),
-                        airport.iataCode === null
-                          ? isNull(schema.airports.iataCode)
-                          : eq(schema.airports.iataCode, airport.iataCode)
-                      )
+                const changed = yield* tx
+                  .update(schema.airports)
+                  .set(metadata)
+                  .where(
+                    and(
+                      airportIdentity(airport),
+                      airport.icaoCode === null
+                        ? isNull(schema.airports.icaoCode)
+                        : eq(schema.airports.icaoCode, airport.icaoCode),
+                      airport.iataCode === null
+                        ? isNull(schema.airports.iataCode)
+                        : eq(schema.airports.iataCode, airport.iataCode)
                     )
-                    .returning({sourceKey: schema.airports.sourceKey})
-                );
+                  )
+                  .returning({sourceKey: schema.airports.sourceKey});
                 enriched += changed.length;
               }
               return enriched;
             })
           )
-        ),
+          .pipe(Effect.mapError(cause => new DatabaseError('enrich airports', cause))),
     } satisfies AddonDatabase;
   });
 }
 
 export interface AddonDatabase {
-  readonly db: ReturnType<typeof createDatabase>;
+  readonly db: Effect.Success<ReturnType<typeof createDatabase>>;
   getInventory(simulator: SimulatorId): Effect.Effect<SimulatorInventory, DatabaseError>;
   getLibrary(): Effect.Effect<SimulatorInventory[], DatabaseError>;
   saveCommunityPath(
