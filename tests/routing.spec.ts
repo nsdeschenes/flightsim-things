@@ -36,3 +36,14 @@ for (const route of [
     );
   });
 }
+
+test('route generation keeps Node globals out of the renderer', async ({page}) => {
+  await page.goto('http://127.0.0.1:5173');
+  await expect(page.getByRole('heading', {name: 'Addons', exact: true})).toBeVisible();
+  expect(
+    await page.evaluate(() => ({
+      process: typeof Reflect.get(window, 'process'),
+      require: typeof Reflect.get(window, 'require'),
+    }))
+  ).toEqual({process: 'undefined', require: 'undefined'});
+});
