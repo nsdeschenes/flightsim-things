@@ -42,10 +42,15 @@ test('desktop queries cache reads and publish mutations across routes while offl
           inventory: {
             ...library.find(item => item.simulator === simulator),
             addons: [
-              {folderName: 'sample', name: 'Cached airport', contentType: 'SCENERY'},
+              {
+                folderName: 'sample',
+                folderPath: '/Community/sample',
+                name: 'Cached airport',
+                contentType: 'SCENERY',
+              },
             ],
           },
-          warnings: [],
+          warnings: [{folderName: 'broken-addon', message: 'Invalid manifest'}],
         }),
         saveOpenAipKey: async () => ({saved: true, available: true}),
         removeOpenAipKey: async () => ({saved: false, available: true}),
@@ -61,11 +66,27 @@ test('desktop queries cache reads and publish mutations across routes while offl
   await simulator.getByRole('button', {name: 'Save path'}).click();
   await expect(simulator.getByRole('alert')).toHaveText('Folder unavailable');
   await simulator.getByRole('textbox').fill('/Community');
-  await simulator.getByRole('button', {name: 'Save path'}).click();
+  await simulator.getByRole('textbox').press('Enter');
   await expect(simulator.getByText('Community folder saved.')).toBeVisible();
   await simulator.getByRole('button', {name: 'Scan addons'}).click();
   await expect(simulator.getByText('Scan complete.', {exact: false})).toBeVisible();
+  const disclosure = simulator.getByRole('button', {name: 'Skipped folders'});
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+  await disclosure.focus();
+  await page.keyboard.press('Enter');
+  await expect(simulator.getByText('broken-addon: Invalid manifest')).toBeVisible();
+  await page.keyboard.press('Space');
+  await expect(simulator.getByText('broken-addon: Invalid manifest')).toBeHidden();
   await page.getByRole('link', {name: 'Scenery', exact: true}).click();
+  await expect(page.getByRole('link', {name: 'Scenery', exact: true})).toHaveAttribute(
+    'aria-current',
+    'page'
+  );
+  await page.keyboard.press('Tab');
+  await page.getByText('sample', {exact: true}).focus();
+  await expect(page.getByRole('tooltip')).toHaveText('/Community/sample');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('tooltip')).toBeHidden();
   await expect(
     page.getByRole('cell', {name: 'Cached airport', exact: true})
   ).toBeVisible();

@@ -11,6 +11,7 @@
     "build": "vite build"
   },
   "dependencies": {
+    "@base-ui/react": "1.9.0",
     "@flightsim-things/contract": "workspace:*",
     "@stylexjs/stylex": "0.19.1",
     "@tanstack/react-query": "5.107.1",
