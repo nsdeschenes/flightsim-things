@@ -1,5 +1,5 @@
 import * as stylex from '@stylexjs/stylex';
-import {StrictMode, createContext, useContext, useEffect, useState} from 'react';
+import {StrictMode, createContext, useContext, useState} from 'react';
 import {
   createHashHistory,
   createRootRoute,
@@ -10,10 +10,17 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import {createRoot} from 'react-dom/client';
+import {
+  QueryClient,
+  QueryClientProvider,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import {desktopQueries} from './queries';
 
 import type {
   EnrichmentSummary,
-  OpenAipKeyStatus,
   ScanWarning,
   SimulatorInventory,
 } from '@flightsim-things/contract';
@@ -30,70 +37,57 @@ type Activity =
 
 function SimulatorSettings({
   inventory,
-  onChange,
   apiKey,
   canUseSavedKey,
 }: {
   inventory: SimulatorInventory;
-  onChange: (inventory: SimulatorInventory) => void;
   apiKey: string;
   canUseSavedKey: boolean;
 }) {
   const [path, setPath] = useState(inventory.communityPath ?? '');
-  const [activity, setActivity] = useState<Activity>({kind: 'idle'});
-  const busy =
-    activity.kind === 'saving' ||
-    activity.kind === 'scanning' ||
-    activity.kind === 'enriching';
-  const dirty = path !== (inventory.communityPath ?? '');
-  const label = inventory.simulator === 'msfs2020' ? 'MSFS 2020' : 'MSFS 2024';
-
-  async function save() {
-    setActivity({kind: 'saving'});
-    try {
-      const saved = await window.desktop!.saveCommunityPath(inventory.simulator, path);
-      onChange(saved);
-      setActivity({kind: 'saved'});
-    } catch (error) {
-      setActivity({
-        kind: 'error',
-        message:
-          error instanceof Error ? error.message : 'Could not save the Community folder.',
-      });
-    }
-  }
-
-  async function scan() {
-    setActivity({kind: 'scanning'});
-    try {
-      const result = await window.desktop!.scanAddons(inventory.simulator);
-      onChange(result.inventory);
-      setActivity({kind: 'scanned', warnings: result.warnings});
-    } catch (error) {
-      setActivity({
-        kind: 'error',
-        message:
-          error instanceof Error ? error.message : 'Could not scan the Community folder.',
-      });
-    }
-  }
-
-  async function enrich() {
-    setActivity({kind: 'enriching'});
-    try {
-      const result = await window.desktop!.enrichAirports(
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: async (action: 'saving' | 'scanning' | 'enriching') => {
+      const desktop = window.desktop!;
+      if (action === 'saving') {
+        const updated = await desktop.saveCommunityPath(inventory.simulator, path);
+        return {inventory: updated, activity: {kind: 'saved'} satisfies Activity};
+      }
+      if (action === 'scanning') {
+        const result = await desktop.scanAddons(inventory.simulator);
+        return {
+          inventory: result.inventory,
+          activity: {kind: 'scanned', warnings: result.warnings} satisfies Activity,
+        };
+      }
+      const result = await desktop.enrichAirports(
         inventory.simulator,
         apiKey.trim() ? apiKey : undefined
       );
-      onChange(result.inventory);
-      setActivity({kind: 'enriched', summary: result.summary});
-    } catch (error) {
-      setActivity({
-        kind: 'error',
-        message: error instanceof Error ? error.message : 'Could not enrich airports.',
-      });
-    }
-  }
+      return {
+        inventory: result.inventory,
+        activity: {kind: 'enriched', summary: result.summary} satisfies Activity,
+      };
+    },
+    onSuccess: async result => {
+      await queryClient.cancelQueries({queryKey: desktopQueries.library.queryKey});
+      queryClient.setQueryData(
+        desktopQueries.library.queryKey,
+        (current: SimulatorInventory[] | undefined) =>
+          current?.map(item =>
+            item.simulator === result.inventory.simulator ? result.inventory : item
+          )
+      );
+    },
+  });
+  const busy = mutation.isPending;
+  const activity: Activity = mutation.isPending
+    ? {kind: mutation.variables}
+    : mutation.isError
+      ? {kind: 'error', message: mutation.error.message}
+      : (mutation.data?.activity ?? {kind: 'idle'});
+  const dirty = path !== (inventory.communityPath ?? '');
+  const label = inventory.simulator === 'msfs2020' ? 'MSFS 2020' : 'MSFS 2024';
 
   return (
     <section aria-label={label} {...stylex.props(styles.section)}>
@@ -101,7 +95,7 @@ function SimulatorSettings({
       <form
         onSubmit={event => {
           event.preventDefault();
-          void save();
+          mutation.mutate('saving');
         }}
       >
         <label htmlFor={`${inventory.simulator}-path`}>Community folder</label>
@@ -112,7 +106,7 @@ function SimulatorSettings({
             value={path}
             onChange={event => {
               setPath(event.target.value);
-              setActivity({kind: 'idle'});
+              mutation.reset();
             }}
             disabled={busy}
             placeholder="Enter the full Community folder path"
@@ -127,7 +121,7 @@ function SimulatorSettings({
           </button>
           <button
             type="button"
-            onClick={() => void scan()}
+            onClick={() => mutation.mutate('scanning')}
             disabled={busy || dirty || !inventory.communityPath}
             {...stylex.props(styles.button)}
           >
@@ -138,7 +132,7 @@ function SimulatorSettings({
       <form
         onSubmit={event => {
           event.preventDefault();
-          void enrich();
+          mutation.mutate('enriching');
         }}
       >
         <div {...stylex.props(styles.controls)}>
@@ -201,90 +195,52 @@ type KeyActivity =
 
 function useAppState() {
   const [apiKey, setApiKey] = useState('');
-  const [keyStatus, setKeyStatus] = useState<OpenAipKeyStatus | null>(null);
-  const [keyActivity, setKeyActivity] = useState<KeyActivity>({kind: 'idle'});
-  const keyBusy = keyActivity.kind === 'saving' || keyActivity.kind === 'removing';
-
-  async function updateKey(action: 'save' | 'remove') {
-    setKeyActivity({kind: action === 'save' ? 'saving' : 'removing'});
-    try {
-      const status =
-        action === 'save'
-          ? await window.desktop!.saveOpenAipKey(apiKey)
-          : await window.desktop!.removeOpenAipKey();
-      setKeyStatus(status);
+  const queryClient = useQueryClient();
+  const health = useQuery(desktopQueries.health);
+  const inventories = useQuery(desktopQueries.library);
+  const savedKey = useQuery(desktopQueries.keyStatus);
+  const keyMutation = useMutation({
+    gcTime: 0,
+    mutationFn: (action: 'save' | 'remove') =>
+      action === 'save'
+        ? window.desktop!.saveOpenAipKey(apiKey)
+        : window.desktop!.removeOpenAipKey(),
+    onSuccess: async value => {
+      await queryClient.cancelQueries({queryKey: desktopQueries.keyStatus.queryKey});
+      queryClient.setQueryData(desktopQueries.keyStatus.queryKey, value);
       setApiKey('');
-      setKeyActivity({kind: action === 'save' ? 'saved' : 'removed'});
-    } catch (error) {
-      setKeyActivity({
-        kind: 'error',
-        message:
-          error instanceof Error ? error.message : 'Could not update the saved API key.',
-      });
-    }
-  }
-
-  const [status, setStatus] = useState(
-    window.desktop ? 'Connecting to desktop…' : 'Open the desktop app to connect.'
-  );
-  const [library, setLibrary] = useState<SimulatorInventory[]>([]);
-  useEffect(() => {
-    let active = true;
-    const desktop = window.desktop;
-    if (!desktop) {
-      return;
-    }
-    desktop.getOpenAipKeyStatus().then(
-      value => {
-        if (active) {
-          setKeyStatus(value);
-        }
-      },
-      () => {
-        if (active) {
-          setKeyActivity({
-            kind: 'error',
-            message: 'Could not read the saved API key status.',
-          });
-        }
-      }
-    );
-    Promise.all([desktop.getRuntimeHealth(), desktop.getAddonLibrary()]).then(
-      ([health, inventories]) => {
-        if (active) {
-          setStatus(`Runtime ${health.status}. Database ${health.database}.`);
-          setLibrary(inventories);
-        }
-      },
-      () => {
-        if (active) {
-          setStatus('Desktop connection failed. Restart the app to try again.');
-        }
-      }
-    );
-    return () => {
-      active = false;
-    };
-  }, []);
-  function updateInventory(updated: SimulatorInventory) {
-    setLibrary(current =>
-      current.map(inventory =>
-        inventory.simulator === updated.simulator ? updated : inventory
-      )
-    );
-  }
+    },
+  });
+  const keyStatus = savedKey.data;
+  const keyBusy = keyMutation.isPending;
+  const keyActivity: KeyActivity = keyMutation.isPending
+    ? {kind: keyMutation.variables === 'save' ? 'saving' : 'removing'}
+    : keyMutation.isError
+      ? {kind: 'error', message: keyMutation.error.message}
+      : keyMutation.isSuccess
+        ? {kind: keyMutation.variables === 'save' ? 'saved' : 'removed'}
+        : savedKey.isError
+          ? {kind: 'error', message: 'Could not read the saved API key status.'}
+          : {kind: 'idle'};
+  const status = !window.desktop
+    ? 'Open the desktop app to connect.'
+    : health.isError || inventories.isError
+      ? 'Desktop connection failed. Restart the app to try again.'
+      : health.data && inventories.data
+        ? `Runtime ${health.data.status}. Database ${health.data.database}.`
+        : 'Connecting to desktop…';
+  const library = inventories.data ?? [];
 
   return {
     apiKey,
     setApiKey,
     keyStatus,
     keyActivity,
-    setKeyActivity,
+    resetKeyActivity: keyMutation.reset,
     keyBusy,
-    updateKey,
+    updateKey: keyMutation.mutate,
     status,
     library,
-    updateInventory,
   };
 }
 
@@ -324,11 +280,10 @@ function Settings() {
     setApiKey,
     keyStatus,
     keyActivity,
-    setKeyActivity,
+    resetKeyActivity,
     keyBusy,
     updateKey,
     library,
-    updateInventory,
   } = useLibrary();
   return (
     <>
@@ -355,7 +310,7 @@ function Settings() {
               value={apiKey}
               onChange={event => {
                 setApiKey(event.target.value);
-                setKeyActivity({kind: 'idle'});
+                resetKeyActivity();
               }}
               disabled={keyBusy}
               {...stylex.props(styles.input)}
@@ -394,7 +349,6 @@ function Settings() {
         <SimulatorSettings
           key={inventory.simulator}
           inventory={inventory}
-          onChange={updateInventory}
           apiKey={apiKey}
           canUseSavedKey={Boolean(keyStatus?.saved && keyStatus.available)}
         />
@@ -577,12 +531,21 @@ const styles = stylex.create({
   folder: {fontFamily: 'monospace'},
 });
 
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {staleTime: Infinity, retry: false, networkMode: 'always'},
+    mutations: {retry: false, networkMode: 'always'},
+  },
+});
+
 const root = document.getElementById('root');
 if (!root) {
   throw new Error('Missing root element');
 }
 createRoot(root).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
   </StrictMode>
 );

@@ -181,6 +181,8 @@ jobs:
           sudo apt-get install -y libgtk-3-0
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           unshare --user --map-root-user true
+      - name: Install browser test runtime
+        run: pnpm exec playwright install chromium --only-shell
       - if: runner.os == 'Linux'
         run: xvfb-run -a pnpm test:desktop
       - if: runner.os != 'Linux'
