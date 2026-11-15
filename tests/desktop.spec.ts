@@ -16,6 +16,7 @@ async function expectInventoryCell(
 }
 
 test('desktop scans and persists simulator inventories through the isolated preload', async () => {
+  test.setTimeout(60_000);
   const testInfo = test.info();
   const directory = await mkdtemp(join(tmpdir(), 'flightsim-desktop-'));
   try {
@@ -108,6 +109,13 @@ test('desktop scans and persists simulator inventories through the isolated prel
     let app = await launch();
     try {
       const page = await app.firstWindow();
+      const rendererErrors: string[] = [];
+      page.on('pageerror', error => rendererErrors.push(error.message));
+      page.on('console', message => {
+        if (message.text().includes('Refused to')) {
+          rendererErrors.push(message.text());
+        }
+      });
       await expect(page.getByRole('heading', {name: 'Flightsim Things'})).toBeVisible();
       await expect(page.getByRole('status')).toHaveText(
         'Runtime ready. Database connected.'
@@ -235,7 +243,25 @@ test('desktop scans and persists simulator inventories through the isolated prel
       await expect(
         msfs2024.getByText('Updated 1 airports.', {exact: false})
       ).toBeVisible();
-      await expectInventoryCell(page, 'Enriched airport', 'Scenery');
+      await page.getByRole('link', {name: 'Scenery', exact: true}).click();
+      const map = page.getByTestId('scenery-map');
+      await expect(map.locator('svg').first()).toBeVisible();
+      await expect(
+        page.getByText(
+          '4 installations · 1 mapped · 3 without coordinates · 1 map locations',
+          {exact: true}
+        )
+      ).toBeVisible();
+      await page.getByRole('button', {name: 'Enriched airport', exact: true}).click();
+      await expect(
+        page
+          .getByRole('region', {name: 'Installation details'})
+          .getByText('45, -73', {exact: true})
+      ).toBeVisible();
+      await expect(map).toHaveAttribute('data-camera', '0,0,1');
+      await page.getByRole('button', {name: 'Focus airport'}).click();
+      await expect(map).toHaveAttribute('data-camera', /,6$/);
+      await page.getByRole('link', {name: 'Settings', exact: true}).click();
       await msfs2020.getByRole('button', {name: 'Scan addons'}).click();
       await expect(msfs2020.getByText('Scan complete.', {exact: false})).toBeVisible();
       await msfs2020.getByLabel('Community folder').fill(join(directory, 'missing'));
@@ -265,6 +291,7 @@ test('desktop scans and persists simulator inventories through the isolated prel
         ],
       ]);
 
+      expect(rendererErrors).toEqual([]);
       await app.close();
       app = await launch();
       const reopened = await app.firstWindow();
@@ -275,7 +302,17 @@ test('desktop scans and persists simulator inventories through the isolated prel
           .getByLabel('Community folder')
       ).toHaveValue(join(directory, 'missing'));
       await expectInventoryCell(reopened, 'Desktop Aircraft');
-      await expectInventoryCell(reopened, 'Enriched airport', 'Scenery');
+      await reopened.getByRole('link', {name: 'Scenery', exact: true}).click();
+      await reopened.getByRole('button', {name: 'Enriched airport', exact: true}).click();
+      await expect(
+        reopened
+          .getByRole('region', {name: 'Installation details'})
+          .getByText('45, -73', {exact: true})
+      ).toBeVisible();
+      await expect(
+        reopened.getByTestId('scenery-map').locator('svg').first()
+      ).toBeVisible();
+      await reopened.getByRole('link', {name: 'Settings', exact: true}).click();
       await expect(reopened.getByLabel('OpenAIP API key')).toHaveValue('');
       await expect(
         reopened.getByText('An API key is saved for both simulators.')

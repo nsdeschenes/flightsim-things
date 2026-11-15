@@ -1,6 +1,6 @@
 import {createFileRoute} from '@tanstack/react-router';
-import {AddonTables} from '../components/addon-tables';
+import {SceneryLibrary} from '../components/scenery/scenery-library';
 
 export const Route = createFileRoute('/scenery')({
-  component: () => <AddonTables scenery />,
+  component: SceneryLibrary,
 });

@@ -14,17 +14,31 @@
     "@base-ui/react": "1.9.0",
     "@flightsim-things/contract": "workspace:*",
     "@stylexjs/stylex": "0.19.1",
+    "@tanstack/charts": "1.5.0",
     "@tanstack/react-form": "1.33.5",
     "@tanstack/react-query": "5.107.1",
     "@tanstack/react-router": "1.170.46",
+    "d3-drag": "3.0.0",
+    "d3-geo": "3.1.1",
+    "d3-selection": "3.0.0",
+    "d3-zoom": "3.0.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "topojson-client": "3.1.0",
+    "world-atlas": "2.0.2"
   },
   "devDependencies": {
     "@stylexjs/unplugin": "0.19.1",
     "@tanstack/router-plugin": "1.169.0",
+    "@types/d3-drag": "3.0.7",
+    "@types/d3-geo": "3.1.1",
+    "@types/d3-selection": "3.0.11",
+    "@types/d3-zoom": "3.0.8",
+    "@types/geojson": "7946.0.16",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
+    "@types/topojson-client": "3.1.5",
+    "@types/topojson-specification": "1.0.5",
     "@vitejs/plugin-react": "6.1.1",
     "vite": "8.3.0"
   }
