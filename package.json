@@ -22,8 +22,7 @@
     "package:macos": "node scripts/package.mjs darwin-arm64",
     "package:desktop": "node scripts/package.mjs",
     "test:package": "node scripts/package-smoke.mjs",
-    "release:stage": "node scripts/stage-release.mjs",
-    "prototype:scenery": "node scripts/scenery-map-prototype.mjs"
+    "release:stage": "node scripts/stage-release.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.65.1",
