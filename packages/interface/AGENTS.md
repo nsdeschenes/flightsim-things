@@ -18,6 +18,12 @@ These rules apply to `packages/interface/` and its subdirectories.
 - Define reusable query and mutation configuration with `queryOptions` and `mutationOptions`.
 - Call TanStack Query hooks such as `useQuery` and `useMutation` directly with those options. Do not wrap them in reusable data fetching or mutation hooks.
 
+## State ownership
+
+- Keep form drafts and UI state in the component or route that owns their lifetime.
+- Request server data directly in consuming components with TanStack Query. Share query options and cache entries instead of copying query results into context.
+- Do not introduce app-wide state contexts, global mutable stores, or aggregate app-state hooks. Framework providers such as QueryClientProvider are allowed.
+
 ## Styling
 
 - Use StyleX (`@stylexjs/stylex`) for all styling, including styles applied to Base UI components.

@@ -1,4 +1,3 @@
-import {Button} from '@base-ui/react/button';
 import {Collapsible} from '@base-ui/react/collapsible';
 import {Field} from '@base-ui/react/field';
 import * as stylex from '@stylexjs/stylex';
@@ -10,7 +9,11 @@ import type {
   SimulatorInventory,
 } from '@flightsim-things/contract';
 import {desktopQueries} from '../queries';
-import {styles} from '../styles';
+import {Button} from './button';
+import {Controls} from './controls';
+import {FieldControl} from './field-control';
+import {Heading} from './heading';
+import {Section} from './section';
 
 type Activity =
   | {kind: 'idle'}
@@ -84,8 +87,8 @@ export function SimulatorSettings({
   const label = inventory.simulator === 'msfs2020' ? 'MSFS 2020' : 'MSFS 2024';
 
   return (
-    <section aria-label={label} {...stylex.props(styles.section)}>
-      <h2 {...stylex.props(styles.subheading)}>{label}</h2>
+    <Section aria-label={label}>
+      <Heading>{label}</Heading>
       <form
         noValidate
         onSubmit={event => {
@@ -111,8 +114,8 @@ export function SimulatorSettings({
               <Field.Label htmlFor={`${inventory.simulator}-path`}>
                 Community folder
               </Field.Label>
-              <div {...stylex.props(styles.controls)}>
-                <Field.Control
+              <Controls>
+                <FieldControl
                   id={`${inventory.simulator}-path`}
                   type="text"
                   value={field.state.value}
@@ -123,24 +126,18 @@ export function SimulatorSettings({
                   }}
                   disabled={busy}
                   placeholder="Enter the full Community folder path"
-                  {...stylex.props(styles.input)}
                 />
-                <Button
-                  type="submit"
-                  disabled={busy || !path.trim()}
-                  {...stylex.props(styles.button)}
-                >
+                <Button type="submit" disabled={busy || !path.trim()}>
                   {activity.kind === 'saving' ? 'Saving…' : 'Save path'}
                 </Button>
                 <Button
                   type="button"
                   onClick={() => mutation.mutate('scanning')}
                   disabled={busy || dirty || !inventory.communityPath}
-                  {...stylex.props(styles.button)}
                 >
                   {activity.kind === 'scanning' ? 'Scanning…' : 'Scan addons'}
                 </Button>
-              </div>
+              </Controls>
               <Field.Error match={!field.state.meta.isValid}>
                 {field.state.meta.errors.join(', ')}
               </Field.Error>
@@ -148,18 +145,17 @@ export function SimulatorSettings({
           )}
         </form.Field>
       </form>
-      <div {...stylex.props(styles.controls)}>
+      <Controls>
         <Button
           type="button"
           onClick={() => mutation.mutate('enriching')}
           disabled={
             busy || (!apiKey.trim() && !canUseSavedKey) || inventory.airports.length === 0
           }
-          {...stylex.props(styles.button)}
         >
           {activity.kind === 'enriching' ? 'Enriching…' : 'Enrich airports'}
         </Button>
-      </div>
+      </Controls>
       <div aria-live="polite" {...stylex.props(styles.feedback)}>
         {dirty && <p>Save the path before scanning.</p>}
         {activity.kind === 'saved' && <p>Community folder saved.</p>}
@@ -179,9 +175,7 @@ export function SimulatorSettings({
         {activity.kind === 'error' && <p role="alert">{activity.message}</p>}
         {activity.kind === 'scanned' && activity.warnings.length > 0 && (
           <Collapsible.Root>
-            <Collapsible.Trigger {...stylex.props(styles.button)}>
-              Skipped folders
-            </Collapsible.Trigger>
+            <Collapsible.Trigger render={<Button />}>Skipped folders</Collapsible.Trigger>
             <Collapsible.Panel>
               <ul>
                 {activity.warnings.map(warning => (
@@ -200,6 +194,11 @@ export function SimulatorSettings({
           {inventory.scannedPath}
         </p>
       )}
-    </section>
+    </Section>
   );
 }
+
+const styles = stylex.create({
+  feedback: {marginTop: 12, marginBottom: 12, overflowWrap: 'anywhere'},
+  scanInfo: {fontSize: 13, color: '#555', marginBottom: 12, overflowWrap: 'anywhere'},
+});

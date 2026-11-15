@@ -1,13 +1,18 @@
 import {Tooltip} from '@base-ui/react/tooltip';
 import * as stylex from '@stylexjs/stylex';
-import {useLibrary} from '../app-state';
-import {styles} from '../styles';
+import {useQuery} from '@tanstack/react-query';
+import {desktopQueries} from '../queries';
+import {Heading} from './heading';
+import {Section} from './section';
+import {TableContainer, Table, TableCaption, TableHeaderCell, TableCell} from './table';
 
 export function AddonTables({scenery = false}: {scenery?: boolean}) {
-  const {library} = useLibrary();
+  const inventories = useQuery(desktopQueries.library);
+  const library = inventories.data ?? [];
   return (
     <>
-      <h2 {...stylex.props(styles.subheading)}>{scenery ? 'Scenery' : 'Addons'}</h2>
+      <Heading>{scenery ? 'Scenery' : 'Addons'}</Heading>
+      {inventories.isError && <p role="alert">Could not load addon library.</p>}
       {library.map(source => {
         const inventory = {
           ...source,
@@ -20,18 +25,14 @@ export function AddonTables({scenery = false}: {scenery?: boolean}) {
         };
         const label = inventory.simulator === 'msfs2020' ? 'MSFS 2020' : 'MSFS 2024';
         return (
-          <section
-            key={inventory.simulator}
-            aria-label={label}
-            {...stylex.props(styles.section)}
-          >
-            <h3 {...stylex.props(styles.subheading)}>{label}</h3>
+          <Section key={inventory.simulator} aria-label={label}>
+            <Heading as="h3">{label}</Heading>
             {scenery && inventory.airports.length > 0 && (
-              <div {...stylex.props(styles.tableContainer)}>
-                <table {...stylex.props(styles.table)}>
-                  <caption {...stylex.props(styles.caption)}>
+              <TableContainer>
+                <Table>
+                  <TableCaption>
                     {label} Airports ({inventory.airports.length})
-                  </caption>
+                  </TableCaption>
                   <thead>
                     <tr>
                       {[
@@ -41,9 +42,9 @@ export function AddonTables({scenery = false}: {scenery?: boolean}) {
                         'Longitude',
                         'Elevation (m)',
                       ].map(label => (
-                        <th key={label} scope="col" {...stylex.props(styles.cell)}>
+                        <TableHeaderCell key={label} scope="col">
                           {label}
-                        </th>
+                        </TableHeaderCell>
                       ))}
                     </tr>
                   </thead>
@@ -57,37 +58,31 @@ export function AddonTables({scenery = false}: {scenery?: boolean}) {
                           airport.longitude,
                           airport.elevationMeters,
                         ].map((value, index) => (
-                          <td key={index} {...stylex.props(styles.cell)}>
-                            {value ?? 'Unknown'}
-                          </td>
+                          <TableCell key={index}>{value ?? 'Unknown'}</TableCell>
                         ))}
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
+                </Table>
+              </TableContainer>
             )}
             {inventory.addons.length > 0 ? (
-              <div {...stylex.props(styles.tableContainer)}>
-                <table {...stylex.props(styles.table)}>
-                  <caption {...stylex.props(styles.caption)}>
+              <TableContainer>
+                <Table>
+                  <TableCaption>
                     {label} {scenery ? 'Scenery' : 'Addons'} ({inventory.addons.length})
-                  </caption>
+                  </TableCaption>
                   <thead>
                     <tr>
-                      <th scope="col" {...stylex.props(styles.cell)}>
-                        Addon name
-                      </th>
-                      <th scope="col" {...stylex.props(styles.cell)}>
-                        Folder
-                      </th>
+                      <TableHeaderCell scope="col">Addon name</TableHeaderCell>
+                      <TableHeaderCell scope="col">Folder</TableHeaderCell>
                     </tr>
                   </thead>
                   <tbody>
                     {inventory.addons.map(addon => (
                       <tr key={addon.folderName}>
-                        <td {...stylex.props(styles.cell)}>{addon.name}</td>
-                        <td {...stylex.props(styles.cell, styles.folder)}>
+                        <TableCell>{addon.name}</TableCell>
+                        <TableCell {...stylex.props(styles.folder)}>
                           <Tooltip.Root>
                             <Tooltip.Trigger
                               render={<span />}
@@ -108,12 +103,12 @@ export function AddonTables({scenery = false}: {scenery?: boolean}) {
                               </Tooltip.Positioner>
                             </Tooltip.Portal>
                           </Tooltip.Root>
-                        </td>
+                        </TableCell>
                       </tr>
                     ))}
                   </tbody>
-                </table>
-              </div>
+                </Table>
+              </TableContainer>
             ) : (
               <p>
                 {inventory.scannedAt
@@ -123,9 +118,21 @@ export function AddonTables({scenery = false}: {scenery?: boolean}) {
                   : 'Save your Community folder and scan to list installed addons.'}
               </p>
             )}
-          </section>
+          </Section>
         );
       })}
     </>
   );
 }
+
+const styles = stylex.create({
+  folder: {fontFamily: 'monospace'},
+  tooltip: {
+    padding: 8,
+    backgroundColor: '#242424',
+    color: '#fff',
+    borderRadius: 4,
+    maxWidth: 400,
+    overflowWrap: 'anywhere',
+  },
+});

@@ -59,6 +59,9 @@ test('desktop queries cache reads and publish mutations across routes while offl
   });
   await page.goto('http://127.0.0.1:5173');
   await expect(page.getByRole('status')).toHaveText('Runtime ready. Database connected.');
+  expect(
+    await page.evaluate(() => (window as unknown as {calls: unknown}).calls)
+  ).toEqual({health: 1, library: 1, key: 0, saves: 0});
   await page.getByRole('link', {name: 'Settings', exact: true}).click();
   await context.setOffline(true);
   const simulator = page.getByRole('region', {name: 'MSFS 2020', exact: true});
@@ -166,7 +169,7 @@ test('path forms validate on submit and keep simulator drafts and pending action
   await expect(second.getByRole('button', {name: 'Scan addons'})).toBeDisabled();
 });
 
-test('session key survives navigation, enrichment and failed key mutations, then clears on success', async ({
+test('session key clears on leaving Settings, survives failed mutations and enrichment, then clears on success', async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -228,7 +231,9 @@ test('session key survives navigation, enrichment and failed key mutations, then
   await expect(page.getByText('Enter an OpenAIP API key.')).toBeHidden();
   await page.getByRole('link', {name: 'Scenery', exact: true}).click();
   await page.getByRole('link', {name: 'Settings', exact: true}).click();
-  await expect(key).toHaveValue(' session-secret ');
+  await expect(key).toHaveValue('');
+  await expect(first.getByRole('button', {name: 'Enrich airports'})).toBeDisabled();
+  await key.fill(' session-secret ');
   await first.getByRole('button', {name: 'Enrich airports'}).click();
   await expect(first.getByRole('alert')).toHaveText('Enrichment unavailable');
   await expect(key).toHaveValue(' session-secret ');
@@ -313,4 +318,31 @@ test('unavailable secure storage blocks saving while keeping session input', asy
       (window as unknown as {getSaveCalls: () => number}).getSaveCalls()
     )
   ).toBe(0);
+});
+
+test('library failures stay local while health and Settings remain available', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    Object.assign(window, {
+      desktop: {
+        getRuntimeHealth: async () => ({status: 'ready', database: 'connected'}),
+        getAddonLibrary: async () => {
+          throw new Error('Library unavailable');
+        },
+        getOpenAipKeyStatus: async () => ({saved: false, available: true}),
+      },
+    });
+  });
+  await page.goto('http://127.0.0.1:5173');
+  await expect(page.getByRole('alert')).toHaveText('Could not load addon library.');
+  await expect(page.getByRole('status')).toHaveText('Runtime ready. Database connected.');
+  await page.getByRole('link', {name: 'Settings', exact: true}).click();
+  await expect(page.getByRole('alert')).toHaveText('Could not load addon library.');
+  await page.getByLabel('OpenAIP API key', {exact: true}).fill('session-secret');
+  await expect(
+    page.getByRole('button', {name: 'Save API key', exact: true})
+  ).toBeEnabled();
+  await page.getByRole('link', {name: 'Scenery', exact: true}).click();
+  await expect(page.getByRole('alert')).toHaveText('Could not load addon library.');
 });
