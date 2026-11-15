@@ -108,15 +108,22 @@ test('scenery links filtered installations and map without moving the camera on 
   await expect(map).toHaveAttribute('data-camera', '0,0,1');
   const box = await map.boundingBox();
   await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  const overviewPath = await coastline.getAttribute('d');
+  await page.mouse.wheel(0, -300);
+  await expect(coastline).not.toHaveAttribute('d', overviewPath!);
+  const zoomedCamera = (await map.getAttribute('data-camera'))!.split(',').map(Number);
+  expect(zoomedCamera[2]).toBeGreaterThan(1);
+  const zoomedPath = await coastline.getAttribute('d');
   await page.mouse.down();
   await page.mouse.move(box!.x + box!.width / 2 + 40, box!.y + box!.height / 2 + 20, {
     steps: 5,
   });
   await page.mouse.up();
-  await expect(map).not.toHaveAttribute('data-camera', '0,0,1');
-  const panned = await map.getAttribute('data-camera');
-  await page.mouse.wheel(0, 100);
-  await expect(map).toHaveAttribute('data-camera', panned!);
+  await expect(coastline).not.toHaveAttribute('d', zoomedPath!);
+  const pannedCamera = (await map.getAttribute('data-camera'))!.split(',').map(Number);
+  expect(pannedCamera[0]).toBeCloseTo(zoomedCamera[0]! + 40);
+  expect(pannedCamera[1]).toBeCloseTo(zoomedCamera[1]! + 20);
+  expect(pannedCamera[2]).toBe(zoomedCamera[2]);
   await page.getByRole('combobox', {name: 'Simulator', exact: true}).click();
   await page.getByRole('option', {name: 'MSFS 2020', exact: true}).click();
   await expect(
@@ -150,8 +157,12 @@ test('scenery links filtered installations and map without moving the camera on 
   const resizedBox = await map.boundingBox();
   expect(resizedBox!.height).toBeCloseTo(Math.max(resizedBox!.width / 2, 240), 0);
   await page.mouse.move(resizedBox!.x + 100, resizedBox!.y + 100);
+  await page.clock.install();
+  await page.mouse.wheel(0, -300);
   await page.mouse.down();
   await page.mouse.move(resizedBox!.x + 120, resizedBox!.y + 110);
+  // D3 ends wheel gestures after 150ms, even when a mouse drag has since started.
+  await page.clock.runFor(200);
   await page.getByRole('link', {name: 'Home', exact: true}).focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('heading', {name: 'Addons', exact: true})).toBeVisible();

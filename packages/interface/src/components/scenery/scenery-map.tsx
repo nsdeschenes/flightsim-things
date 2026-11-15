@@ -41,14 +41,15 @@ export function SceneryMap({
         [element.clientWidth, element.clientHeight],
       ])
       .scaleExtent([1, 15])
-      .filter(event => !event.type.startsWith('wheel') && !event.button)
       .on('start', event => {
         if (event.sourceEvent?.type === 'mousedown') {
           dragWindow = event.sourceEvent.view;
         }
       })
-      .on('end', () => {
-        dragWindow = null;
+      .on('end', event => {
+        if (event.sourceEvent?.type === 'mouseup') {
+          dragWindow = null;
+        }
       })
       .on('zoom', event => setCamera(event.transform));
     behavior.current = gesture;
@@ -178,8 +179,8 @@ export function SceneryMap({
         </Button>
       </Controls>
       <p>
-        Drag to pan. Use the buttons to zoom. Scroll to move the page. Select an
-        installation below for keyboard access.
+        Drag to pan. Scroll or use the buttons to zoom. Select an installation below for
+        keyboard access.
       </p>
       <div
         ref={host}
@@ -241,6 +242,7 @@ const styles = stylex.create({
     overflow: 'hidden',
     backgroundColor: '#101e2b',
     borderRadius: 8,
-    touchAction: 'pan-y',
+    touchAction: 'none',
+    cursor: {default: 'grab', ':active': 'grabbing'},
   },
 });
