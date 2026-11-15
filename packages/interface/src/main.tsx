@@ -1,11 +1,10 @@
 import {Button} from '@base-ui/react/button';
 import {Collapsible} from '@base-ui/react/collapsible';
 import {Field} from '@base-ui/react/field';
-import {Form} from '@base-ui/react/form';
 import {NavigationMenu} from '@base-ui/react/navigation-menu';
 import {Tooltip} from '@base-ui/react/tooltip';
 import * as stylex from '@stylexjs/stylex';
-import {StrictMode, createContext, useContext, useState} from 'react';
+import {StrictMode, createContext, useContext} from 'react';
 import {
   createHashHistory,
   createRootRoute,
@@ -23,6 +22,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
+import {revalidateLogic, useForm, useStore} from '@tanstack/react-form';
 import {desktopQueries} from './queries';
 
 import type {
@@ -50,7 +50,16 @@ function SimulatorSettings({
   apiKey: string;
   canUseSavedKey: boolean;
 }) {
-  const [path, setPath] = useState(inventory.communityPath ?? '');
+  const form = useForm({
+    defaultValues: {communityPath: inventory.communityPath ?? ''},
+    validationLogic: revalidateLogic(),
+    onSubmit: () => {
+      if (!mutation.isPending) {
+        mutation.mutate('saving');
+      }
+    },
+  });
+  const path = useStore(form.store, state => state.values.communityPath);
   const queryClient = useQueryClient();
   const mutation = useMutation({
     mutationFn: async (action: 'saving' | 'scanning' | 'enriching') => {
@@ -98,67 +107,80 @@ function SimulatorSettings({
   return (
     <section aria-label={label} {...stylex.props(styles.section)}>
       <h2 {...stylex.props(styles.subheading)}>{label}</h2>
-      <Form
+      <form
+        noValidate
         onSubmit={event => {
           event.preventDefault();
-          mutation.mutate('saving');
+          void form.handleSubmit();
         }}
       >
-        <Field.Root disabled={busy}>
-          <Field.Label htmlFor={`${inventory.simulator}-path`}>
-            Community folder
-          </Field.Label>
-          <div {...stylex.props(styles.controls)}>
-            <Field.Control
-              id={`${inventory.simulator}-path`}
-              type="text"
-              value={path}
-              onChange={event => {
-                setPath(event.target.value);
-                mutation.reset();
-              }}
+        <form.Field
+          name="communityPath"
+          validators={{
+            onDynamic: ({value}) =>
+              !value.trim() ? 'Enter a Community folder path.' : undefined,
+          }}
+        >
+          {field => (
+            <Field.Root
+              name={field.name}
+              invalid={!field.state.meta.isValid}
+              dirty={field.state.meta.isDirty}
+              touched={field.state.meta.isTouched}
               disabled={busy}
-              placeholder="Enter the full Community folder path"
-              {...stylex.props(styles.input)}
-            />
-            <Button
-              type="submit"
-              disabled={busy || !path.trim()}
-              {...stylex.props(styles.button)}
             >
-              {activity.kind === 'saving' ? 'Saving…' : 'Save path'}
-            </Button>
-            <Button
-              type="button"
-              onClick={() => mutation.mutate('scanning')}
-              disabled={busy || dirty || !inventory.communityPath}
-              {...stylex.props(styles.button)}
-            >
-              {activity.kind === 'scanning' ? 'Scanning…' : 'Scan addons'}
-            </Button>
-          </div>
-        </Field.Root>
-      </Form>
-      <Form
-        onSubmit={event => {
-          event.preventDefault();
-          mutation.mutate('enriching');
-        }}
-      >
-        <div {...stylex.props(styles.controls)}>
-          <Button
-            type="submit"
-            disabled={
-              busy ||
-              (!apiKey.trim() && !canUseSavedKey) ||
-              inventory.airports.length === 0
-            }
-            {...stylex.props(styles.button)}
-          >
-            {activity.kind === 'enriching' ? 'Enriching…' : 'Enrich airports'}
-          </Button>
-        </div>
-      </Form>
+              <Field.Label htmlFor={`${inventory.simulator}-path`}>
+                Community folder
+              </Field.Label>
+              <div {...stylex.props(styles.controls)}>
+                <Field.Control
+                  id={`${inventory.simulator}-path`}
+                  type="text"
+                  value={field.state.value}
+                  onBlur={field.handleBlur}
+                  onValueChange={value => {
+                    field.handleChange(value);
+                    mutation.reset();
+                  }}
+                  disabled={busy}
+                  placeholder="Enter the full Community folder path"
+                  {...stylex.props(styles.input)}
+                />
+                <Button
+                  type="submit"
+                  disabled={busy || !path.trim()}
+                  {...stylex.props(styles.button)}
+                >
+                  {activity.kind === 'saving' ? 'Saving…' : 'Save path'}
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => mutation.mutate('scanning')}
+                  disabled={busy || dirty || !inventory.communityPath}
+                  {...stylex.props(styles.button)}
+                >
+                  {activity.kind === 'scanning' ? 'Scanning…' : 'Scan addons'}
+                </Button>
+              </div>
+              <Field.Error match={!field.state.meta.isValid}>
+                {field.state.meta.errors.join(', ')}
+              </Field.Error>
+            </Field.Root>
+          )}
+        </form.Field>
+      </form>
+      <div {...stylex.props(styles.controls)}>
+        <Button
+          type="button"
+          onClick={() => mutation.mutate('enriching')}
+          disabled={
+            busy || (!apiKey.trim() && !canUseSavedKey) || inventory.airports.length === 0
+          }
+          {...stylex.props(styles.button)}
+        >
+          {activity.kind === 'enriching' ? 'Enriching…' : 'Enrich airports'}
+        </Button>
+      </div>
       <div aria-live="polite" {...stylex.props(styles.feedback)}>
         {dirty && <p>Save the path before scanning.</p>}
         {activity.kind === 'saved' && <p>Community folder saved.</p>}
@@ -208,7 +230,16 @@ type KeyActivity =
   | {kind: 'error'; message: string};
 
 function useAppState() {
-  const [apiKey, setApiKey] = useState('');
+  const keyForm = useForm({
+    defaultValues: {apiKey: ''},
+    validationLogic: revalidateLogic(),
+    onSubmit: () => {
+      if (!keyMutation.isPending && savedKey.data?.available) {
+        keyMutation.mutate('save');
+      }
+    },
+  });
+  const apiKey = useStore(keyForm.store, state => state.values.apiKey);
   const queryClient = useQueryClient();
   const health = useQuery(desktopQueries.health);
   const inventories = useQuery(desktopQueries.library);
@@ -222,7 +253,7 @@ function useAppState() {
     onSuccess: async value => {
       await queryClient.cancelQueries({queryKey: desktopQueries.keyStatus.queryKey});
       queryClient.setQueryData(desktopQueries.keyStatus.queryKey, value);
-      setApiKey('');
+      keyForm.reset();
     },
   });
   const keyStatus = savedKey.data;
@@ -247,7 +278,7 @@ function useAppState() {
 
   return {
     apiKey,
-    setApiKey,
+    keyForm,
     keyStatus,
     keyActivity,
     resetKeyActivity: keyMutation.reset,
@@ -303,7 +334,7 @@ function App() {
 function Settings() {
   const {
     apiKey,
-    setApiKey,
+    keyForm,
     keyStatus,
     keyActivity,
     resetKeyActivity,
@@ -321,45 +352,66 @@ function Settings() {
             ? 'An API key is saved for both simulators.'
             : 'No API key is saved.'}
         </p>
-        <Form
+        <form
+          noValidate
           onSubmit={event => {
             event.preventDefault();
-            void updateKey('save');
+            void keyForm.handleSubmit();
           }}
         >
-          <Field.Root disabled={keyBusy}>
-            <Field.Label htmlFor="openaip-key">OpenAIP API key</Field.Label>
-            <div {...stylex.props(styles.controls)}>
-              <Field.Control
-                id="openaip-key"
-                type="password"
-                autoComplete="off"
-                value={apiKey}
-                onChange={event => {
-                  setApiKey(event.target.value);
-                  resetKeyActivity();
-                }}
+          <keyForm.Field
+            name="apiKey"
+            validators={{
+              onDynamic: ({value}) =>
+                !value.trim() ? 'Enter an OpenAIP API key.' : undefined,
+            }}
+          >
+            {field => (
+              <Field.Root
+                name={field.name}
+                invalid={!field.state.meta.isValid}
+                dirty={field.state.meta.isDirty}
+                touched={field.state.meta.isTouched}
                 disabled={keyBusy}
-                {...stylex.props(styles.input)}
-              />
-              <Button
-                type="submit"
-                disabled={keyBusy || !keyStatus?.available || !apiKey.trim()}
-                {...stylex.props(styles.button)}
               >
-                {keyActivity.kind === 'saving' ? 'Saving…' : 'Save API key'}
-              </Button>
-              <Button
-                type="button"
-                onClick={() => void updateKey('remove')}
-                disabled={keyBusy || !keyStatus?.saved}
-                {...stylex.props(styles.button)}
-              >
-                {keyActivity.kind === 'removing' ? 'Removing…' : 'Remove saved key'}
-              </Button>
-            </div>
-          </Field.Root>
-        </Form>
+                <Field.Label htmlFor="openaip-key">OpenAIP API key</Field.Label>
+                <div {...stylex.props(styles.controls)}>
+                  <Field.Control
+                    id="openaip-key"
+                    type="password"
+                    autoComplete="off"
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onValueChange={value => {
+                      field.handleChange(value);
+                      resetKeyActivity();
+                    }}
+                    disabled={keyBusy}
+                    {...stylex.props(styles.input)}
+                  />
+                  <Button
+                    type="submit"
+                    disabled={keyBusy || !keyStatus?.available || !apiKey.trim()}
+                    {...stylex.props(styles.button)}
+                  >
+                    {keyActivity.kind === 'saving' ? 'Saving…' : 'Save API key'}
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => void updateKey('remove')}
+                    disabled={keyBusy || !keyStatus?.saved}
+                    {...stylex.props(styles.button)}
+                  >
+                    {keyActivity.kind === 'removing' ? 'Removing…' : 'Remove saved key'}
+                  </Button>
+                </div>
+                <Field.Error match={!field.state.meta.isValid}>
+                  {field.state.meta.errors.join(', ')}
+                </Field.Error>
+              </Field.Root>
+            )}
+          </keyForm.Field>
+        </form>
         <p>
           Enter a key to use for this session, or save it securely on this device. Leave
           the field empty to use the saved key.
