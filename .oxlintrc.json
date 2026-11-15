@@ -12,6 +12,7 @@
   },
   "ignorePatterns": [
     "**/dist/**",
+    "**/routeTree.gen.ts",
     "node_modules",
     "test-results",
     "playwright-report",

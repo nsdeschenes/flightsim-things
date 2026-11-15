@@ -208,13 +208,14 @@ test('desktop scans and persists simulator inventories through the isolated prel
       await page.reload();
       await expect(
         page.getByText(
-          'Secure storage is unavailable. Enter a key to use for this session.'
+          'Secure storage is unavailable. Enter a key to use while Settings is open.'
         )
       ).toBeVisible();
       await page.getByLabel('OpenAIP API key').fill('desktop-test-key');
       await page.getByRole('link', {name: 'Home', exact: true}).click();
       await page.getByRole('link', {name: 'Settings', exact: true}).click();
-      await expect(page.getByLabel('OpenAIP API key')).toHaveValue('desktop-test-key');
+      await expect(page.getByLabel('OpenAIP API key')).toHaveValue('');
+      await page.getByLabel('OpenAIP API key').fill('desktop-test-key');
       await expect(
         page.getByRole('button', {name: 'Save API key', exact: true})
       ).toBeDisabled();
