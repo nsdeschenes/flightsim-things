@@ -1,3 +1,9 @@
+import {Button} from '@base-ui/react/button';
+import {Collapsible} from '@base-ui/react/collapsible';
+import {Field} from '@base-ui/react/field';
+import {Form} from '@base-ui/react/form';
+import {NavigationMenu} from '@base-ui/react/navigation-menu';
+import {Tooltip} from '@base-ui/react/tooltip';
 import * as stylex from '@stylexjs/stylex';
 import {StrictMode, createContext, useContext, useState} from 'react';
 import {
@@ -92,51 +98,55 @@ function SimulatorSettings({
   return (
     <section aria-label={label} {...stylex.props(styles.section)}>
       <h2 {...stylex.props(styles.subheading)}>{label}</h2>
-      <form
+      <Form
         onSubmit={event => {
           event.preventDefault();
           mutation.mutate('saving');
         }}
       >
-        <label htmlFor={`${inventory.simulator}-path`}>Community folder</label>
-        <div {...stylex.props(styles.controls)}>
-          <input
-            id={`${inventory.simulator}-path`}
-            type="text"
-            value={path}
-            onChange={event => {
-              setPath(event.target.value);
-              mutation.reset();
-            }}
-            disabled={busy}
-            placeholder="Enter the full Community folder path"
-            {...stylex.props(styles.input)}
-          />
-          <button
-            type="submit"
-            disabled={busy || !path.trim()}
-            {...stylex.props(styles.button)}
-          >
-            {activity.kind === 'saving' ? 'Saving…' : 'Save path'}
-          </button>
-          <button
-            type="button"
-            onClick={() => mutation.mutate('scanning')}
-            disabled={busy || dirty || !inventory.communityPath}
-            {...stylex.props(styles.button)}
-          >
-            {activity.kind === 'scanning' ? 'Scanning…' : 'Scan addons'}
-          </button>
-        </div>
-      </form>
-      <form
+        <Field.Root disabled={busy}>
+          <Field.Label htmlFor={`${inventory.simulator}-path`}>
+            Community folder
+          </Field.Label>
+          <div {...stylex.props(styles.controls)}>
+            <Field.Control
+              id={`${inventory.simulator}-path`}
+              type="text"
+              value={path}
+              onChange={event => {
+                setPath(event.target.value);
+                mutation.reset();
+              }}
+              disabled={busy}
+              placeholder="Enter the full Community folder path"
+              {...stylex.props(styles.input)}
+            />
+            <Button
+              type="submit"
+              disabled={busy || !path.trim()}
+              {...stylex.props(styles.button)}
+            >
+              {activity.kind === 'saving' ? 'Saving…' : 'Save path'}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => mutation.mutate('scanning')}
+              disabled={busy || dirty || !inventory.communityPath}
+              {...stylex.props(styles.button)}
+            >
+              {activity.kind === 'scanning' ? 'Scanning…' : 'Scan addons'}
+            </Button>
+          </div>
+        </Field.Root>
+      </Form>
+      <Form
         onSubmit={event => {
           event.preventDefault();
           mutation.mutate('enriching');
         }}
       >
         <div {...stylex.props(styles.controls)}>
-          <button
+          <Button
             type="submit"
             disabled={
               busy ||
@@ -146,9 +156,9 @@ function SimulatorSettings({
             {...stylex.props(styles.button)}
           >
             {activity.kind === 'enriching' ? 'Enriching…' : 'Enrich airports'}
-          </button>
+          </Button>
         </div>
-      </form>
+      </Form>
       <div aria-live="polite" {...stylex.props(styles.feedback)}>
         {dirty && <p>Save the path before scanning.</p>}
         {activity.kind === 'saved' && <p>Community folder saved.</p>}
@@ -167,16 +177,20 @@ function SimulatorSettings({
         )}
         {activity.kind === 'error' && <p role="alert">{activity.message}</p>}
         {activity.kind === 'scanned' && activity.warnings.length > 0 && (
-          <details>
-            <summary>Skipped folders</summary>
-            <ul>
-              {activity.warnings.map(warning => (
-                <li key={warning.folderName}>
-                  {warning.folderName}: {warning.message}
-                </li>
-              ))}
-            </ul>
-          </details>
+          <Collapsible.Root>
+            <Collapsible.Trigger {...stylex.props(styles.button)}>
+              Skipped folders
+            </Collapsible.Trigger>
+            <Collapsible.Panel>
+              <ul>
+                {activity.warnings.map(warning => (
+                  <li key={warning.folderName}>
+                    {warning.folderName}: {warning.message}
+                  </li>
+                ))}
+              </ul>
+            </Collapsible.Panel>
+          </Collapsible.Root>
         )}
       </div>
       {inventory.scannedAt && (
@@ -260,13 +274,25 @@ function App() {
     <AppContext.Provider value={state}>
       <main {...stylex.props(styles.page)}>
         <h1 {...stylex.props(styles.heading)}>Flightsim Things</h1>
-        <nav aria-label="Main navigation" {...stylex.props(styles.controls)}>
-          <Link to="/" activeOptions={{exact: true}}>
-            Home
-          </Link>
-          <Link to="/scenery">Scenery</Link>
-          <Link to="/settings">Settings</Link>
-        </nav>
+        <NavigationMenu.Root aria-label="Main navigation">
+          <NavigationMenu.List {...stylex.props(styles.controls, styles.navigationList)}>
+            <NavigationMenu.Item>
+              <NavigationMenu.Link render={<Link to="/" activeOptions={{exact: true}} />}>
+                Home
+              </NavigationMenu.Link>
+            </NavigationMenu.Item>
+            <NavigationMenu.Item>
+              <NavigationMenu.Link render={<Link to="/scenery" />}>
+                Scenery
+              </NavigationMenu.Link>
+            </NavigationMenu.Item>
+            <NavigationMenu.Item>
+              <NavigationMenu.Link render={<Link to="/settings" />}>
+                Settings
+              </NavigationMenu.Link>
+            </NavigationMenu.Item>
+          </NavigationMenu.List>
+        </NavigationMenu.Root>
         <p role="status">{state.status}</p>
         <Outlet />
       </main>
@@ -295,43 +321,45 @@ function Settings() {
             ? 'An API key is saved for both simulators.'
             : 'No API key is saved.'}
         </p>
-        <form
+        <Form
           onSubmit={event => {
             event.preventDefault();
             void updateKey('save');
           }}
         >
-          <label htmlFor="openaip-key">OpenAIP API key</label>
-          <div {...stylex.props(styles.controls)}>
-            <input
-              id="openaip-key"
-              type="password"
-              autoComplete="off"
-              value={apiKey}
-              onChange={event => {
-                setApiKey(event.target.value);
-                resetKeyActivity();
-              }}
-              disabled={keyBusy}
-              {...stylex.props(styles.input)}
-            />
-            <button
-              type="submit"
-              disabled={keyBusy || !keyStatus?.available || !apiKey.trim()}
-              {...stylex.props(styles.button)}
-            >
-              {keyActivity.kind === 'saving' ? 'Saving…' : 'Save API key'}
-            </button>
-            <button
-              type="button"
-              onClick={() => void updateKey('remove')}
-              disabled={keyBusy || !keyStatus?.saved}
-              {...stylex.props(styles.button)}
-            >
-              {keyActivity.kind === 'removing' ? 'Removing…' : 'Remove saved key'}
-            </button>
-          </div>
-        </form>
+          <Field.Root disabled={keyBusy}>
+            <Field.Label htmlFor="openaip-key">OpenAIP API key</Field.Label>
+            <div {...stylex.props(styles.controls)}>
+              <Field.Control
+                id="openaip-key"
+                type="password"
+                autoComplete="off"
+                value={apiKey}
+                onChange={event => {
+                  setApiKey(event.target.value);
+                  resetKeyActivity();
+                }}
+                disabled={keyBusy}
+                {...stylex.props(styles.input)}
+              />
+              <Button
+                type="submit"
+                disabled={keyBusy || !keyStatus?.available || !apiKey.trim()}
+                {...stylex.props(styles.button)}
+              >
+                {keyActivity.kind === 'saving' ? 'Saving…' : 'Save API key'}
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void updateKey('remove')}
+                disabled={keyBusy || !keyStatus?.saved}
+                {...stylex.props(styles.button)}
+              >
+                {keyActivity.kind === 'removing' ? 'Removing…' : 'Remove saved key'}
+              </Button>
+            </div>
+          </Field.Root>
+        </Form>
         <p>
           Enter a key to use for this session, or save it securely on this device. Leave
           the field empty to use the saved key.
@@ -441,11 +469,27 @@ function AddonTables({scenery = false}: {scenery?: boolean}) {
                     {inventory.addons.map(addon => (
                       <tr key={addon.folderName}>
                         <td {...stylex.props(styles.cell)}>{addon.name}</td>
-                        <td
-                          title={addon.folderPath}
-                          {...stylex.props(styles.cell, styles.folder)}
-                        >
-                          {addon.folderName}
+                        <td {...stylex.props(styles.cell, styles.folder)}>
+                          <Tooltip.Root>
+                            <Tooltip.Trigger
+                              render={<span />}
+                              tabIndex={0}
+                              aria-describedby={`${inventory.simulator}-${encodeURIComponent(addon.folderName)}-path`}
+                            >
+                              {addon.folderName}
+                            </Tooltip.Trigger>
+                            <Tooltip.Portal>
+                              <Tooltip.Positioner sideOffset={8}>
+                                <Tooltip.Popup
+                                  id={`${inventory.simulator}-${encodeURIComponent(addon.folderName)}-path`}
+                                  role="tooltip"
+                                  {...stylex.props(styles.tooltip)}
+                                >
+                                  {addon.folderPath}
+                                </Tooltip.Popup>
+                              </Tooltip.Positioner>
+                            </Tooltip.Portal>
+                          </Tooltip.Root>
                         </td>
                       </tr>
                     ))}
@@ -512,6 +556,15 @@ const styles = stylex.create({
     borderRadius: 8,
     border: '1px solid #ddd',
   },
+  navigationList: {listStyle: 'none', padding: 0, marginBottom: 0},
+  tooltip: {
+    padding: 8,
+    backgroundColor: '#242424',
+    color: '#fff',
+    borderRadius: 4,
+    maxWidth: 400,
+    overflowWrap: 'anywhere',
+  },
   controls: {display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8},
   input: {
     flexGrow: 1,
@@ -545,7 +598,9 @@ if (!root) {
 createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <Tooltip.Provider>
+        <RouterProvider router={router} />
+      </Tooltip.Provider>
     </QueryClientProvider>
   </StrictMode>
 );
