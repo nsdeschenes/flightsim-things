@@ -12,10 +12,6 @@ import {desktopQueries} from '../queries';
 
 export const Route = createFileRoute('/settings')({component: Settings});
 
-type KeyActivity =
-  | {kind: 'idle' | 'saving' | 'removing' | 'saved' | 'removed'}
-  | {kind: 'error'; message: string};
-
 function Settings() {
   const keyForm = useForm({
     defaultValues: {apiKey: ''},
@@ -43,17 +39,6 @@ function Settings() {
     },
   });
   const keyStatus = savedKey.data;
-  const keyBusy = keyMutation.isPending;
-  let keyActivity: KeyActivity = {kind: 'idle'};
-  if (keyMutation.isPending) {
-    keyActivity = {kind: keyMutation.variables === 'save' ? 'saving' : 'removing'};
-  } else if (keyMutation.isError) {
-    keyActivity = {kind: 'error', message: keyMutation.error.message};
-  } else if (keyMutation.isSuccess) {
-    keyActivity = {kind: keyMutation.variables === 'save' ? 'saved' : 'removed'};
-  } else if (savedKey.isError) {
-    keyActivity = {kind: 'error', message: 'Could not read the saved API key status.'};
-  }
   const library = inventories.data ?? [];
   return (
     <>
@@ -85,7 +70,7 @@ function Settings() {
                 invalid={!field.state.meta.isValid}
                 dirty={field.state.meta.isDirty}
                 touched={field.state.meta.isTouched}
-                disabled={keyBusy}
+                disabled={keyMutation.isPending}
               >
                 <Field.Label htmlFor="openaip-key">OpenAIP API key</Field.Label>
                 <Controls>
@@ -99,20 +84,26 @@ function Settings() {
                       field.handleChange(value);
                       keyMutation.reset();
                     }}
-                    disabled={keyBusy}
+                    disabled={keyMutation.isPending}
                   />
                   <Button
                     type="submit"
-                    disabled={keyBusy || !keyStatus?.available || !apiKey.trim()}
+                    disabled={
+                      keyMutation.isPending || !keyStatus?.available || !apiKey.trim()
+                    }
                   >
-                    {keyActivity.kind === 'saving' ? 'Saving…' : 'Save API key'}
+                    {keyMutation.isPending && keyMutation.variables === 'save'
+                      ? 'Saving…'
+                      : 'Save API key'}
                   </Button>
                   <Button
                     type="button"
                     onClick={() => keyMutation.mutate('remove')}
-                    disabled={keyBusy || !keyStatus?.saved}
+                    disabled={keyMutation.isPending || !keyStatus?.saved}
                   >
-                    {keyActivity.kind === 'removing' ? 'Removing…' : 'Remove saved key'}
+                    {keyMutation.isPending && keyMutation.variables === 'remove'
+                      ? 'Removing…'
+                      : 'Remove saved key'}
                   </Button>
                 </Controls>
                 <Field.Error match={!field.state.meta.isValid}>
@@ -130,9 +121,16 @@ function Settings() {
           <p>Secure storage is unavailable. Enter a key to use while Settings is open.</p>
         )}
         <div aria-live="polite">
-          {keyActivity.kind === 'saved' && <p>API key saved.</p>}
-          {keyActivity.kind === 'removed' && <p>Saved API key removed.</p>}
-          {keyActivity.kind === 'error' && <p role="alert">{keyActivity.message}</p>}
+          {keyMutation.isSuccess && keyMutation.variables === 'save' && (
+            <p>API key saved.</p>
+          )}
+          {keyMutation.isSuccess && keyMutation.variables === 'remove' && (
+            <p>Saved API key removed.</p>
+          )}
+          {keyMutation.isError && <p role="alert">{keyMutation.error.message}</p>}
+          {keyMutation.isIdle && savedKey.isError && (
+            <p role="alert">Could not read the saved API key status.</p>
+          )}
         </div>
       </Section>
       {inventories.isError && <p role="alert">Could not load addon library.</p>}
