@@ -1,5 +1,14 @@
 import * as stylex from '@stylexjs/stylex';
-import {StrictMode, useEffect, useState} from 'react';
+import {StrictMode, createContext, useContext, useEffect, useState} from 'react';
+import {
+  createHashHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  Link,
+  Outlet,
+  RouterProvider,
+} from '@tanstack/react-router';
 import {createRoot} from 'react-dom/client';
 
 import type {
@@ -19,17 +28,18 @@ type Activity =
   | {kind: 'enriched'; summary: EnrichmentSummary}
   | {kind: 'error'; message: string};
 
-function SimulatorAddons({
-  initial,
+function SimulatorSettings({
+  inventory,
+  onChange,
   apiKey,
   canUseSavedKey,
 }: {
-  initial: SimulatorInventory;
+  inventory: SimulatorInventory;
+  onChange: (inventory: SimulatorInventory) => void;
   apiKey: string;
   canUseSavedKey: boolean;
 }) {
-  const [inventory, setInventory] = useState(initial);
-  const [path, setPath] = useState(initial.communityPath ?? '');
+  const [path, setPath] = useState(inventory.communityPath ?? '');
   const [activity, setActivity] = useState<Activity>({kind: 'idle'});
   const busy =
     activity.kind === 'saving' ||
@@ -42,7 +52,7 @@ function SimulatorAddons({
     setActivity({kind: 'saving'});
     try {
       const saved = await window.desktop!.saveCommunityPath(inventory.simulator, path);
-      setInventory(saved);
+      onChange(saved);
       setActivity({kind: 'saved'});
     } catch (error) {
       setActivity({
@@ -57,7 +67,7 @@ function SimulatorAddons({
     setActivity({kind: 'scanning'});
     try {
       const result = await window.desktop!.scanAddons(inventory.simulator);
-      setInventory(result.inventory);
+      onChange(result.inventory);
       setActivity({kind: 'scanned', warnings: result.warnings});
     } catch (error) {
       setActivity({
@@ -75,7 +85,7 @@ function SimulatorAddons({
         inventory.simulator,
         apiKey.trim() ? apiKey : undefined
       );
-      setInventory(result.inventory);
+      onChange(result.inventory);
       setActivity({kind: 'enriched', summary: result.summary});
     } catch (error) {
       setActivity({
@@ -181,81 +191,6 @@ function SimulatorAddons({
           {inventory.scannedPath}
         </p>
       )}
-      {inventory.airports.length > 0 && (
-        <div {...stylex.props(styles.tableContainer)}>
-          <table {...stylex.props(styles.table)}>
-            <caption {...stylex.props(styles.caption)}>
-              {label} Airports ({inventory.airports.length})
-            </caption>
-            <thead>
-              <tr>
-                {['Code', 'Airport name', 'Latitude', 'Longitude', 'Elevation (m)'].map(
-                  label => (
-                    <th key={label} scope="col" {...stylex.props(styles.cell)}>
-                      {label}
-                    </th>
-                  )
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {inventory.airports.map(airport => (
-                <tr key={`${airport.folderName}/${airport.sourceKey}`}>
-                  {[
-                    airport.icaoCode ?? airport.iataCode,
-                    airport.name,
-                    airport.latitude,
-                    airport.longitude,
-                    airport.elevationMeters,
-                  ].map((value, index) => (
-                    <td key={index} {...stylex.props(styles.cell)}>
-                      {value ?? 'Unknown'}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {inventory.addons.length > 0 ? (
-        <div {...stylex.props(styles.tableContainer)}>
-          <table {...stylex.props(styles.table)}>
-            <caption {...stylex.props(styles.caption)}>
-              {label} Addons ({inventory.addons.length})
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col" {...stylex.props(styles.cell)}>
-                  Addon name
-                </th>
-                <th scope="col" {...stylex.props(styles.cell)}>
-                  Folder
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {inventory.addons.map(addon => (
-                <tr key={addon.folderName}>
-                  <td {...stylex.props(styles.cell)}>{addon.name}</td>
-                  <td
-                    title={addon.folderPath}
-                    {...stylex.props(styles.cell, styles.folder)}
-                  >
-                    {addon.folderName}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p>
-          {inventory.scannedAt
-            ? 'No addons found in the last scan.'
-            : 'Save your Community folder and scan to list installed addons.'}
-        </p>
-      )}
     </section>
   );
 }
@@ -264,7 +199,7 @@ type KeyActivity =
   | {kind: 'idle' | 'saving' | 'removing' | 'saved' | 'removed'}
   | {kind: 'error'; message: string};
 
-function App() {
+function useAppState() {
   const [apiKey, setApiKey] = useState('');
   const [keyStatus, setKeyStatus] = useState<OpenAipKeyStatus | null>(null);
   const [keyActivity, setKeyActivity] = useState<KeyActivity>({kind: 'idle'});
@@ -331,10 +266,73 @@ function App() {
       active = false;
     };
   }, []);
+  function updateInventory(updated: SimulatorInventory) {
+    setLibrary(current =>
+      current.map(inventory =>
+        inventory.simulator === updated.simulator ? updated : inventory
+      )
+    );
+  }
+
+  return {
+    apiKey,
+    setApiKey,
+    keyStatus,
+    keyActivity,
+    setKeyActivity,
+    keyBusy,
+    updateKey,
+    status,
+    library,
+    updateInventory,
+  };
+}
+
+const AppContext = createContext<ReturnType<typeof useAppState> | null>(null);
+
+function useLibrary() {
+  const state = useContext(AppContext);
+  if (!state) {
+    throw new Error('Missing app state');
+  }
+  return state;
+}
+
+function App() {
+  const state = useAppState();
   return (
-    <main {...stylex.props(styles.page)}>
-      <h1 {...stylex.props(styles.heading)}>Flightsim Things</h1>
-      <p role="status">{status}</p>
+    <AppContext.Provider value={state}>
+      <main {...stylex.props(styles.page)}>
+        <h1 {...stylex.props(styles.heading)}>Flightsim Things</h1>
+        <nav aria-label="Main navigation" {...stylex.props(styles.controls)}>
+          <Link to="/" activeOptions={{exact: true}}>
+            Home
+          </Link>
+          <Link to="/scenery">Scenery</Link>
+          <Link to="/settings">Settings</Link>
+        </nav>
+        <p role="status">{state.status}</p>
+        <Outlet />
+      </main>
+    </AppContext.Provider>
+  );
+}
+
+function Settings() {
+  const {
+    apiKey,
+    setApiKey,
+    keyStatus,
+    keyActivity,
+    setKeyActivity,
+    keyBusy,
+    updateKey,
+    library,
+    updateInventory,
+  } = useLibrary();
+  return (
+    <>
+      <h2 {...stylex.props(styles.subheading)}>Settings</h2>
       <section aria-label="OpenAIP settings" {...stylex.props(styles.section)}>
         <h2 {...stylex.props(styles.subheading)}>OpenAIP</h2>
         <p>
@@ -393,15 +391,154 @@ function App() {
         </div>
       </section>
       {library.map(inventory => (
-        <SimulatorAddons
+        <SimulatorSettings
           key={inventory.simulator}
-          initial={inventory}
+          inventory={inventory}
+          onChange={updateInventory}
           apiKey={apiKey}
           canUseSavedKey={Boolean(keyStatus?.saved && keyStatus.available)}
         />
       ))}
-    </main>
+    </>
   );
+}
+
+function AddonTables({scenery = false}: {scenery?: boolean}) {
+  const {library} = useLibrary();
+  return (
+    <>
+      <h2 {...stylex.props(styles.subheading)}>{scenery ? 'Scenery' : 'Addons'}</h2>
+      {library.map(source => {
+        const inventory = {
+          ...source,
+          addons: source.addons
+            .filter(addon => !scenery || addon.contentType?.toUpperCase() === 'SCENERY')
+            .toSorted((a, b) => a.name.localeCompare(b.name)),
+          airports: source.airports.toSorted((a, b) =>
+            (a.name ?? '').localeCompare(b.name ?? '')
+          ),
+        };
+        const label = inventory.simulator === 'msfs2020' ? 'MSFS 2020' : 'MSFS 2024';
+        return (
+          <section
+            key={inventory.simulator}
+            aria-label={label}
+            {...stylex.props(styles.section)}
+          >
+            <h3 {...stylex.props(styles.subheading)}>{label}</h3>
+            {scenery && inventory.airports.length > 0 && (
+              <div {...stylex.props(styles.tableContainer)}>
+                <table {...stylex.props(styles.table)}>
+                  <caption {...stylex.props(styles.caption)}>
+                    {label} Airports ({inventory.airports.length})
+                  </caption>
+                  <thead>
+                    <tr>
+                      {[
+                        'Code',
+                        'Airport name',
+                        'Latitude',
+                        'Longitude',
+                        'Elevation (m)',
+                      ].map(label => (
+                        <th key={label} scope="col" {...stylex.props(styles.cell)}>
+                          {label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inventory.airports.map(airport => (
+                      <tr key={`${airport.folderName}/${airport.sourceKey}`}>
+                        {[
+                          airport.icaoCode ?? airport.iataCode,
+                          airport.name,
+                          airport.latitude,
+                          airport.longitude,
+                          airport.elevationMeters,
+                        ].map((value, index) => (
+                          <td key={index} {...stylex.props(styles.cell)}>
+                            {value ?? 'Unknown'}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {inventory.addons.length > 0 ? (
+              <div {...stylex.props(styles.tableContainer)}>
+                <table {...stylex.props(styles.table)}>
+                  <caption {...stylex.props(styles.caption)}>
+                    {label} {scenery ? 'Scenery' : 'Addons'} ({inventory.addons.length})
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col" {...stylex.props(styles.cell)}>
+                        Addon name
+                      </th>
+                      <th scope="col" {...stylex.props(styles.cell)}>
+                        Folder
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inventory.addons.map(addon => (
+                      <tr key={addon.folderName}>
+                        <td {...stylex.props(styles.cell)}>{addon.name}</td>
+                        <td
+                          title={addon.folderPath}
+                          {...stylex.props(styles.cell, styles.folder)}
+                        >
+                          {addon.folderName}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p>
+                {inventory.scannedAt
+                  ? scenery
+                    ? 'No scenery found in the last scan.'
+                    : 'No addons found in the last scan.'
+                  : 'Save your Community folder and scan to list installed addons.'}
+              </p>
+            )}
+          </section>
+        );
+      })}
+    </>
+  );
+}
+
+const rootRoute = createRootRoute({component: App});
+const homeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/',
+  component: AddonTables,
+});
+const sceneryRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/scenery',
+  component: () => <AddonTables scenery />,
+});
+const settingsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/settings',
+  component: Settings,
+});
+const router = createRouter({
+  routeTree: rootRoute.addChildren([homeRoute, sceneryRoute, settingsRoute]),
+  history: createHashHistory(),
+});
+
+declare module '@tanstack/react-router' {
+  interface Register {
+    router: typeof router;
+  }
 }
 
 const styles = stylex.create({
@@ -446,6 +583,6 @@ if (!root) {
 }
 createRoot(root).render(
   <StrictMode>
-    <App />
+    <RouterProvider router={router} />
   </StrictMode>
 );
