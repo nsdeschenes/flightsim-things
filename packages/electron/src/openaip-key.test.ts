@@ -3,6 +3,8 @@ import {mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile} from 'node:fs/pr
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
+import {Effect} from 'effect';
+
 import {expect, test} from 'vitest';
 
 import {createOpenAipKeyStore} from './openaip-key.js';
@@ -40,21 +42,37 @@ async function fixture() {
 test('saves encrypted bytes, reloads across store instances, replaces and removes the shared key', async () => {
   const f = await fixture();
   try {
-    expect(await f.store.status()).toEqual({saved: false, available: true});
-    expect(await f.store.save(key)).toEqual({saved: true, available: true});
+    expect(await Effect.runPromise(f.store.status())).toEqual({
+      saved: false,
+      available: true,
+    });
+    const save = f.store.save(key);
+    expect(await readdir(f.directory)).toEqual([]);
+    expect(await Effect.runPromise(save)).toEqual({saved: true, available: true});
     expect((await readFile(f.path)).includes(Buffer.from(key))).toBe(false);
     if (process.platform !== 'win32') {
       expect((await stat(f.path)).mode & 0o777).toBe(0o600);
     }
     const reopened = createOpenAipKeyStore(f.path, f.encryption);
-    expect(await reopened.load()).toBe(key);
-    expect(await reopened.status()).toEqual({saved: true, available: true});
-    await reopened.save('replacement-key');
-    expect(await f.store.load()).toBe('replacement-key');
+    expect(await Effect.runPromise(reopened.load())).toBe(key);
+    expect(await Effect.runPromise(reopened.status())).toEqual({
+      saved: true,
+      available: true,
+    });
+    await Effect.runPromise(reopened.save('replacement-key'));
+    expect(await Effect.runPromise(f.store.load())).toBe('replacement-key');
     expect(await readdir(f.directory)).toEqual(['openaip-key.enc']);
-    expect(await reopened.remove()).toEqual({saved: false, available: true});
-    expect(await reopened.remove()).toEqual({saved: false, available: true});
-    await expect(reopened.load()).rejects.toThrow('No OpenAIP key is saved');
+    expect(await Effect.runPromise(reopened.remove())).toEqual({
+      saved: false,
+      available: true,
+    });
+    expect(await Effect.runPromise(reopened.remove())).toEqual({
+      saved: false,
+      available: true,
+    });
+    await expect(Effect.runPromise(reopened.load())).rejects.toThrow(
+      'No OpenAIP key is saved'
+    );
   } finally {
     await rm(f.directory, {recursive: true, force: true});
   }
@@ -64,12 +82,12 @@ test('serializes save, read, replacement, and removal in invocation order', asyn
   const f = await fixture();
   try {
     const results = await Promise.all([
-      f.store.save(key),
-      f.store.load(),
-      f.store.save('replacement-key'),
-      f.store.load(),
-      f.store.remove(),
-      f.store.status(),
+      Effect.runPromise(f.store.save(key)),
+      Effect.runPromise(f.store.load()),
+      Effect.runPromise(f.store.save('replacement-key')),
+      Effect.runPromise(f.store.load()),
+      Effect.runPromise(f.store.remove()),
+      Effect.runPromise(f.store.status()),
     ]);
     expect(results).toEqual([
       {saved: true, available: true},
@@ -87,19 +105,27 @@ test('serializes save, read, replacement, and removal in invocation order', asyn
 test('unavailable encryption cannot save or read but can remove an existing key', async () => {
   const f = await fixture();
   try {
-    await f.store.save(key);
+    await Effect.runPromise(f.store.save(key));
     const unavailable = createOpenAipKeyStore(f.path, {
       ...f.encryption,
       available: () => false,
     });
-    expect(await unavailable.status()).toEqual({saved: true, available: false});
-    await expect(unavailable.save('replacement-key')).rejects.toThrow(
+    expect(await Effect.runPromise(unavailable.status())).toEqual({
+      saved: true,
+      available: false,
+    });
+    await expect(Effect.runPromise(unavailable.save('replacement-key'))).rejects.toThrow(
       'Secure key storage is unavailable'
     );
-    await expect(unavailable.load()).rejects.toThrow('Secure key storage is unavailable');
-    expect(await f.store.load()).toBe(key);
-    expect(await unavailable.remove()).toEqual({saved: false, available: false});
-    await expect(unavailable.save(key)).rejects.toThrow(
+    await expect(Effect.runPromise(unavailable.load())).rejects.toThrow(
+      'Secure key storage is unavailable'
+    );
+    expect(await Effect.runPromise(f.store.load())).toBe(key);
+    expect(await Effect.runPromise(unavailable.remove())).toEqual({
+      saved: false,
+      available: false,
+    });
+    await expect(Effect.runPromise(unavailable.save(key))).rejects.toThrow(
       'Secure key storage is unavailable'
     );
     expect(await readdir(f.directory)).toEqual([]);
@@ -111,27 +137,30 @@ test('unavailable encryption cannot save or read but can remove an existing key'
 test('failed encryption and invalid keys preserve the old value without leaking errors', async () => {
   const f = await fixture();
   try {
-    await f.store.save(key);
+    await Effect.runPromise(f.store.save(key));
     const broken = createOpenAipKeyStore(f.path, {
       ...f.encryption,
       encrypt() {
         throw new Error(key);
       },
     });
-    await expect(broken.save('replacement-key')).rejects.toThrow(
+    await expect(Effect.runPromise(broken.save('replacement-key'))).rejects.toThrow(
       'Could not save the OpenAIP key. Retry the operation.'
     );
-    expect(await f.store.load()).toBe(key);
-    await expect(f.store.save(`${key}\nheader`)).rejects.toThrow(
+    expect(await Effect.runPromise(f.store.load())).toBe(key);
+    await expect(Effect.runPromise(f.store.save(`${key}\nheader`))).rejects.toThrow(
       'Enter a valid OpenAIP API key.'
     );
-    expect(await f.store.load()).toBe(key);
+    expect(await Effect.runPromise(f.store.load())).toBe(key);
     expect(await readdir(f.directory)).toEqual(['openaip-key.enc']);
     await writeFile(f.path, key);
-    await expect(f.store.load()).rejects.toThrow(
+    await expect(Effect.runPromise(f.store.load())).rejects.toThrow(
       'Could not read the saved OpenAIP key. Enter a key or save it again.'
     );
-    expect(await f.store.remove()).toEqual({saved: false, available: true});
+    expect(await Effect.runPromise(f.store.remove())).toEqual({
+      saved: false,
+      available: true,
+    });
   } finally {
     await rm(f.directory, {recursive: true, force: true});
   }
@@ -141,11 +170,11 @@ test('failed atomic replacement cleans temporary bytes and reports a safe error'
   const f = await fixture();
   try {
     await mkdir(f.path);
-    await expect(f.store.save(key)).rejects.toThrow(
+    await expect(Effect.runPromise(f.store.save(key))).rejects.toThrow(
       'Could not save the OpenAIP key. Retry the operation.'
     );
     expect(await readdir(f.directory)).toEqual(['openaip-key.enc']);
-    await expect(f.store.remove()).rejects.toThrow(
+    await expect(Effect.runPromise(f.store.remove())).rejects.toThrow(
       'Could not remove the saved OpenAIP key. Retry the operation.'
     );
   } finally {

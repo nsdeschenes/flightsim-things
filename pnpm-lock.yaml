@@ -201,6 +201,10 @@ importers:
         version: 8.0.4(debug@4.4.3(supports-color@8.1.1))(supports-color@8.1.1)
 
   packages/contract:
+    dependencies:
+      effect:
+        specifier: 4.0.6
+        version: 4.0.6
     devDependencies:
       tsdown:
         specifier: 0.23.0
@@ -216,7 +220,10 @@ importers:
         version: 0.7.2
       drizzle-orm:
         specifier: 1.0.0-rc.4
-        version: 1.0.0-rc.4(@tursodatabase/database-common@0.7.2)(@tursodatabase/database@0.7.2)
+        version: 1.0.0-rc.4(@tursodatabase/database-common@0.7.2)(@tursodatabase/database@0.7.2)(effect@4.0.6)
+      effect:
+        specifier: 4.0.6
+        version: 4.0.6
     devDependencies:
       drizzle-kit:
         specifier: 1.0.0-rc.4
@@ -239,6 +246,9 @@ importers:
       '@xmldom/xmldom':
         specifier: 0.8.15
         version: 0.8.15
+      effect:
+        specifier: 4.0.6
+        version: 4.0.6
     devDependencies:
       electron:
         specifier: 44.4.5
@@ -1971,6 +1981,9 @@ packages:
 
   duplexer2@0.1.4:
     resolution: {integrity: sha512-asLFVfWWtJ90ZyOUHMqk7/S2w2guQKxUI2itj3d92ADHhxUSbCMGi1f1cBcJ7xM1To+pE/Khbwo1yuNbMEPKeA==}
+
+  effect@4.0.6:
+    resolution: {integrity: sha512-Tc3mkzuLR6t6P9dhLt0D2GrxYtmU5td4XEJEiXCmILz53IRIfJyHsKZWjTA3xEjiwpNTtXBgI4iqYPxMztBDrw==}
 
   ejs@3.1.10:
     resolution: {integrity: sha512-UeJmFfOrAQS8OJWPZ4qtgHyWExa088/MtK5UEyoJGFH67cDEXkZSviOiKRCZ4Xij0zxI3JECgYs3oKx+AizQBA==}
@@ -4643,10 +4656,11 @@ snapshots:
       get-tsconfig: 4.14.3
       jiti: 2.7.0
 
-  drizzle-orm@1.0.0-rc.4(@tursodatabase/database-common@0.7.2)(@tursodatabase/database@0.7.2):
+  drizzle-orm@1.0.0-rc.4(@tursodatabase/database-common@0.7.2)(@tursodatabase/database@0.7.2)(effect@4.0.6):
     optionalDependencies:
       '@tursodatabase/database': 0.7.2
       '@tursodatabase/database-common': 0.7.2
+      effect: 4.0.6
 
   dts-resolver@3.0.0: {}
 
@@ -4659,6 +4673,8 @@ snapshots:
   duplexer2@0.1.4:
     dependencies:
       readable-stream: 2.3.8
+
+  effect@4.0.6: {}
 
   ejs@3.1.10:
     dependencies:

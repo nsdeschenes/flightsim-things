@@ -2,6 +2,8 @@ import {mkdir, mkdtemp, rm, writeFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
+import {Effect, Exit, Fiber, Scope} from 'effect';
+
 import {expect, test} from 'vitest';
 
 import type {Airport} from '@flightsim-things/contract';
@@ -46,32 +48,37 @@ function airport(code: string | null, sourceKey = code ?? 'iata'): Airport {
 async function fixture() {
   const directory = await mkdtemp(join(tmpdir(), 'flightsim-airports-'));
   const path = join(directory, 'airports.sqlite');
-  const database = await openDatabase(path);
+  const scope = Scope.makeUnsafe();
+  const database = await Effect.runPromise(
+    openDatabase(path).pipe(Effect.provideService(Scope.Scope, scope))
+  );
   return {
     directory,
     path,
     database,
     async seed(airports: Airport[]) {
-      await database.replaceInventory(
-        'msfs2020',
-        '/Community',
-        [
-          {
-            simulator: 'msfs2020',
-            folderName: 'scenery',
-            folderPath: '/Community/scenery',
-            name: 'Scenery',
-            version: null,
-            creator: null,
-            contentType: 'SCENERY',
-            manifestJson: '{}',
-          },
-        ],
-        airports
+      await Effect.runPromise(
+        database.replaceInventory(
+          'msfs2020',
+          '/Community',
+          [
+            {
+              simulator: 'msfs2020',
+              folderName: 'scenery',
+              folderPath: '/Community/scenery',
+              name: 'Scenery',
+              version: null,
+              creator: null,
+              contentType: 'SCENERY',
+              manifestJson: '{}',
+            },
+          ],
+          airports
+        )
       );
     },
     async dispose() {
-      database.close();
+      await Effect.runPromise(Scope.close(scope, Exit.void));
       await rm(directory, {recursive: true, force: true});
     },
   };
@@ -110,8 +117,8 @@ test('scans old scenery sources, groups paginated exact matches, and preserves e
     });
     await scenery(community, 'vendor-airport-kddd-uncompiled', {});
     const library = createAddonLibrary(f.database);
-    await library.saveCommunityPath('msfs2020', community);
-    const scanned = await library.scan('msfs2020');
+    await Effect.runPromise(library.saveCommunityPath('msfs2020', community));
+    const scanned = await Effect.runPromise(library.scan('msfs2020'));
     expect(
       scanned.inventory.airports.map(row => [row.folderName, row.sourceKey, row.icaoCode])
     ).toEqual([
@@ -155,7 +162,9 @@ test('scans old scenery sources, groups paginated exact matches, and preserves e
       }
       return json(page([{_id: code, icaoCode: code, name: `Enriched ${code}`}]));
     };
-    const enriched = await enrichInstalledAirports(f.database, 'msfs2020', key, request);
+    const enriched = await Effect.runPromise(
+      enrichInstalledAirports(f.database, 'msfs2020', key, request)
+    );
     expect(enriched.summary).toEqual({
       airports: 4,
       enriched: 4,
@@ -173,12 +182,15 @@ test('scans old scenery sources, groups paginated exact matches, and preserves e
       elevationMeters: 0,
     });
     expect(JSON.stringify(enriched)).not.toContain(key);
-    expect((await library.scan('msfs2020')).inventory.airports).toEqual(
-      enriched.inventory.airports
-    );
     expect(
-      (await enrichInstalledAirports(f.database, 'msfs2020', key, request)).inventory
-        .airports
+      (await Effect.runPromise(library.scan('msfs2020'))).inventory.airports
+    ).toEqual(enriched.inventory.airports);
+    expect(
+      (
+        await Effect.runPromise(
+          enrichInstalledAirports(f.database, 'msfs2020', key, request)
+        )
+      ).inventory.airports
     ).toEqual(enriched.inventory.airports);
 
     await writeFile(
@@ -189,13 +201,13 @@ test('scans old scenery sources, groups paginated exact matches, and preserves e
       join(fallback, 'explicit.xml'),
       '<FSData><Airport ident="KAAA"/></FSData>'
     );
-    const promoted = await library.scan('msfs2020');
+    const promoted = await Effect.runPromise(library.scan('msfs2020'));
     expect(promoted.inventory.airports[0]).toEqual({
       ...enriched.inventory.airports[0],
       sourceKey: 'explicit.xml#airport:KAAA',
     });
     await writeFile(join(explicit, 'scenery/airports.xml'), '<FSData><Airport');
-    const incomplete = await library.scan('msfs2020');
+    const incomplete = await Effect.runPromise(library.scan('msfs2020'));
     expect(incomplete.inventory.airports).toEqual(promoted.inventory.airports);
     expect(incomplete.warnings).toEqual([
       expect.objectContaining({
@@ -204,17 +216,22 @@ test('scans old scenery sources, groups paginated exact matches, and preserves e
       }),
     ]);
     await rm(explicit, {recursive: true});
-    expect((await library.scan('msfs2020')).inventory.airports).toEqual([
-      promoted.inventory.airports[0],
-    ]);
-    const reopened = await openDatabase(f.path);
+    expect(
+      (await Effect.runPromise(library.scan('msfs2020'))).inventory.airports
+    ).toEqual([promoted.inventory.airports[0]]);
+    const reopenedScope = Scope.makeUnsafe();
+    const reopened = await Effect.runPromise(
+      openDatabase(f.path).pipe(Effect.provideService(Scope.Scope, reopenedScope))
+    );
     try {
-      expect((await reopened.getInventory('msfs2020')).airports).toEqual([
-        promoted.inventory.airports[0],
-      ]);
-      expect((await reopened.getInventory('msfs2024')).airports).toEqual([]);
+      expect(
+        (await Effect.runPromise(reopened.getInventory('msfs2020'))).airports
+      ).toEqual([promoted.inventory.airports[0]]);
+      expect(
+        (await Effect.runPromise(reopened.getInventory('msfs2024'))).airports
+      ).toEqual([]);
     } finally {
-      reopened.close();
+      await Effect.runPromise(Scope.close(reopenedScope, Exit.void));
     }
   } finally {
     await f.dispose();
@@ -232,11 +249,8 @@ test('distinguishes ambiguity, fuzzy-only responses, skipped codes, and IATA-onl
       {...airport(null), iataCode: 'EEE'},
       airport('BAD1'),
     ]);
-    const result = await enrichInstalledAirports(
-      f.database,
-      'msfs2020',
-      key,
-      async url => {
+    const result = await Effect.runPromise(
+      enrichInstalledAirports(f.database, 'msfs2020', key, async url => {
         switch (url.searchParams.get('search')) {
           case 'KAAA':
             return json(
@@ -263,7 +277,7 @@ test('distinguishes ambiguity, fuzzy-only responses, skipped codes, and IATA-onl
           default:
             throw new Error('Unexpected lookup');
         }
-      }
+      })
     );
     expect(result.summary).toEqual({
       airports: 6,
@@ -300,14 +314,16 @@ test('deduplicates identical provider IDs across pages and preserves omitted met
         iataCode: 'AAA',
       },
     ]);
-    const result = await enrichInstalledAirports(f.database, 'msfs2020', key, async url =>
-      json(
-        page([{_id: 'same', icaoCode: 'KAAA', name: 'Updated'}], {
-          page: Number(url.searchParams.get('page')),
-          limit: 1,
-          totalCount: 2,
-          totalPages: 2,
-        })
+    const result = await Effect.runPromise(
+      enrichInstalledAirports(f.database, 'msfs2020', key, async url =>
+        json(
+          page([{_id: 'same', icaoCode: 'KAAA', name: 'Updated'}], {
+            page: Number(url.searchParams.get('page')),
+            limit: 1,
+            totalCount: 2,
+            totalPages: 2,
+          })
+        )
       )
     );
     expect(result.summary).toEqual({
@@ -395,14 +411,18 @@ test.each([
     try {
       const original = [airport('KAAA'), airport('KBBB')];
       await f.seed(original);
-      const attempt = enrichInstalledAirports(f.database, 'msfs2020', key, async url =>
-        url.searchParams.get('search') === 'KAAA'
-          ? json(page([{icaoCode: 'KAAA', name: 'Must not be saved'}]))
-          : request()
+      const attempt = Effect.runPromise(
+        enrichInstalledAirports(f.database, 'msfs2020', key, async url =>
+          url.searchParams.get('search') === 'KAAA'
+            ? json(page([{icaoCode: 'KAAA', name: 'Must not be saved'}]))
+            : request()
+        )
       );
       await expect(attempt).rejects.toThrow(message);
       await expect(attempt).rejects.not.toThrow(key);
-      expect((await f.database.getInventory('msfs2020')).airports).toEqual(original);
+      expect(
+        (await Effect.runPromise(f.database.getInventory('msfs2020'))).airports
+      ).toEqual(original);
     } finally {
       await f.dispose();
     }
@@ -420,22 +440,21 @@ test('rolls back a failed database update and skips rows whose identity changed 
     const request: Request = async url =>
       json(page([{icaoCode: url.searchParams.get('search'), name: 'Updated'}]));
     await expect(
-      enrichInstalledAirports(f.database, 'msfs2020', key, request)
+      Effect.runPromise(enrichInstalledAirports(f.database, 'msfs2020', key, request))
     ).rejects.toThrow('Could not update the addon database');
-    expect((await f.database.getInventory('msfs2020')).airports).toEqual(original);
+    expect(
+      (await Effect.runPromise(f.database.getInventory('msfs2020'))).airports
+    ).toEqual(original);
     await f.database.db.$client.exec(`DROP TRIGGER fail_enrichment`);
-    const result = await enrichInstalledAirports(
-      f.database,
-      'msfs2020',
-      key,
-      async (url, init) => {
+    const result = await Effect.runPromise(
+      enrichInstalledAirports(f.database, 'msfs2020', key, async (url, init) => {
         if (url.searchParams.get('search') === 'KBBB') {
           await f.database.db.$client.exec(
             `UPDATE airports SET icaoCode = 'KCCC' WHERE sourceKey = 'KAAA'`
           );
         }
         return request(url, init);
-      }
+      })
     );
     expect(result.summary).toEqual({
       airports: 2,
@@ -461,8 +480,46 @@ test('rejects missing and malformed keys without echoing them', async () => {
   const f = await fixture();
   try {
     await expect(
-      createAddonLibrary(f.database).enrichAirports('msfs2020', key)
+      Effect.runPromise(createAddonLibrary(f.database).enrichAirports('msfs2020', key))
     ).rejects.toThrow('No installed airports were found');
+  } finally {
+    await f.dispose();
+  }
+});
+
+test('interrupting enrichment aborts its HTTP request and preserves installed metadata', async () => {
+  const f = await fixture();
+  try {
+    const original = [airport('KAAA')];
+    await f.seed(original);
+    let signal: AbortSignal | undefined;
+    let started!: () => void;
+    const requested = new Promise<void>(resolve => {
+      started = resolve;
+    });
+    const enrichment = Effect.runFork(
+      enrichInstalledAirports(
+        f.database,
+        'msfs2020',
+        key,
+        (_url, init) =>
+          new Promise((_resolve, reject) => {
+            signal = init.signal ?? undefined;
+            signal?.addEventListener(
+              'abort',
+              () => reject(new Error('Request aborted')),
+              {once: true}
+            );
+            started();
+          })
+      )
+    );
+    await requested;
+    await Effect.runPromise(Fiber.interrupt(enrichment));
+    expect(signal?.aborted).toBe(true);
+    expect(
+      (await Effect.runPromise(f.database.getInventory('msfs2020'))).airports
+    ).toEqual(original);
   } finally {
     await f.dispose();
   }
