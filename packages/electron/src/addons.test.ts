@@ -2,6 +2,8 @@ import {mkdir, mkdtemp, readFile, rm, symlink, writeFile} from 'node:fs/promises
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
+import {Effect, Exit, Scope} from 'effect';
+
 import {expect, test} from 'vitest';
 
 import {openDatabase} from '@flightsim-things/db';
@@ -30,6 +32,7 @@ test('scans real packages and links, persists metadata and reconciles each simul
   const communityLink = join(directory, 'Community-linked');
   const databasePath = join(directory, 'inventory.sqlite');
   let database;
+  let scope = Scope.makeUnsafe();
   try {
     await mkdir(community);
     await symlink(
@@ -52,11 +55,13 @@ test('scans real packages and links, persists metadata and reconciles each simul
     await mkdir(join(community, 'missing-title'));
     await writeFile(join(community, 'missing-title', 'manifest.json'), '{}');
     await writeFile(join(community, 'readme.txt'), 'Not a package');
-    database = await openDatabase(databasePath);
+    database = await Effect.runPromise(
+      openDatabase(databasePath).pipe(Effect.provideService(Scope.Scope, scope))
+    );
     const library = createAddonLibrary(database);
-    await library.saveCommunityPath('msfs2020', community);
-    await library.saveCommunityPath('msfs2024', communityLink);
-    const first = await library.scan('msfs2020');
+    await Effect.runPromise(library.saveCommunityPath('msfs2020', community));
+    await Effect.runPromise(library.saveCommunityPath('msfs2024', communityLink));
+    const first = await Effect.runPromise(library.scan('msfs2020'));
     expect(first.inventory.addons).toEqual([
       {
         simulator: 'msfs2020',
@@ -90,16 +95,19 @@ test('scans real packages and links, persists metadata and reconciles each simul
     ]);
     expect(first.inventory.scannedPath).toBe(community);
     expect(first.inventory.scannedAt).toEqual(expect.any(String));
-    expect((await library.scan('msfs2020')).inventory.addons).toEqual(
+    expect((await Effect.runPromise(library.scan('msfs2020'))).inventory.addons).toEqual(
       first.inventory.addons
     );
-    await library.scan('msfs2024');
+    await Effect.runPromise(library.scan('msfs2024'));
     await rm(join(community, 'airport-link'));
     await writePackage(community, 'aircraft', 'Updated Aircraft');
-    await library.scan('msfs2020');
-    database.close();
-    database = await openDatabase(databasePath);
-    const [msfs2020, msfs2024] = await database.getLibrary();
+    await Effect.runPromise(library.scan('msfs2020'));
+    await Effect.runPromise(Scope.close(scope, Exit.void));
+    scope = Scope.makeUnsafe();
+    database = await Effect.runPromise(
+      openDatabase(databasePath).pipe(Effect.provideService(Scope.Scope, scope))
+    );
+    const [msfs2020, msfs2024] = await Effect.runPromise(database.getLibrary());
     expect(msfs2020.communityPath).toBe(community);
     expect(msfs2024.communityPath).toBe(communityLink);
     expect(msfs2020.addons.map(addon => addon.name)).toEqual(['Updated Aircraft']);
@@ -111,13 +119,15 @@ test('scans real packages and links, persists metadata and reconciles each simul
       {name: 'base-package', package_version: '1.0.0'},
     ]);
     await rm(join(community, 'aircraft'), {recursive: true});
-    const empty = await createAddonLibrary(database).scan('msfs2020');
+    const empty = await Effect.runPromise(createAddonLibrary(database).scan('msfs2020'));
     expect(empty.inventory.addons).toEqual([]);
     expect(
-      (await database.getInventory('msfs2024')).addons.map(addon => addon.name)
+      (await Effect.runPromise(database.getInventory('msfs2024'))).addons.map(
+        addon => addon.name
+      )
     ).toEqual(['Linked Airport', 'Sample Aircraft']);
   } finally {
-    database?.close();
+    await Effect.runPromise(Scope.close(scope, Exit.void));
     await rm(directory, {recursive: true, force: true});
   }
 });
@@ -125,44 +135,53 @@ test('scans real packages and links, persists metadata and reconciles each simul
 test('failed scans and database writes preserve the previous inventory, and queued operations recover', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'flightsim-scan-failure-'));
   const community = join(directory, 'Community');
-  const database = await openDatabase(join(directory, 'inventory.sqlite'));
+  const scope = Scope.makeUnsafe();
+  const database = await Effect.runPromise(
+    openDatabase(join(directory, 'inventory.sqlite')).pipe(
+      Effect.provideService(Scope.Scope, scope)
+    )
+  );
   try {
     await writePackage(community, 'aircraft', 'Saved Aircraft');
     const library = createAddonLibrary(database);
-    await expect(library.scan('msfs2020')).rejects.toThrow(
+    await expect(Effect.runPromise(library.scan('msfs2020'))).rejects.toThrow(
       'Save a Community folder path'
     );
-    await library.saveCommunityPath('msfs2020', community);
-    const {inventory: previous} = await library.scan('msfs2020');
+    await Effect.runPromise(library.saveCommunityPath('msfs2020', community));
+    const {inventory: previous} = await Effect.runPromise(library.scan('msfs2020'));
     await expect(
-      database.replaceInventory('msfs2020', community, [
-        previous.addons[0],
-        previous.addons[0],
-      ])
+      Effect.runPromise(
+        database.replaceInventory('msfs2020', community, [
+          previous.addons[0],
+          previous.addons[0],
+        ])
+      )
     ).rejects.toThrow();
-    expect(await database.getInventory('msfs2020')).toEqual(previous);
+    expect(await Effect.runPromise(database.getInventory('msfs2020'))).toEqual(previous);
     const missing = join(directory, 'missing');
-    await library.saveCommunityPath('msfs2020', missing);
-    await expect(library.scan('msfs2020')).rejects.toThrow(
+    await Effect.runPromise(library.saveCommunityPath('msfs2020', missing));
+    await expect(Effect.runPromise(library.scan('msfs2020'))).rejects.toThrow(
       'Could not read Community folder'
     );
-    expect(await database.getInventory('msfs2020')).toEqual({
+    expect(await Effect.runPromise(database.getInventory('msfs2020'))).toEqual({
       ...previous,
       communityPath: missing,
     });
     await writeFile(join(directory, 'not-a-directory'), 'file');
-    await library.saveCommunityPath('msfs2020', join(directory, 'not-a-directory'));
-    await expect(library.scan('msfs2020')).rejects.toThrow(
+    await Effect.runPromise(
+      library.saveCommunityPath('msfs2020', join(directory, 'not-a-directory'))
+    );
+    await expect(Effect.runPromise(library.scan('msfs2020'))).rejects.toThrow(
       'Could not read Community folder'
     );
-    const save = library.saveCommunityPath('msfs2020', community);
-    const scan = library.scan('msfs2020');
+    const save = Effect.runPromise(library.saveCommunityPath('msfs2020', community));
+    const scan = Effect.runPromise(library.scan('msfs2020'));
     await save;
     expect((await scan).inventory.addons.map(addon => addon.name)).toEqual([
       'Saved Aircraft',
     ]);
   } finally {
-    database.close();
+    await Effect.runPromise(Scope.close(scope, Exit.void));
     await rm(directory, {recursive: true, force: true});
   }
 });

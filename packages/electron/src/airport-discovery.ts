@@ -1,9 +1,13 @@
 import {readFile, realpath} from 'node:fs/promises';
 import {isAbsolute, join, posix, relative, sep} from 'node:path';
 
+import {Effect} from 'effect';
+
 import {DOMParser} from '@xmldom/xmldom';
 
 import type {Addon, Airport} from '@flightsim-things/contract';
+
+import {fileSystem, validate} from './errors.js';
 
 interface AirportDiscovery {
   airports: Airport[];
@@ -61,14 +65,16 @@ function layoutPaths(value: unknown): string[] {
   });
 }
 
-async function readPackageFile(root: string, path: string) {
-  const filename = await realpath(join(root, path));
-  const contained = relative(root, filename);
-  if (contained === '..' || contained.startsWith(`..${sep}`) || isAbsolute(contained)) {
-    throw new Error('Airport metadata must stay inside its package.');
-  }
-  return readFile(filename);
-}
+const readPackageFile = Effect.fn(function* (root: string, path: string) {
+  const filename = yield* fileSystem(() => realpath(join(root, path)));
+  yield* validate(() => {
+    const contained = relative(root, filename);
+    if (contained === '..' || contained.startsWith(`..${sep}`) || isAbsolute(contained)) {
+      throw new Error('Airport metadata must stay inside its package.');
+    }
+  });
+  return yield* fileSystem(() => readFile(filename));
+});
 
 function parseXml(bytes: Buffer, path: string): Document {
   let encoding = 'utf-8';
@@ -122,33 +128,38 @@ function xmlAirports(addon: Addon, key: string, document: Document): Airport[] {
   return airports;
 }
 
-export async function discoverAirports(addon: Addon): Promise<AirportDiscovery> {
+export const discoverAirports = Effect.fn(function* (addon: Addon) {
   if (addon.contentType !== 'SCENERY') {
     return {airports: [], complete: true, warnings: []};
   }
-  try {
-    const root = await realpath(addon.folderPath);
-    let layout;
-    try {
-      layout = await readPackageFile(root, 'layout.json');
-    } catch (error) {
-      if (
-        error &&
-        typeof error === 'object' &&
-        'code' in error &&
-        error.code === 'ENOENT'
-      ) {
-        return {
-          airports: [],
-          complete: false,
-          warnings: [
-            'Airport discovery needs layout.json. Previous airports were retained.',
-          ],
-        };
-      }
-      throw error;
+  return yield* Effect.gen(function* () {
+    const root = yield* fileSystem(() => realpath(addon.folderPath));
+    const layout = yield* readPackageFile(root, 'layout.json').pipe(
+      Effect.catch(error => {
+        const cause = error._tag === 'FileSystemError' ? error.cause : undefined;
+        if (
+          cause &&
+          typeof cause === 'object' &&
+          'code' in cause &&
+          cause.code === 'ENOENT'
+        ) {
+          return Effect.succeed(null);
+        }
+        return Effect.fail(error);
+      })
+    );
+    if (layout === null) {
+      return {
+        airports: [],
+        complete: false,
+        warnings: [
+          'Airport discovery needs layout.json. Previous airports were retained.',
+        ],
+      };
     }
-    const paths = layoutPaths(JSON.parse(layout.toString('utf8').replace(/^\uFEFF/, '')));
+    const paths = yield* validate(() =>
+      layoutPaths(JSON.parse(layout.toString('utf8').replace(/^\uFEFF/, '')))
+    );
     const airports: Airport[] = [];
     const selected = new Set<string>();
     for (const path of paths) {
@@ -161,15 +172,19 @@ export async function discoverAirports(addon: Addon): Promise<AirportDiscovery> 
         continue;
       }
       if (selected.has(key)) {
-        throw new Error('Duplicate airport metadata path in layout.json.');
+        yield* validate(() => {
+          throw new Error('Duplicate airport metadata path in layout.json.');
+        });
       }
       selected.add(key);
-      const bytes = await readPackageFile(root, path);
-      const document = key.endsWith('.xml') ? parseXml(bytes, path) : null;
+      const bytes = yield* readPackageFile(root, path);
+      const document = key.endsWith('.xml')
+        ? yield* validate(() => parseXml(bytes, path))
+        : null;
       if (service && service[1] !== 'shared') {
         airports.push(observation(addon, key, service[1].toUpperCase()));
       } else if (document) {
-        airports.push(...xmlAirports(addon, key, document));
+        airports.push(...(yield* validate(() => xmlAirports(addon, key, document))));
       }
     }
     const hasCompiledScenery = paths.some(path => path.toLowerCase().endsWith('.bgl'));
@@ -186,15 +201,17 @@ export async function discoverAirports(addon: Addon): Promise<AirportDiscovery> 
         ? ['Compiled scenery is not decoded. Airport coverage may be incomplete.']
         : [],
     };
-  } catch (error) {
-    return {
-      airports: [],
-      complete: false,
-      warnings: [
-        error instanceof Error
-          ? `Airport discovery failed. ${error.message} Previous airports were retained.`
-          : 'Airport discovery failed. Previous airports were retained.',
-      ],
-    };
-  }
-}
+  }).pipe(
+    Effect.catch(error =>
+      Effect.succeed({
+        airports: [],
+        complete: false,
+        warnings: [
+          error instanceof Error
+            ? `Airport discovery failed. ${error.message} Previous airports were retained.`
+            : 'Airport discovery failed. Previous airports were retained.',
+        ],
+      } satisfies AirportDiscovery)
+    )
+  );
+});

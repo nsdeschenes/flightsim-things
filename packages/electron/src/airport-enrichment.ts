@@ -1,3 +1,5 @@
+import {Effect} from 'effect';
+
 import type {
   Airport,
   EnrichmentResult,
@@ -5,6 +7,8 @@ import type {
   SimulatorId,
 } from '@flightsim-things/contract';
 import type {AddonDatabase, AirportMetadata, AirportUpdate} from '@flightsim-things/db';
+
+import {OpenAipError, validate} from './errors.js';
 
 interface AirportCode {
   field: 'icaoCode' | 'iataCode';
@@ -145,7 +149,7 @@ function parsePage(value: unknown): AirportPage {
   };
 }
 
-async function requestPage(
+const requestPage = Effect.fn(function* (
   lookup: AirportCode,
   page: number,
   apiKey: string,
@@ -156,35 +160,42 @@ async function requestPage(
   url.searchParams.set('page', String(page));
   url.searchParams.set('limit', '100');
   url.searchParams.set('fields', '_id,name,icaoCode,iataCode,geometry,elevation');
-  const signal = AbortSignal.timeout(30_000);
-  let response;
-  try {
-    response = await request(url, {
-      headers: {'x-openaip-api-key': apiKey},
-      redirect: 'error',
-      signal,
-    });
-  } catch {
-    throw new Error(
-      signal.aborted
-        ? 'OpenAIP airport request timed out. Retry enrichment.'
-        : 'Could not request OpenAIP airports. Check your connection and retry.'
+  const timeout = AbortSignal.timeout(30_000);
+  const response = yield* Effect.tryPromise({
+    try: signal =>
+      request(url, {
+        headers: {'x-openaip-api-key': apiKey},
+        redirect: 'error',
+        signal: AbortSignal.any([timeout, signal]),
+      }),
+    catch: () =>
+      new OpenAipError({
+        message: timeout.aborted
+          ? 'OpenAIP airport request timed out. Retry enrichment.'
+          : 'Could not request OpenAIP airports. Check your connection and retry.',
+      }),
+  });
+  if (!response.ok) {
+    return yield* Effect.fail(
+      new OpenAipError({
+        message:
+          response.status === 401 || response.status === 403
+            ? 'OpenAIP rejected the API key. Enter a valid key and retry.'
+            : `OpenAIP airport request failed with HTTP ${response.status}.`,
+      })
     );
   }
-  if (!response.ok) {
-    if (response.status === 401 || response.status === 403) {
-      throw new Error('OpenAIP rejected the API key. Enter a valid key and retry.');
-    }
-    throw new Error(`OpenAIP airport request failed with HTTP ${response.status}.`);
-  }
-  let json: unknown;
-  try {
-    json = await response.json();
-  } catch {
-    throw new Error('OpenAIP returned invalid JSON. No airports were updated.');
-  }
-  return parsePage(json);
-}
+  const json = yield* Effect.tryPromise({
+    try: () => response.json(),
+    catch: () =>
+      new OpenAipError({
+        message: 'OpenAIP returned invalid JSON. No airports were updated.',
+      }),
+  });
+  return yield* validate(() => parsePage(json)).pipe(
+    Effect.mapError(error => new OpenAipError({message: error.message}))
+  );
+});
 
 function validatePagination(
   response: AirportPage,
@@ -233,19 +244,21 @@ function metadataFor(airport: ProviderAirport, lookup: AirportCode): AirportMeta
   return metadata;
 }
 
-async function lookupAirport(
+const lookupAirport = Effect.fn(function* (
   lookup: AirportCode,
   apiKey: string,
   request: OpenAipRequest
-): Promise<LookupResult> {
+) {
   const identified = new Map<string, AirportMetadata>();
   const matches: AirportMetadata[] = [];
   let conflictingIdentity = false;
   let received = 0;
   let expected: AirportPage | undefined;
   for (let page = 1; ; page += 1) {
-    const response = await requestPage(lookup, page, apiKey, request);
-    validatePagination(response, page, expected);
+    const response = yield* requestPage(lookup, page, apiKey, request);
+    yield* validate(() => validatePagination(response, page, expected)).pipe(
+      Effect.mapError(error => new OpenAipError({message: error.message}))
+    );
     received += response.items.length;
     for (const airport of response.items) {
       if (airport[lookup.field] !== lookup.code) {
@@ -264,18 +277,22 @@ async function lookupAirport(
     }
     if (page >= response.totalPages) {
       if (received !== response.totalCount) {
-        throw new Error(
-          'OpenAIP returned incomplete pagination. No airports were updated.'
+        return yield* Effect.fail(
+          new OpenAipError({
+            message: 'OpenAIP returned incomplete pagination. No airports were updated.',
+          })
         );
       }
       if (conflictingIdentity || matches.length > 1) {
-        return {kind: 'ambiguous'};
+        return {kind: 'ambiguous'} satisfies LookupResult;
       }
-      return matches[0] ? {kind: 'matched', metadata: matches[0]} : {kind: 'unmatched'};
+      return (
+        matches[0] ? {kind: 'matched', metadata: matches[0]} : {kind: 'unmatched'}
+      ) satisfies LookupResult;
     }
     expected = response;
   }
-}
+});
 
 function lookupFor(airport: Airport): AirportCode | null {
   const icao = airport.icaoCode?.trim().toUpperCase() ?? '';
@@ -289,17 +306,20 @@ function lookupFor(airport: Airport): AirportCode | null {
   return null;
 }
 
-export async function enrichInstalledAirports(
+export const enrichInstalledAirports = Effect.fn(function* (
   database: AddonDatabase,
   simulator: SimulatorId,
   key: unknown,
   request: OpenAipRequest = fetch
-): Promise<EnrichmentResult> {
-  const apiKey = parseOpenAipKey(key);
-  const inventory = await database.getInventory(simulator);
+) {
+  const apiKey = yield* validate(() => parseOpenAipKey(key));
+  const inventory = yield* database.getInventory(simulator);
   if (!inventory.airports.length) {
-    throw new Error(
-      'No installed airports were found. Scan scenery addons before enrichment.'
+    return yield* Effect.fail(
+      new OpenAipError({
+        message:
+          'No installed airports were found. Scan scenery addons before enrichment.',
+      })
     );
   }
   const summary: EnrichmentSummary = {
@@ -326,7 +346,7 @@ export async function enrichInstalledAirports(
   }
   const updates: AirportUpdate[] = [];
   for (const group of groups.values()) {
-    const result = await lookupAirport(group.lookup, apiKey, request);
+    const result = yield* lookupAirport(group.lookup, apiKey, request);
     if (result.kind !== 'matched') {
       summary[result.kind] += group.airports.length;
     } else if (!Object.keys(result.metadata).length) {
@@ -337,13 +357,19 @@ export async function enrichInstalledAirports(
       );
     }
   }
-  try {
-    if (updates.length) {
-      summary.enriched = await database.applyAirportEnrichment(updates);
-      summary.skipped += updates.length - summary.enriched;
-    }
-  } catch {
-    throw new Error('Could not update the addon database. Retry enrichment.');
+  if (updates.length) {
+    summary.enriched = yield* database.applyAirportEnrichment(updates).pipe(
+      Effect.mapError(
+        () =>
+          new OpenAipError({
+            message: 'Could not update the addon database. Retry enrichment.',
+          })
+      )
+    );
+    summary.skipped += updates.length - summary.enriched;
   }
-  return {inventory: await database.getInventory(simulator), summary};
-}
+  return {
+    inventory: yield* database.getInventory(simulator),
+    summary,
+  } satisfies EnrichmentResult;
+});

@@ -1,3 +1,10 @@
+import {createSelectSchema} from 'drizzle-orm/effect-schema';
+import {Schema, Struct} from 'effect';
+
+import {simulators} from './simulators.js';
+import type {SimulatorId} from './simulators.js';
+import {addons, airports} from './tables.js';
+
 export const runtimeHealthChannel = 'runtime:health';
 export const addonLibraryChannel = 'addons:library';
 export const saveCommunityPathChannel = 'addons:save-community-path';
@@ -7,73 +14,70 @@ export const openAipKeyStatusChannel = 'openaip:key-status';
 export const saveOpenAipKeyChannel = 'openaip:save-key';
 export const removeOpenAipKeyChannel = 'openaip:remove-key';
 
-export const simulators = ['msfs2020', 'msfs2024'] as const;
-export type SimulatorId = (typeof simulators)[number];
+export {simulators} from './simulators.js';
+export type {SimulatorId} from './simulators.js';
+export const simulatorIdSchema = Schema.Literals(simulators);
 
-export interface Addon {
-  simulator: SimulatorId;
-  folderName: string;
-  folderPath: string;
-  name: string;
-  version: string | null;
-  creator: string | null;
-  contentType: string | null;
-  manifestJson: string;
-}
+export const addonSchema = createSelectSchema(addons, {
+  simulator: simulatorIdSchema,
+}).mapFields(Struct.map(Schema.mutableKey));
+export type Addon = typeof addonSchema.Type;
 
-export interface Airport {
-  simulator: SimulatorId;
-  folderName: string;
-  sourceKey: string;
-  icaoCode: string | null;
-  iataCode: string | null;
-  name: string | null;
-  elevationMeters: number | null;
-  latitude: number | null;
-  longitude: number | null;
-}
+export const airportSchema = createSelectSchema(airports, {
+  simulator: simulatorIdSchema,
+}).mapFields(Struct.map(Schema.mutableKey));
+export type Airport = typeof airportSchema.Type;
 
-export interface EnrichmentSummary {
-  airports: number;
-  enriched: number;
-  unmatched: number;
-  ambiguous: number;
-  skipped: number;
-}
+export const enrichmentSummarySchema = Schema.Struct({
+  airports: Schema.Number,
+  enriched: Schema.Number,
+  unmatched: Schema.Number,
+  ambiguous: Schema.Number,
+  skipped: Schema.Number,
+}).mapFields(Struct.map(Schema.mutableKey));
+export type EnrichmentSummary = typeof enrichmentSummarySchema.Type;
 
-export interface EnrichmentResult {
-  inventory: SimulatorInventory;
-  summary: EnrichmentSummary;
-}
+export const simulatorInventorySchema = Schema.Struct({
+  simulator: simulatorIdSchema,
+  communityPath: Schema.NullOr(Schema.String),
+  scannedPath: Schema.NullOr(Schema.String),
+  scannedAt: Schema.NullOr(Schema.String),
+  addons: Schema.mutable(Schema.Array(addonSchema)),
+  airports: Schema.mutable(Schema.Array(airportSchema)),
+}).mapFields(Struct.map(Schema.mutableKey));
+export type SimulatorInventory = typeof simulatorInventorySchema.Type;
 
-export interface SimulatorInventory {
-  simulator: SimulatorId;
-  communityPath: string | null;
-  scannedPath: string | null;
-  scannedAt: string | null;
-  addons: Addon[];
-  airports: Airport[];
-}
+export const addonLibrarySchema = Schema.mutable(Schema.Array(simulatorInventorySchema));
 
-export interface ScanWarning {
-  folderName: string;
-  message: string;
-}
+export const enrichmentResultSchema = Schema.Struct({
+  inventory: simulatorInventorySchema,
+  summary: enrichmentSummarySchema,
+}).mapFields(Struct.map(Schema.mutableKey));
+export type EnrichmentResult = typeof enrichmentResultSchema.Type;
 
-export interface ScanResult {
-  inventory: SimulatorInventory;
-  warnings: ScanWarning[];
-}
+export const scanWarningSchema = Schema.Struct({
+  folderName: Schema.String,
+  message: Schema.String,
+}).mapFields(Struct.map(Schema.mutableKey));
+export type ScanWarning = typeof scanWarningSchema.Type;
 
-export interface RuntimeHealth {
-  status: 'ready';
-  database: 'connected';
-}
+export const scanResultSchema = Schema.Struct({
+  inventory: simulatorInventorySchema,
+  warnings: Schema.mutable(Schema.Array(scanWarningSchema)),
+}).mapFields(Struct.map(Schema.mutableKey));
+export type ScanResult = typeof scanResultSchema.Type;
 
-export interface OpenAipKeyStatus {
-  saved: boolean;
-  available: boolean;
-}
+export const runtimeHealthSchema = Schema.Struct({
+  status: Schema.Literal('ready'),
+  database: Schema.Literal('connected'),
+}).mapFields(Struct.map(Schema.mutableKey));
+export type RuntimeHealth = typeof runtimeHealthSchema.Type;
+
+export const openAipKeyStatusSchema = Schema.Struct({
+  saved: Schema.Boolean,
+  available: Schema.Boolean,
+}).mapFields(Struct.map(Schema.mutableKey));
+export type OpenAipKeyStatus = typeof openAipKeyStatusSchema.Type;
 
 export interface DesktopApi {
   getOpenAipKeyStatus(): Promise<OpenAipKeyStatus>;

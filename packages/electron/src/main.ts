@@ -1,6 +1,8 @@
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
+import {Deferred, Effect, Fiber} from 'effect';
+
 import {app, BrowserWindow, ipcMain, safeStorage, session} from 'electron';
 import type {IpcMainInvokeEvent} from 'electron';
 
@@ -20,17 +22,36 @@ import {openDatabase} from '@flightsim-things/db';
 import {createAddonLibrary, parseCommunityPath, parseSimulator} from './addons.js';
 import {parseOpenAipKey} from './airport-enrichment.js';
 import {createOpenAipKeyStore} from './openaip-key.js';
+import {validate} from './errors.js';
 
 const development = process.argv.includes('--dev');
 const rendererUrl = development
   ? 'http://127.0.0.1:5173/'
   : new URL('./renderer/index.html', import.meta.url).href;
 
-app
-  .whenReady()
-  .then(async () => {
-    const database = await openDatabase(
+const application = Effect.scoped(
+  Effect.gen(function* () {
+    yield* Effect.promise(() => app.whenReady());
+    const scope = yield* Effect.scope;
+    let closing = false;
+    const run = <A, E>(operation: Effect.Effect<A, E>) =>
+      closing
+        ? Promise.reject(new Error('Application is closing.'))
+        : Effect.runPromise(
+            Effect.forkIn(operation, scope).pipe(Effect.flatMap(Fiber.join))
+          );
+    const database = yield* openDatabase(
       join(app.getPath('userData'), 'flightsim.sqlite')
+    );
+    const shutdown = yield* Deferred.make<void, unknown>();
+    const onQuit = (event: Electron.Event) => {
+      event.preventDefault();
+      closing = true;
+      Effect.runSync(Deferred.succeed(shutdown, undefined));
+    };
+    yield* Effect.acquireRelease(
+      Effect.sync(() => app.on('will-quit', onQuit)),
+      () => Effect.sync(() => app.removeListener('will-quit', onQuit))
     );
     const library = createAddonLibrary(database);
     const keyStore = createOpenAipKeyStore(
@@ -58,49 +79,67 @@ app
       (_contents, _permission, callback) => callback(false)
     );
     session.defaultSession.setPermissionCheckHandler(() => false);
-    ipcMain.handle(runtimeHealthChannel, async (event): Promise<RuntimeHealth> => {
+    ipcMain.handle(runtimeHealthChannel, event => {
       assertTrustedSender(event);
-      await database.db.$client.exec('SELECT 1');
-      return {status: 'ready', database: 'connected'};
+      return run(
+        database
+          .getLibrary()
+          .pipe(
+            Effect.as({status: 'ready', database: 'connected'} satisfies RuntimeHealth)
+          )
+      );
     });
     ipcMain.handle(addonLibraryChannel, event => {
       assertTrustedSender(event);
-      return library.getLibrary();
+      return run(library.getLibrary());
     });
     ipcMain.handle(
       saveCommunityPathChannel,
       (event, simulator: unknown, path: unknown) => {
         assertTrustedSender(event);
-        return library.saveCommunityPath(
-          parseSimulator(simulator),
-          parseCommunityPath(path)
+        return run(
+          Effect.gen(function* () {
+            const parsedSimulator = yield* validate(() => parseSimulator(simulator));
+            const parsedPath = yield* validate(() => parseCommunityPath(path));
+            return yield* library.saveCommunityPath(parsedSimulator, parsedPath);
+          })
         );
       }
     );
     ipcMain.handle(scanAddonsChannel, (event, simulator: unknown) => {
       assertTrustedSender(event);
-      return library.scan(parseSimulator(simulator));
+      return run(
+        validate(() => parseSimulator(simulator)).pipe(
+          Effect.flatMap(value => library.scan(value))
+        )
+      );
     });
     ipcMain.handle(openAipKeyStatusChannel, event => {
       assertTrustedSender(event);
-      return keyStore.status();
+      return run(keyStore.status());
     });
     ipcMain.handle(saveOpenAipKeyChannel, (event, key: unknown) => {
       assertTrustedSender(event);
-      return keyStore.save(key);
+      return run(keyStore.save(key));
     });
     ipcMain.handle(removeOpenAipKeyChannel, event => {
       assertTrustedSender(event);
-      return keyStore.remove();
+      return run(keyStore.remove());
     });
     ipcMain.handle(
       enrichAirportsChannel,
-      async (event, simulator: unknown, apiKey: unknown) => {
+      (event, simulator: unknown, apiKey: unknown) => {
         assertTrustedSender(event);
-        const parsedSimulator = parseSimulator(simulator);
-        const key =
-          apiKey === undefined ? await keyStore.load() : parseOpenAipKey(apiKey);
-        return library.enrichAirports(parsedSimulator, key);
+        return run(
+          Effect.gen(function* () {
+            const parsedSimulator = yield* validate(() => parseSimulator(simulator));
+            const key =
+              apiKey === undefined
+                ? yield* keyStore.load()
+                : yield* validate(() => parseOpenAipKey(apiKey));
+            return yield* library.enrichAirports(parsedSimulator, key);
+          })
+        );
       }
     );
 
@@ -118,9 +157,9 @@ app
       });
       window.webContents.setWindowOpenHandler(() => ({action: 'deny'}));
       window.webContents.on('will-navigate', event => event.preventDefault());
-      window.loadURL(rendererUrl).catch(error => {
-        console.error(error);
-        app.exit(1);
+      run(Effect.promise(() => window.loadURL(rendererUrl))).catch(error => {
+        closing = true;
+        Effect.runSync(Deferred.fail(shutdown, error));
       });
     }
 
@@ -134,8 +173,15 @@ app
         app.quit();
       }
     });
-    app.on('will-quit', () => database.close());
     createWindow();
+    yield* Deferred.await(shutdown);
+  })
+);
+
+Effect.runPromise(application)
+  .then(() => {
+    // Electron ignores another quit request until the current quit dispatch returns.
+    setImmediate(() => app.quit());
   })
   .catch(error => {
     console.error(error);
