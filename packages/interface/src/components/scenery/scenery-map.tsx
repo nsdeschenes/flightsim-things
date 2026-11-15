@@ -6,15 +6,14 @@ import {geoEqualEarth} from 'd3-geo';
 import {dragEnable} from 'd3-drag';
 import {select} from 'd3-selection';
 import {zoom, zoomIdentity, type ZoomBehavior} from 'd3-zoom';
-import type {FeatureCollection, Feature, Point} from 'geojson';
+import type {Feature, Point} from 'geojson';
 import {useEffect, useMemo, useRef, useState} from 'react';
 import {Button} from '../button';
 import {Controls} from '../controls';
 import {locationGroups, type Installation, type Position} from './model';
-import land from './land.json?raw';
+import {worldLand} from './world-land';
 
 type AirportFeature = Feature<Point, {ids: string[]; label: string}>;
-const world = JSON.parse(land) as FeatureCollection;
 
 export function SceneryMap({
   records,
@@ -99,7 +98,7 @@ export function SceneryMap({
     }));
     return defineChart({
       marks: [
-        geoShape(world.features, {
+        geoShape([worldLand], {
           id: 'land',
           projection: () => projection,
           fill: '#294459',
