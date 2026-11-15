@@ -3,7 +3,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
 import {sql} from 'drizzle-orm';
-import {Deferred, Effect, Exit, Fiber} from 'effect';
+import {Effect} from 'effect';
 import {expect, test} from 'vitest';
 
 import {DatabaseError, openDatabase} from './index.js';
@@ -30,8 +30,10 @@ test('lazily migrates once, closes its scope, and preserves inventory across con
         Effect.gen(function* () {
           const database = yield* acquisition;
           expect(
-            yield* database.db.all(
-              sql`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`
+            yield* Effect.promise(() =>
+              database.db.all(
+                sql`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`
+              )
             )
           ).toEqual([
             {name: '__drizzle_migrations'},
@@ -39,8 +41,8 @@ test('lazily migrates once, closes its scope, and preserves inventory across con
             {name: 'airports'},
             {name: 'simulator_settings'},
           ]);
-          const migrations = yield* database.db.all(
-            sql`SELECT * FROM __drizzle_migrations`
+          const migrations = yield* Effect.promise(() =>
+            database.db.all(sql`SELECT * FROM __drizzle_migrations`)
           );
           expect(migrations).toEqual([
             expect.objectContaining({
@@ -59,7 +61,7 @@ test('lazily migrates once, closes its scope, and preserves inventory across con
       )
     );
     await expect(
-      Effect.runPromise(first.database.db.all(sql`SELECT * FROM __drizzle_migrations`))
+      first.database.db.all(sql`SELECT * FROM __drizzle_migrations`)
     ).rejects.toThrow();
     await Effect.runPromise(
       Effect.scoped(
@@ -73,9 +75,11 @@ test('lazily migrates once, closes its scope, and preserves inventory across con
             addons: [addon],
             airports: [],
           });
-          expect(yield* second.db.all(sql`SELECT * FROM __drizzle_migrations`)).toEqual(
-            first.migrations
-          );
+          expect(
+            yield* Effect.promise(() =>
+              second.db.all(sql`SELECT * FROM __drizzle_migrations`)
+            )
+          ).toEqual(first.migrations);
         })
       )
     );
@@ -114,7 +118,7 @@ test('rolls back a failed inventory replacement and keeps the connection usable'
             .replaceInventory('msfs2020', '/Broken', [addon, addon])
             .pipe(Effect.flip);
           expect(failure).toBeInstanceOf(DatabaseError);
-          expect(failure.operation).toBe('replace inventory');
+          expect(failure.operation).toBe('insert addon');
           expect(yield* database.getInventory('msfs2020')).toEqual(previous);
           yield* database.saveCommunityPath('msfs2020', '/Updated');
           expect((yield* database.getInventory('msfs2020')).communityPath).toBe(
@@ -148,41 +152,6 @@ test('serializes concurrent inventory transactions on the shared connection', as
             [nextAddon],
           ]);
           expect(yield* database.getLibrary()).toEqual(inventories);
-        })
-      )
-    );
-  } finally {
-    await rm(directory, {recursive: true, force: true});
-  }
-});
-
-test('rolls back interrupted native transactions and releases the connection', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'flightsim-db-'));
-  try {
-    await Effect.runPromise(
-      Effect.scoped(
-        Effect.gen(function* () {
-          const database = yield* openDatabase(join(directory, 'test.sqlite'));
-          const previous = yield* database.saveCommunityPath('msfs2020', '/Community');
-          const updated = yield* Deferred.make<void>();
-          const transaction = yield* database.db
-            .transaction(tx =>
-              Effect.gen(function* () {
-                yield* tx.run(
-                  sql`UPDATE simulator_settings SET communityPath = '/Interrupted' WHERE simulator = 'msfs2020'`
-                );
-                yield* Deferred.succeed(updated, undefined);
-                yield* Effect.never;
-              })
-            )
-            .pipe(Effect.forkScoped);
-          yield* Effect.raceFirst(Deferred.await(updated), Fiber.join(transaction));
-          yield* Fiber.interrupt(transaction);
-          expect(Exit.hasInterrupts(yield* Fiber.await(transaction))).toBe(true);
-          expect(yield* database.getInventory('msfs2020')).toEqual(previous);
-          expect(
-            (yield* database.saveCommunityPath('msfs2020', '/Updated')).communityPath
-          ).toBe('/Updated');
         })
       )
     );

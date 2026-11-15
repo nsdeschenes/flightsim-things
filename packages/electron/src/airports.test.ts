@@ -434,10 +434,8 @@ test('rolls back a failed database update and skips rows whose identity changed 
   try {
     const original = [airport('KAAA'), airport('KBBB')];
     await f.seed(original);
-    await Effect.runPromise(
-      f.database.db.run(
-        `CREATE TRIGGER fail_enrichment BEFORE UPDATE ON airports WHEN NEW.icaoCode = 'KBBB' BEGIN SELECT RAISE(ABORT, 'test failure'); END`
-      )
+    await f.database.db.$client.exec(
+      `CREATE TRIGGER fail_enrichment BEFORE UPDATE ON airports WHEN NEW.icaoCode = 'KBBB' BEGIN SELECT RAISE(ABORT, 'test failure'); END`
     );
     const request: Request = async url =>
       json(page([{icaoCode: url.searchParams.get('search'), name: 'Updated'}]));
@@ -447,14 +445,12 @@ test('rolls back a failed database update and skips rows whose identity changed 
     expect(
       (await Effect.runPromise(f.database.getInventory('msfs2020'))).airports
     ).toEqual(original);
-    await Effect.runPromise(f.database.db.run(`DROP TRIGGER fail_enrichment`));
+    await f.database.db.$client.exec(`DROP TRIGGER fail_enrichment`);
     const result = await Effect.runPromise(
       enrichInstalledAirports(f.database, 'msfs2020', key, async (url, init) => {
         if (url.searchParams.get('search') === 'KBBB') {
-          await Effect.runPromise(
-            f.database.db.run(
-              `UPDATE airports SET icaoCode = 'KCCC' WHERE sourceKey = 'KAAA'`
-            )
+          await f.database.db.$client.exec(
+            `UPDATE airports SET icaoCode = 'KCCC' WHERE sourceKey = 'KAAA'`
           );
         }
         return request(url, init);
