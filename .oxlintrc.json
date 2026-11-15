@@ -1,11 +1,14 @@
 {
   "plugins": ["typescript", "react", "import", "node"],
+  "jsPlugins": ["@tanstack/eslint-plugin-router"],
   "categories": {
     "correctness": "error"
   },
   "rules": {
     "curly": "error",
-    "react/rules-of-hooks": "error"
+    "react/rules-of-hooks": "error",
+    "@tanstack/router/create-route-property-order": "warn",
+    "@tanstack/router/route-param-names": "error"
   },
   "ignorePatterns": [
     "**/dist/**",

@@ -48,7 +48,7 @@ app
     function assertTrustedSender(event: IpcMainInvokeEvent) {
       if (
         event.senderFrame !== event.sender.mainFrame ||
-        event.senderFrame?.url !== rendererUrl
+        event.senderFrame?.url.split('#', 1)[0] !== rendererUrl
       ) {
         throw new Error('Untrusted IPC sender');
       }
