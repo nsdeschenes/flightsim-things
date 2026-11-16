@@ -46,7 +46,11 @@ export function AddonTables({scenery = false}: {scenery?: boolean}) {
               <TableContainer>
                 <Table>
                   <TableCaption>
-                    {label} Airports ({inventory.airports.length})
+                    {label} Airports (
+                    <span {...stylex.props(styles.data)}>
+                      {inventory.airports.length}
+                    </span>
+                    )
                   </TableCaption>
                   <thead>
                     <TableRow>
@@ -73,7 +77,12 @@ export function AddonTables({scenery = false}: {scenery?: boolean}) {
                           airport.longitude,
                           airport.elevationMeters,
                         ].map((value, index) => (
-                          <TableCell key={index}>{value ?? 'Unknown'}</TableCell>
+                          <TableCell
+                            key={index}
+                            {...stylex.props(index !== 1 && styles.data)}
+                          >
+                            {value ?? 'Unknown'}
+                          </TableCell>
                         ))}
                       </TableRow>
                     ))}
@@ -85,7 +94,8 @@ export function AddonTables({scenery = false}: {scenery?: boolean}) {
               <TableContainer>
                 <Table>
                   <TableCaption>
-                    {label} {scenery ? 'Scenery' : 'Addons'} ({inventory.addons.length})
+                    {label} {scenery ? 'Scenery' : 'Addons'} (
+                    <span {...stylex.props(styles.data)}>{inventory.addons.length}</span>)
                   </TableCaption>
                   <thead>
                     <TableRow>
@@ -97,7 +107,7 @@ export function AddonTables({scenery = false}: {scenery?: boolean}) {
                     {inventory.addons.map(addon => (
                       <TableRow key={addon.folderName}>
                         <TableCell>{addon.name}</TableCell>
-                        <TableCell {...stylex.props(styles.folder)}>
+                        <TableCell {...stylex.props(styles.data)}>
                           <Tooltip.Root>
                             <Tooltip.Trigger
                               render={<span />}
@@ -111,7 +121,7 @@ export function AddonTables({scenery = false}: {scenery?: boolean}) {
                                 <Tooltip.Popup
                                   id={`${inventory.simulator}-${encodeURIComponent(addon.folderName)}-path`}
                                   role="tooltip"
-                                  {...stylex.props(controlStyles.tooltip)}
+                                  {...stylex.props(controlStyles.tooltip, styles.data)}
                                 >
                                   {addon.folderPath}
                                 </Tooltip.Popup>
@@ -141,5 +151,5 @@ export function AddonTables({scenery = false}: {scenery?: boolean}) {
 }
 
 const styles = stylex.create({
-  folder: {fontFamily: typography.mono},
+  data: {fontFamily: typography.mono, fontWeight: 400},
 });
