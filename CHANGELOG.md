@@ -1,4 +1,35 @@
 # Changelog
+## 0.2.0
+
+### New Features ✨
+
+#### Interface
+
+- Add the indigo StyleX design system by @nsdeschenes in [#16](https://github.com/nsdeschenes/flightsim-things/pull/16)
+- Cache desktop data with TanStack Query by @nsdeschenes in [#10](https://github.com/nsdeschenes/flightsim-things/pull/10)
+- Add addon, scenery, and settings routes by @nsdeschenes in [#7](https://github.com/nsdeschenes/flightsim-things/pull/7)
+
+#### Other
+
+- (prototype) Add a TanStack scenery explorer by @nsdeschenes in [#9](https://github.com/nsdeschenes/flightsim-things/pull/9)
+- (scenery) Integrate the offline map into the application by @nsdeschenes in [#15](https://github.com/nsdeschenes/flightsim-things/pull/15)
+
+### Documentation 📚
+
+- (interface) Add agent guidelines by @nsdeschenes in [#11](https://github.com/nsdeschenes/flightsim-things/pull/11)
+
+### Internal Changes 🔧
+
+#### Interface
+
+- Migrate to TanStack file routes by @nsdeschenes in [#14](https://github.com/nsdeschenes/flightsim-things/pull/14)
+- Migrate forms to TanStack Form by @nsdeschenes in [#13](https://github.com/nsdeschenes/flightsim-things/pull/13)
+- Replace native controls with Base UI by @nsdeschenes in [#12](https://github.com/nsdeschenes/flightsim-things/pull/12)
+
+#### Other
+
+- (effect) Migrate backend packages to Effect v4 by @nsdeschenes in [#8](https://github.com/nsdeschenes/flightsim-things/pull/8)
+
 ## 0.1.0
 
 ### New Features ✨
