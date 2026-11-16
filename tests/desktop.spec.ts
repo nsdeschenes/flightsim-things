@@ -144,7 +144,7 @@ test('desktop scans and persists simulator inventories through the isolated prel
         await page
           .getByRole('heading', {name: 'Flightsim Things'})
           .evaluate(element => getComputedStyle(element).fontSize)
-      ).toBe('32px');
+      ).toBe('16px');
       await page.evaluate(() => window.open('https://example.com'));
       expect(
         await app.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows().length)
@@ -154,6 +154,10 @@ test('desktop scans and persists simulator inventories through the isolated prel
       const msfs2020 = page.getByRole('region', {name: 'MSFS 2020', exact: true});
       const msfs2024 = page.getByRole('region', {name: 'MSFS 2024', exact: true});
       await msfs2020.getByLabel('Community folder').fill(community2020);
+      const savePath = msfs2020.getByRole('button', {name: 'Save path'});
+      await expect(savePath).toHaveCSS('background-color', 'rgb(38, 28, 193)');
+      await expect(savePath).toHaveCSS('border-top-width', '0px');
+      await expect(savePath).toHaveCSS('box-shadow', 'none');
       await msfs2020.getByRole('button', {name: 'Save path'}).click();
       await expect(msfs2020.getByText('Community folder saved.')).toBeVisible();
       await msfs2020.getByRole('button', {name: 'Scan addons'}).click();

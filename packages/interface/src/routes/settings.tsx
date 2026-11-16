@@ -1,3 +1,5 @@
+import * as stylex from '@stylexjs/stylex';
+import {feedbackStyles} from '../styles/feedback';
 import {Field} from '@base-ui/react/field';
 import {createFileRoute} from '@tanstack/react-router';
 import {useMutation, useQuery, useQueryClient} from '@tanstack/react-query';
@@ -70,7 +72,12 @@ function Settings() {
                 touched={field.state.meta.isTouched}
                 disabled={keyMutation.isPending}
               >
-                <Field.Label htmlFor="openaip-key">OpenAIP API key</Field.Label>
+                <Field.Label
+                  {...stylex.props(feedbackStyles.label)}
+                  htmlFor="openaip-key"
+                >
+                  OpenAIP API key
+                </Field.Label>
                 <Controls>
                   <FieldControl
                     id="openaip-key"
@@ -104,7 +111,10 @@ function Settings() {
                       : 'Remove saved key'}
                   </Button>
                 </Controls>
-                <Field.Error match={!field.state.meta.isValid}>
+                <Field.Error
+                  {...stylex.props(feedbackStyles.error)}
+                  match={!field.state.meta.isValid}
+                >
                   {field.state.meta.errors.join(', ')}
                 </Field.Error>
               </Field.Root>
@@ -120,18 +130,28 @@ function Settings() {
         )}
         <div aria-live="polite">
           {keyMutation.isSuccess && keyMutation.variables === 'save' && (
-            <p>API key saved.</p>
+            <p {...stylex.props(feedbackStyles.success)}>API key saved.</p>
           )}
           {keyMutation.isSuccess && keyMutation.variables === 'remove' && (
-            <p>Saved API key removed.</p>
+            <p {...stylex.props(feedbackStyles.success)}>Saved API key removed.</p>
           )}
-          {keyMutation.isError && <p role="alert">{keyMutation.error.message}</p>}
+          {keyMutation.isError && (
+            <p role="alert" {...stylex.props(feedbackStyles.alert)}>
+              {keyMutation.error.message}
+            </p>
+          )}
           {keyMutation.isIdle && savedKey.isError && (
-            <p role="alert">Could not read the saved API key status.</p>
+            <p role="alert" {...stylex.props(feedbackStyles.alert)}>
+              Could not read the saved API key status.
+            </p>
           )}
         </div>
       </Section>
-      {inventories.isError && <p role="alert">Could not load addon library.</p>}
+      {inventories.isError && (
+        <p role="alert" {...stylex.props(feedbackStyles.alert)}>
+          Could not load addon library.
+        </p>
+      )}
       {inventories.data?.map(inventory => (
         <SimulatorSettings
           key={inventory.simulator}

@@ -1,8 +1,97 @@
-* {
+:where(*),
+:where(*)::before,
+:where(*)::after {
   box-sizing: border-box;
-}
-body,
-h1,
-p {
   margin: 0;
+  padding: 0;
+  border: 0 solid currentColor;
+}
+
+:where(html) {
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+:where(body) {
+  min-height: 100vh;
+}
+
+:where(h1, h2, h3, h4, h5, h6) {
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+:where(a) {
+  color: inherit;
+  text-decoration: underline;
+}
+
+:where(ul, ol, menu) {
+  list-style: none;
+}
+
+:where(button, input, select, textarea, optgroup) {
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+:where(button, [type='button'], [type='submit'], [type='reset']) {
+  appearance: none;
+  background-image: none;
+  text-transform: none;
+}
+
+:where(button, select) {
+  cursor: pointer;
+}
+
+:where(button:disabled, select:disabled) {
+  cursor: default;
+}
+
+:where(textarea) {
+  resize: vertical;
+}
+
+:where(input, textarea)::placeholder {
+  color: inherit;
+  opacity: 0.55;
+}
+
+:where(input[type='search']) {
+  appearance: textfield;
+}
+
+:where(input[type='search'])::-webkit-search-decoration {
+  appearance: none;
+}
+
+:where(img, picture, video, canvas) {
+  display: block;
+  max-width: 100%;
+}
+
+:where(img, video) {
+  height: auto;
+}
+
+:where(table) {
+  border-collapse: collapse;
+  border-spacing: 0;
+  text-indent: 0;
+}
+
+:where(summary) {
+  cursor: pointer;
+}
+
+:where([hidden]:not([hidden='until-found'])) {
+  display: none !important;
 }

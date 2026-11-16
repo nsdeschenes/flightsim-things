@@ -1,6 +1,11 @@
+import {feedbackStyles} from '../styles/feedback';
 import {Collapsible} from '@base-ui/react/collapsible';
 import {Field} from '@base-ui/react/field';
 import * as stylex from '@stylexjs/stylex';
+import {colors} from '../styles/colors.stylex';
+import {spacing} from '../styles/spacing.stylex';
+import {typography} from '../styles/typography.stylex';
+
 import {useMutation, useQueryClient} from '@tanstack/react-query';
 import {revalidateLogic, useForm, useStore} from '@tanstack/react-form';
 import type {
@@ -111,7 +116,10 @@ export function SimulatorSettings({
               touched={field.state.meta.isTouched}
               disabled={busy}
             >
-              <Field.Label htmlFor={`${inventory.simulator}-path`}>
+              <Field.Label
+                {...stylex.props(feedbackStyles.label)}
+                htmlFor={`${inventory.simulator}-path`}
+              >
                 Community folder
               </Field.Label>
               <Controls>
@@ -138,7 +146,10 @@ export function SimulatorSettings({
                   {activity.kind === 'scanning' ? 'Scanning…' : 'Scan addons'}
                 </Button>
               </Controls>
-              <Field.Error match={!field.state.meta.isValid}>
+              <Field.Error
+                {...stylex.props(feedbackStyles.error)}
+                match={!field.state.meta.isValid}
+              >
                 {field.state.meta.errors.join(', ')}
               </Field.Error>
             </Field.Root>
@@ -158,7 +169,9 @@ export function SimulatorSettings({
       </Controls>
       <div aria-live="polite" {...stylex.props(styles.feedback)}>
         {dirty && <p>Save the path before scanning.</p>}
-        {activity.kind === 'saved' && <p>Community folder saved.</p>}
+        {activity.kind === 'saved' && (
+          <p {...stylex.props(feedbackStyles.success)}>Community folder saved.</p>
+        )}
         {activity.kind === 'scanned' && (
           <p>
             Scan complete. Found {inventory.addons.length} addons. Skipped{' '}
@@ -172,7 +185,11 @@ export function SimulatorSettings({
             {activity.summary.skipped}.
           </p>
         )}
-        {activity.kind === 'error' && <p role="alert">{activity.message}</p>}
+        {activity.kind === 'error' && (
+          <p role="alert" {...stylex.props(feedbackStyles.alert)}>
+            {activity.message}
+          </p>
+        )}
         {activity.kind === 'scanned' && activity.warnings.length > 0 && (
           <Collapsible.Root>
             <Collapsible.Trigger render={<Button />}>Skipped folders</Collapsible.Trigger>
@@ -199,6 +216,15 @@ export function SimulatorSettings({
 }
 
 const styles = stylex.create({
-  feedback: {marginTop: 12, marginBottom: 12, overflowWrap: 'anywhere'},
-  scanInfo: {fontSize: 13, color: '#555', marginBottom: 12, overflowWrap: 'anywhere'},
+  feedback: {
+    marginBlock: spacing.md,
+    overflowWrap: 'anywhere',
+    color: colors.successText,
+  },
+  scanInfo: {
+    fontSize: typography.small,
+    color: colors.textMuted,
+    marginBottom: spacing.md,
+    overflowWrap: 'anywhere',
+  },
 });
