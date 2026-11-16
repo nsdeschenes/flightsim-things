@@ -5,7 +5,7 @@ import {typography} from './typography.stylex';
 import {radii} from './radii.stylex';
 
 export const feedbackStyles = stylex.create({
-  label: {fontSize: typography.label, fontWeight: typography.medium},
+  label: {fontFamily: typography.mono, fontSize: typography.label, fontWeight: 400},
   error: {color: colors.errorText, fontSize: typography.small, marginTop: spacing.xs},
   success: {
     color: colors.successText,

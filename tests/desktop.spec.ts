@@ -145,6 +145,31 @@ test('desktop scans and persists simulator inventories through the isolated prel
           .getByRole('heading', {name: 'Flightsim Things'})
           .evaluate(element => getComputedStyle(element).fontSize)
       ).toBe('16px');
+      expect(
+        await page.evaluate(async () => {
+          const fonts = [
+            '400 13px "B612"',
+            '700 13px "B612"',
+            'italic 400 13px "B612"',
+            'italic 700 13px "B612"',
+            '400 13px "Share Tech Mono"',
+          ];
+          return Promise.all(
+            fonts.map(async font => {
+              const faces = await document.fonts.load(font, 'Airport KAAA 2.0.0');
+              return (
+                faces.length > 0 &&
+                faces.every(face => face.status === 'loaded') &&
+                document.fonts.check(font, 'Airport KAAA 2.0.0')
+              );
+            })
+          );
+        })
+      ).toEqual([true, true, true, true, true]);
+      await expect(page.getByRole('heading', {name: 'Flightsim Things'})).toHaveCSS(
+        'font-family',
+        /^"?B612"?,/
+      );
       await page.evaluate(() => window.open('https://example.com'));
       expect(
         await app.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows().length)
@@ -153,8 +178,17 @@ test('desktop scans and persists simulator inventories through the isolated prel
       await page.getByRole('link', {name: 'Settings', exact: true}).click();
       const msfs2020 = page.getByRole('region', {name: 'MSFS 2020', exact: true});
       const msfs2024 = page.getByRole('region', {name: 'MSFS 2024', exact: true});
+      await expect(msfs2020.locator('label', {hasText: 'Community folder'})).toHaveCSS(
+        'font-family',
+        /^"Share Tech Mono",/
+      );
+      await expect(msfs2020.getByLabel('Community folder')).toHaveCSS(
+        'font-family',
+        /^"Share Tech Mono",/
+      );
       await msfs2020.getByLabel('Community folder').fill(community2020);
       const savePath = msfs2020.getByRole('button', {name: 'Save path'});
+      await expect(savePath).toHaveCSS('font-family', /^B612,/);
       await expect(savePath).toHaveCSS('background-color', 'rgb(38, 28, 193)');
       await expect(savePath).toHaveCSS('border-top-width', '0px');
       await expect(savePath).toHaveCSS('box-shadow', 'none');
@@ -173,7 +207,19 @@ test('desktop scans and persists simulator inventories through the isolated prel
       await msfs2024.getByRole('button', {name: 'Scan addons'}).click();
       await expectInventoryCell(page, 'Desktop Airport', 'Scenery');
       await expectInventoryCell(page, 'KAAA', 'Scenery');
+      await page.getByRole('link', {name: 'Scenery', exact: true}).click();
+      await expect(page.getByRole('cell', {name: 'KAAA', exact: true})).toHaveCSS(
+        'font-family',
+        /^"Share Tech Mono",/
+      );
+      await expect(page.getByRole('columnheader', {name: 'Code', exact: true})).toHaveCSS(
+        'font-family',
+        /^"Share Tech Mono",/
+      );
       await page.getByRole('link', {name: 'Home', exact: true}).click();
+      await expect(
+        page.getByRole('cell', {name: 'Desktop Airport', exact: true})
+      ).toHaveCSS('font-family', /^"?B612"?,/);
       await expect(
         page
           .getByRole('table', {name: 'MSFS 2024 Addons (3)'})

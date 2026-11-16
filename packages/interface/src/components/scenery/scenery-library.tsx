@@ -205,30 +205,36 @@ export function SceneryLibrary() {
                       {selected.kind === 'airport' ? 'Airport' : 'Scenery package'}
                     </p>
                     <dl {...stylex.props(styles.details)}>
-                      <dt>Package</dt>
+                      <dt {...stylex.props(styles.data)}>Package</dt>
                       <dd>{selected.package?.name ?? 'Package metadata unavailable'}</dd>
-                      <dt>Folder</dt>
-                      <dd>{selected.folderName}</dd>
-                      <dt>Path</dt>
-                      <dd>{selected.package?.folderPath ?? 'Unknown'}</dd>
-                      <dt>Creator</dt>
+                      <dt {...stylex.props(styles.data)}>Folder</dt>
+                      <dd {...stylex.props(styles.data)}>{selected.folderName}</dd>
+                      <dt {...stylex.props(styles.data)}>Path</dt>
+                      <dd {...stylex.props(styles.data)}>
+                        {selected.package?.folderPath ?? 'Unknown'}
+                      </dd>
+                      <dt {...stylex.props(styles.data)}>Creator</dt>
                       <dd>{selected.package?.creator ?? 'Unknown'}</dd>
-                      <dt>Version</dt>
-                      <dd>{selected.package?.version ?? 'Unknown'}</dd>
+                      <dt {...stylex.props(styles.data)}>Version</dt>
+                      <dd {...stylex.props(styles.data)}>
+                        {selected.package?.version ?? 'Unknown'}
+                      </dd>
                       {selected.kind === 'airport' && (
                         <>
-                          <dt>Code</dt>
-                          <dd>
+                          <dt {...stylex.props(styles.data)}>Code</dt>
+                          <dd {...stylex.props(styles.data)}>
                             {selected.airport.icaoCode ??
                               selected.airport.iataCode ??
                               'Unknown'}
                           </dd>
-                          <dt>Elevation (m)</dt>
-                          <dd>{selected.airport.elevationMeters ?? 'Unknown'}</dd>
+                          <dt {...stylex.props(styles.data)}>Elevation (m)</dt>
+                          <dd {...stylex.props(styles.data)}>
+                            {selected.airport.elevationMeters ?? 'Unknown'}
+                          </dd>
                         </>
                       )}
-                      <dt>Coordinates</dt>
-                      <dd>
+                      <dt {...stylex.props(styles.data)}>Coordinates</dt>
+                      <dd {...stylex.props(selected.position !== null && styles.data)}>
                         {selected.position
                           ? `${selected.position[1]}, ${selected.position[0]}`
                           : 'Unavailable. Enrich airports in Settings to look up missing locations.'}
@@ -236,7 +242,10 @@ export function SceneryLibrary() {
                     </dl>
                     {coincident.length > 1 && (
                       <div role="group" aria-label="Installations at this location">
-                        <p>{coincident.length} installations at this location</p>
+                        <p>
+                          <span {...stylex.props(styles.data)}>{coincident.length}</span>{' '}
+                          installations at this location
+                        </p>
                         <Controls>
                           {coincident.map(record => (
                             <Button
@@ -283,7 +292,7 @@ export function SceneryLibrary() {
                           <Table>
                             <TableCaption>
                               {label} {kind === 'airport' ? 'Airports' : 'Scenery'} (
-                              {rows.length})
+                              <span {...stylex.props(styles.data)}>{rows.length}</span>)
                             </TableCaption>
                             <thead>
                               <TableRow>
@@ -311,7 +320,7 @@ export function SceneryLibrary() {
                                   aria-selected={selected?.id === record.id}
                                 >
                                   {record.kind === 'airport' && (
-                                    <TableCell>
+                                    <TableCell {...stylex.props(styles.data)}>
                                       {record.airport.icaoCode ??
                                         record.airport.iataCode ??
                                         'Unknown'}
@@ -331,7 +340,10 @@ export function SceneryLibrary() {
                                       record.airport.longitude,
                                       record.airport.elevationMeters,
                                     ].map((value, index) => (
-                                      <TableCell key={index}>
+                                      <TableCell
+                                        key={index}
+                                        {...stylex.props(styles.data)}
+                                      >
                                         {value !== null && Number.isFinite(value)
                                           ? value
                                           : 'Unknown'}
@@ -417,12 +429,15 @@ function FilterSelect({
 function Folder({record}: {record: Installation}) {
   return (
     <Tooltip.Root>
-      <Tooltip.Trigger render={<span />} tabIndex={0} {...stylex.props(styles.folder)}>
+      <Tooltip.Trigger render={<span />} tabIndex={0} {...stylex.props(styles.data)}>
         {record.folderName}
       </Tooltip.Trigger>
       <Tooltip.Portal>
         <Tooltip.Positioner sideOffset={8}>
-          <Tooltip.Popup role="tooltip" {...stylex.props(controlStyles.tooltip)}>
+          <Tooltip.Popup
+            role="tooltip"
+            {...stylex.props(controlStyles.tooltip, styles.data)}
+          >
             {record.package?.folderPath ?? 'Package path unavailable'}
           </Tooltip.Popup>
         </Tooltip.Positioner>
@@ -480,12 +495,16 @@ const styles = stylex.create({
     },
     outlineStyle: 'none',
   },
-  summary: {marginBlock: spacing.lg, color: colors.textMuted},
+  summary: {
+    marginBlock: spacing.lg,
+    color: colors.textMuted,
+    fontFamily: typography.mono,
+  },
   details: {
     display: 'grid',
     gridTemplateColumns: 'minmax(80px, auto) minmax(0, 1fr)',
     gap: 8,
     overflowWrap: 'anywhere',
   },
-  folder: {fontFamily: typography.mono},
+  data: {fontFamily: typography.mono, fontWeight: 400},
 });

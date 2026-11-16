@@ -2,8 +2,8 @@ import * as stylex from '@stylexjs/stylex';
 
 export const typography = stylex.defineVars({
   family:
-    '"Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif',
-  mono: 'ui-monospace, SFMono-Regular, Consolas, monospace',
+    '"B612", "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif',
+  mono: '"Share Tech Mono", ui-monospace, SFMono-Regular, Consolas, monospace',
   small: '12px',
   body: '13px',
   label: '13px',

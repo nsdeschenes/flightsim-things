@@ -271,6 +271,12 @@ importers:
       '@flightsim-things/contract':
         specifier: workspace:*
         version: link:../contract
+      '@fontsource/b612':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@fontsource/share-tech-mono':
+        specifier: 5.3.0
+        version: 5.3.0
       '@stylexjs/stylex':
         specifier: 0.19.1
         version: 0.19.1
@@ -893,6 +899,12 @@ packages:
 
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
+
+  '@fontsource/b612@5.3.0':
+    resolution: {integrity: sha512-2AQPrSFDI9K00w/lPlgfcqve+ZPdRSCttvVUxcmv+UrnwwaKLMym+/uXmM7+dgPCVBIV9omoXUabFoyBFpc1Vg==}
+
+  '@fontsource/share-tech-mono@5.3.0':
+    resolution: {integrity: sha512-hVEzVCzEid/fBfhggMyvkfDzn9ODrMihxC0EiOeQK3BuQNvdjmith2ERnoDNUkbW8zhufbKNuCgaSoT8LUNpuQ==}
 
   '@hapi/hoek@9.3.0':
     resolution: {integrity: sha512-/c6rf4UJlmHlC9b5BaNvzAcFv7HZ2QHaV0D4/HNlBdvFnvQq8RI4kYdhyPCl7Xj+oWvTWQ8ujhqS53LIgAe6KQ==}
@@ -4271,6 +4283,10 @@ snapshots:
       react-dom: 19.2.8(react@19.2.8)
 
   '@floating-ui/utils@0.2.12': {}
+
+  '@fontsource/b612@5.3.0': {}
+
+  '@fontsource/share-tech-mono@5.3.0': {}
 
   '@hapi/hoek@9.3.0': {}
 

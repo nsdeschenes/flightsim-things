@@ -125,6 +125,7 @@ export function SimulatorSettings({
               <Controls>
                 <FieldControl
                   id={`${inventory.simulator}-path`}
+                  {...stylex.props(styles.data)}
                   type="text"
                   value={field.state.value}
                   onBlur={field.handleBlur}
@@ -174,15 +175,22 @@ export function SimulatorSettings({
         )}
         {activity.kind === 'scanned' && (
           <p>
-            Scan complete. Found {inventory.addons.length} addons. Skipped{' '}
-            {activity.warnings.length} folders.
+            Scan complete. Found{' '}
+            <span {...stylex.props(styles.data)}>{inventory.addons.length}</span> addons.
+            Skipped <span {...stylex.props(styles.data)}>{activity.warnings.length}</span>{' '}
+            folders.
           </p>
         )}
         {activity.kind === 'enriched' && (
           <p>
-            Updated {activity.summary.enriched} airports. Unmatched{' '}
-            {activity.summary.unmatched}. Ambiguous {activity.summary.ambiguous}. Skipped{' '}
-            {activity.summary.skipped}.
+            Updated{' '}
+            <span {...stylex.props(styles.data)}>{activity.summary.enriched}</span>{' '}
+            airports. Unmatched{' '}
+            <span {...stylex.props(styles.data)}>{activity.summary.unmatched}</span>.
+            Ambiguous{' '}
+            <span {...stylex.props(styles.data)}>{activity.summary.ambiguous}</span>.
+            Skipped <span {...stylex.props(styles.data)}>{activity.summary.skipped}</span>
+            .
           </p>
         )}
         {activity.kind === 'error' && (
@@ -197,7 +205,8 @@ export function SimulatorSettings({
               <ul>
                 {activity.warnings.map(warning => (
                   <li key={warning.folderName}>
-                    {warning.folderName}: {warning.message}
+                    <span {...stylex.props(styles.data)}>{warning.folderName}</span>:{' '}
+                    {warning.message}
                   </li>
                 ))}
               </ul>
@@ -207,8 +216,11 @@ export function SimulatorSettings({
       </div>
       {inventory.scannedAt && (
         <p {...stylex.props(styles.scanInfo)}>
-          Last scan {new Date(inventory.scannedAt).toLocaleString()} from{' '}
-          {inventory.scannedPath}
+          Last scan{' '}
+          <span {...stylex.props(styles.data)}>
+            {new Date(inventory.scannedAt).toLocaleString()}
+          </span>{' '}
+          from <span {...stylex.props(styles.data)}>{inventory.scannedPath}</span>
         </p>
       )}
     </Section>
@@ -216,6 +228,7 @@ export function SimulatorSettings({
 }
 
 const styles = stylex.create({
+  data: {fontFamily: typography.mono},
   feedback: {
     marginBlock: spacing.md,
     overflowWrap: 'anywhere',

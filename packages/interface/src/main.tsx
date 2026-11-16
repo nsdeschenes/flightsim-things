@@ -7,6 +7,11 @@ import {RouterProvider} from '@tanstack/react-router';
 import {createRoot} from 'react-dom/client';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {router} from './router';
+import '@fontsource/b612/latin-400.css';
+import '@fontsource/b612/latin-700.css';
+import '@fontsource/b612/latin-400-italic.css';
+import '@fontsource/b612/latin-700-italic.css';
+import '@fontsource/share-tech-mono/latin-400.css';
 import './reset.css';
 
 document.documentElement.classList.add(

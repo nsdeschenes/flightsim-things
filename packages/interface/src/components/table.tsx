@@ -52,10 +52,11 @@ const styles = stylex.create({
   table: {width: '100%', minWidth: 640, borderCollapse: 'collapse', textAlign: 'left'},
   caption: {textAlign: 'left', fontWeight: 600, marginBottom: spacing.sm},
   header: {
+    fontFamily: typography.mono,
     backgroundColor: colors.workspace,
     color: colors.textMuted,
     fontSize: typography.small,
-    fontWeight: typography.medium,
+    fontWeight: 400,
   },
   cell: {
     padding: spacing.md,
