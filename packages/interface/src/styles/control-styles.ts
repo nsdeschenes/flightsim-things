@@ -28,7 +28,6 @@ export const controlStyles = stylex.create({
       ':disabled': colors.disabledText,
       ':is([data-disabled])': colors.disabledText,
     },
-    fontFamily: typography.family,
     fontSize: typography.body,
     lineHeight: typography.lineHeight,
     outlineColor: colors.focusRing,

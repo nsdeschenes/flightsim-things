@@ -188,6 +188,7 @@ test('desktop scans and persists simulator inventories through the isolated prel
       );
       await msfs2020.getByLabel('Community folder').fill(community2020);
       const savePath = msfs2020.getByRole('button', {name: 'Save path'});
+      await expect(savePath).toHaveCSS('font-family', /^B612,/);
       await expect(savePath).toHaveCSS('background-color', 'rgb(38, 28, 193)');
       await expect(savePath).toHaveCSS('border-top-width', '0px');
       await expect(savePath).toHaveCSS('box-shadow', 'none');
