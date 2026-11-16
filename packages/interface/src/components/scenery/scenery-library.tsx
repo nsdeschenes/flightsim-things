@@ -1,7 +1,14 @@
+import {feedbackStyles} from '../../styles/feedback';
 import {Field} from '@base-ui/react/field';
 import {Select} from '@base-ui/react/select';
 import {Tooltip} from '@base-ui/react/tooltip';
 import * as stylex from '@stylexjs/stylex';
+import {controlStyles} from '../../styles/control-styles';
+import {colors} from '../../styles/colors.stylex';
+import {spacing} from '../../styles/spacing.stylex';
+import {radii} from '../../styles/radii.stylex';
+import {typography} from '../../styles/typography.stylex';
+
 import {useForm} from '@tanstack/react-form';
 import {useQuery} from '@tanstack/react-query';
 import {Link} from '@tanstack/react-router';
@@ -12,7 +19,14 @@ import {Controls} from '../controls';
 import {FieldControl} from '../field-control';
 import {Heading} from '../heading';
 import {Section} from '../section';
-import {TableContainer, Table, TableCaption, TableHeaderCell, TableCell} from '../table';
+import {
+  TableContainer,
+  TableRow,
+  Table,
+  TableCaption,
+  TableHeaderCell,
+  TableCell,
+} from '../table';
 import {installations, locationGroups, simulatorLabel, type Installation} from './model';
 import {SceneryMap} from './scenery-map';
 
@@ -32,7 +46,9 @@ export function SceneryLibrary() {
       ) : null}
       {query.isError && (
         <div>
-          <p role="alert">Could not load addon library.</p>
+          <p role="alert" {...stylex.props(feedbackStyles.alert)}>
+            Could not load addon library.
+          </p>
           <Button onClick={() => void query.refetch()}>Try again</Button>
         </div>
       )}
@@ -47,12 +63,15 @@ export function SceneryLibrary() {
           <form.Field name="search">
             {field => (
               <Field.Root
+                {...stylex.props(styles.filterField)}
                 name={field.name}
                 dirty={field.state.meta.isDirty}
                 touched={field.state.meta.isTouched}
                 invalid={!field.state.meta.isValid}
               >
-                <Field.Label>Search scenery</Field.Label>
+                <Field.Label {...stylex.props(feedbackStyles.label)}>
+                  Search scenery
+                </Field.Label>
                 <FieldControl
                   name={field.name}
                   value={field.state.value}
@@ -66,12 +85,15 @@ export function SceneryLibrary() {
           <form.Field name="simulator">
             {field => (
               <Field.Root
+                {...stylex.props(styles.filterField)}
                 name={field.name}
                 dirty={field.state.meta.isDirty}
                 touched={field.state.meta.isTouched}
                 invalid={!field.state.meta.isValid}
               >
-                <Field.Label>Simulator</Field.Label>
+                <Field.Label {...stylex.props(feedbackStyles.label)}>
+                  Simulator
+                </Field.Label>
                 <FilterSelect
                   items={{
                     all: 'All simulators',
@@ -89,12 +111,15 @@ export function SceneryLibrary() {
           <form.Field name="location">
             {field => (
               <Field.Root
+                {...stylex.props(styles.filterField)}
                 name={field.name}
                 dirty={field.state.meta.isDirty}
                 touched={field.state.meta.isTouched}
                 invalid={!field.state.meta.isValid}
               >
-                <Field.Label>Location</Field.Label>
+                <Field.Label {...stylex.props(feedbackStyles.label)}>
+                  Location
+                </Field.Label>
                 <FilterSelect
                   items={{
                     all: 'All locations',
@@ -145,7 +170,7 @@ export function SceneryLibrary() {
             : [];
           return (
             <>
-              <p aria-live="polite">
+              <p aria-live="polite" {...stylex.props(styles.summary)}>
                 {filtered.length} installations · {mappedCount} mapped ·{' '}
                 {filtered.length - mappedCount} without coordinates · {groups.length} map
                 locations
@@ -261,7 +286,7 @@ export function SceneryLibrary() {
                               {rows.length})
                             </TableCaption>
                             <thead>
-                              <tr>
+                              <TableRow>
                                 {(kind === 'airport'
                                   ? [
                                       'Code',
@@ -277,11 +302,11 @@ export function SceneryLibrary() {
                                     {title}
                                   </TableHeaderCell>
                                 ))}
-                              </tr>
+                              </TableRow>
                             </thead>
                             <tbody>
                               {rows.map(record => (
-                                <tr
+                                <TableRow
                                   key={record.id}
                                   aria-selected={selected?.id === record.id}
                                 >
@@ -315,7 +340,7 @@ export function SceneryLibrary() {
                                   <TableCell>
                                     <Folder record={record} />
                                   </TableCell>
-                                </tr>
+                                </TableRow>
                               ))}
                             </tbody>
                           </Table>
@@ -360,7 +385,10 @@ function FilterSelect({
         }
       }}
     >
-      <Select.Trigger onBlur={onBlur} {...stylex.props(styles.selectTrigger)}>
+      <Select.Trigger
+        onBlur={onBlur}
+        {...stylex.props(controlStyles.root, styles.selectTrigger)}
+      >
         <Select.Value />
         <Select.Icon>▾</Select.Icon>
       </Select.Trigger>
@@ -394,7 +422,7 @@ function Folder({record}: {record: Installation}) {
       </Tooltip.Trigger>
       <Tooltip.Portal>
         <Tooltip.Positioner sideOffset={8}>
-          <Tooltip.Popup role="tooltip" {...stylex.props(styles.tooltip)}>
+          <Tooltip.Popup role="tooltip" {...stylex.props(controlStyles.tooltip)}>
             {record.package?.folderPath ?? 'Package path unavailable'}
           </Tooltip.Popup>
         </Tooltip.Positioner>
@@ -403,45 +431,61 @@ function Folder({record}: {record: Installation}) {
   );
 }
 const styles = stylex.create({
+  filterField: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacing.xs,
+    flexGrow: 1,
+    flexBasis: 180,
+    minWidth: 0,
+  },
   selectTrigger: {
     display: 'flex',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 16,
-    minWidth: 200,
-    padding: 10,
-    font: 'inherit',
-    backgroundColor: '#fff',
-    border: '1px solid #aaa',
-    borderRadius: 4,
+    gap: spacing.lg,
+    minWidth: 180,
+    width: '100%',
   },
   selectPopup: {
-    backgroundColor: '#fff',
-    color: '#242424',
-    border: '1px solid #aaa',
-    borderRadius: 4,
-    padding: 4,
+    backgroundColor: colors.surface,
+    color: colors.text,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    borderColor: colors.controlBorder,
+    borderRadius: radii.control,
+    padding: spacing.xs,
+    minWidth: 'var(--anchor-width)',
+    maxHeight: 'var(--available-height)',
+    overflowY: 'auto',
+    zIndex: 10,
   },
   selectItem: {
     display: 'flex',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 16,
-    padding: 8,
+    gap: spacing.lg,
+    padding: spacing.sm,
+    borderRadius: radii.sm,
     cursor: 'pointer',
-    backgroundColor: {default: 'transparent', ':focus': '#dbeafe', ':hover': '#dbeafe'},
+    backgroundColor: {
+      default: colors.transparent,
+      ':is([data-selected])': colors.selected,
+      ':is([data-highlighted])': colors.primary,
+    },
+    color: {
+      default: colors.text,
+      ':is([data-selected])': colors.onSelected,
+      ':is([data-highlighted])': colors.onPrimary,
+    },
+    outlineStyle: 'none',
   },
+  summary: {marginBlock: spacing.lg, color: colors.textMuted},
   details: {
     display: 'grid',
     gridTemplateColumns: 'minmax(80px, auto) minmax(0, 1fr)',
     gap: 8,
     overflowWrap: 'anywhere',
   },
-  folder: {fontFamily: 'monospace'},
-  tooltip: {
-    padding: 8,
-    backgroundColor: '#242424',
-    color: '#fff',
-    borderRadius: 4,
-    maxWidth: 400,
-    overflowWrap: 'anywhere',
-  },
+  folder: {fontFamily: typography.mono},
 });

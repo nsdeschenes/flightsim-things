@@ -1,6 +1,8 @@
 import {Field} from '@base-ui/react/field';
 import {mergeClassNames} from '@base-ui/react/merge-props';
 import * as stylex from '@stylexjs/stylex';
+import {controlStyles} from '../styles/control-styles';
+import {colors} from '../styles/colors.stylex';
 import type {ComponentPropsWithRef, ReactElement} from 'react';
 
 export type FieldControlProps = ComponentPropsWithRef<typeof Field.Control>;
@@ -11,7 +13,7 @@ export function FieldControl({className, ...props}: FieldControlProps): ReactEle
       {...props}
       className={state =>
         mergeClassNames(
-          stylex.props(styles.root).className,
+          stylex.props(controlStyles.root, styles.root).className,
           typeof className === 'function' ? className(state) : className
         )
       }
@@ -22,10 +24,10 @@ export function FieldControl({className, ...props}: FieldControlProps): ReactEle
 const styles = stylex.create({
   root: {
     flexGrow: 1,
-    minWidth: 200,
-    padding: 10,
-    font: 'inherit',
-    border: '1px solid #aaa',
-    borderRadius: 4,
+    minWidth: 0,
+    width: 220,
+    maxWidth: '100%',
+    cursor: 'text',
+    '::placeholder': {color: colors.textMuted, opacity: 1},
   },
 });

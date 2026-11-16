@@ -1,5 +1,6 @@
 import {mergeProps} from '@base-ui/react/merge-props';
 import * as stylex from '@stylexjs/stylex';
+import {spacing} from '../styles/spacing.stylex';
 import type {ComponentPropsWithRef, ReactElement} from 'react';
 
 export type ControlsProps = ComponentPropsWithRef<'div'>;
@@ -9,5 +10,11 @@ export function Controls(props: ControlsProps): ReactElement {
 }
 
 const styles = stylex.create({
-  root: {display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8},
+  root: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    alignItems: 'end',
+  },
 });

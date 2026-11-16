@@ -1,4 +1,9 @@
 import * as stylex from '@stylexjs/stylex';
+import {colors} from '../../styles/colors.stylex';
+import {spacing} from '../../styles/spacing.stylex';
+import {radii} from '../../styles/radii.stylex';
+import {typography} from '../../styles/typography.stylex';
+
 import {defineChart} from '@tanstack/charts';
 import {geoShape} from '@tanstack/charts/geo';
 import {Chart} from '@tanstack/charts/react';
@@ -102,8 +107,8 @@ export function SceneryMap({
         geoShape([worldLand], {
           id: 'land',
           projection: () => projection,
-          fill: '#294459',
-          stroke: '#537489',
+          fill: colors.mapLand,
+          stroke: colors.mapLandBorder,
           strokeWidth: 0.6,
         }),
         geoShape(features, {
@@ -113,9 +118,9 @@ export function SceneryMap({
           r: feature => (feature.properties.ids.length > 1 ? 7 : 5),
           fill: feature =>
             selectedId && feature.properties.ids.includes(selectedId)
-              ? '#ffba76'
-              : '#65dec2',
-          stroke: '#e6f5ff',
+              ? colors.mapSelectedMarker
+              : colors.mapMarker,
+          stroke: colors.mapMarkerBorder,
           strokeWidth: 1,
         }),
       ],
@@ -143,7 +148,7 @@ export function SceneryMap({
   }
 
   return (
-    <section aria-label="Scenery map">
+    <section aria-label="Scenery map" {...stylex.props(styles.section)}>
       <Controls>
         <Button
           onClick={() =>
@@ -235,13 +240,20 @@ export function SceneryMap({
   );
 }
 const styles = stylex.create({
+  section: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: spacing.sm,
+    color: colors.textMuted,
+    fontSize: typography.small,
+  },
   map: {
     width: '100%',
     aspectRatio: '2 / 1',
     minHeight: 240,
     overflow: 'hidden',
-    backgroundColor: '#101e2b',
-    borderRadius: 8,
+    backgroundColor: colors.mapWater,
+    borderRadius: radii.panel,
     touchAction: 'none',
     cursor: {default: 'grab', ':active': 'grabbing'},
   },

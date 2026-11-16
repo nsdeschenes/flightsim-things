@@ -1,3 +1,6 @@
+import * as stylex from '@stylexjs/stylex';
+import {lightTheme} from './styles/themes';
+import {documentStyles} from './styles/document';
 import {Tooltip} from '@base-ui/react/tooltip';
 import {StrictMode} from 'react';
 import {RouterProvider} from '@tanstack/react-router';
@@ -5,6 +8,10 @@ import {createRoot} from 'react-dom/client';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {router} from './router';
 import './reset.css';
+
+document.documentElement.classList.add(
+  ...stylex.props(lightTheme, documentStyles.root).className!.split(' ')
+);
 
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -1,10 +1,21 @@
+import {feedbackStyles} from '../styles/feedback';
 import {Tooltip} from '@base-ui/react/tooltip';
 import * as stylex from '@stylexjs/stylex';
+import {controlStyles} from '../styles/control-styles';
+import {typography} from '../styles/typography.stylex';
+
 import {useQuery} from '@tanstack/react-query';
 import {desktopQueries} from '../queries';
 import {Heading} from './heading';
 import {Section} from './section';
-import {TableContainer, Table, TableCaption, TableHeaderCell, TableCell} from './table';
+import {
+  TableContainer,
+  TableRow,
+  Table,
+  TableCaption,
+  TableHeaderCell,
+  TableCell,
+} from './table';
 
 export function AddonTables({scenery = false}: {scenery?: boolean}) {
   const inventories = useQuery(desktopQueries.library);
@@ -12,7 +23,11 @@ export function AddonTables({scenery = false}: {scenery?: boolean}) {
   return (
     <>
       <Heading>{scenery ? 'Scenery' : 'Addons'}</Heading>
-      {inventories.isError && <p role="alert">Could not load addon library.</p>}
+      {inventories.isError && (
+        <p role="alert" {...stylex.props(feedbackStyles.alert)}>
+          Could not load addon library.
+        </p>
+      )}
       {library.map(source => {
         const inventory = {
           ...source,
@@ -34,7 +49,7 @@ export function AddonTables({scenery = false}: {scenery?: boolean}) {
                     {label} Airports ({inventory.airports.length})
                   </TableCaption>
                   <thead>
-                    <tr>
+                    <TableRow>
                       {[
                         'Code',
                         'Airport name',
@@ -46,11 +61,11 @@ export function AddonTables({scenery = false}: {scenery?: boolean}) {
                           {label}
                         </TableHeaderCell>
                       ))}
-                    </tr>
+                    </TableRow>
                   </thead>
                   <tbody>
                     {inventory.airports.map(airport => (
-                      <tr key={`${airport.folderName}/${airport.sourceKey}`}>
+                      <TableRow key={`${airport.folderName}/${airport.sourceKey}`}>
                         {[
                           airport.icaoCode ?? airport.iataCode,
                           airport.name,
@@ -60,7 +75,7 @@ export function AddonTables({scenery = false}: {scenery?: boolean}) {
                         ].map((value, index) => (
                           <TableCell key={index}>{value ?? 'Unknown'}</TableCell>
                         ))}
-                      </tr>
+                      </TableRow>
                     ))}
                   </tbody>
                 </Table>
@@ -73,14 +88,14 @@ export function AddonTables({scenery = false}: {scenery?: boolean}) {
                     {label} {scenery ? 'Scenery' : 'Addons'} ({inventory.addons.length})
                   </TableCaption>
                   <thead>
-                    <tr>
+                    <TableRow>
                       <TableHeaderCell scope="col">Addon name</TableHeaderCell>
                       <TableHeaderCell scope="col">Folder</TableHeaderCell>
-                    </tr>
+                    </TableRow>
                   </thead>
                   <tbody>
                     {inventory.addons.map(addon => (
-                      <tr key={addon.folderName}>
+                      <TableRow key={addon.folderName}>
                         <TableCell>{addon.name}</TableCell>
                         <TableCell {...stylex.props(styles.folder)}>
                           <Tooltip.Root>
@@ -96,7 +111,7 @@ export function AddonTables({scenery = false}: {scenery?: boolean}) {
                                 <Tooltip.Popup
                                   id={`${inventory.simulator}-${encodeURIComponent(addon.folderName)}-path`}
                                   role="tooltip"
-                                  {...stylex.props(styles.tooltip)}
+                                  {...stylex.props(controlStyles.tooltip)}
                                 >
                                   {addon.folderPath}
                                 </Tooltip.Popup>
@@ -104,7 +119,7 @@ export function AddonTables({scenery = false}: {scenery?: boolean}) {
                             </Tooltip.Portal>
                           </Tooltip.Root>
                         </TableCell>
-                      </tr>
+                      </TableRow>
                     ))}
                   </tbody>
                 </Table>
@@ -126,13 +141,5 @@ export function AddonTables({scenery = false}: {scenery?: boolean}) {
 }
 
 const styles = stylex.create({
-  folder: {fontFamily: 'monospace'},
-  tooltip: {
-    padding: 8,
-    backgroundColor: '#242424',
-    color: '#fff',
-    borderRadius: 4,
-    maxWidth: 400,
-    overflowWrap: 'anywhere',
-  },
+  folder: {fontFamily: typography.mono},
 });
