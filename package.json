@@ -7,7 +7,8 @@
   "type": "module",
   "scripts": {
     "build": "pnpm --filter @flightsim-things/contract build && pnpm --filter @flightsim-things/db build && pnpm --filter @flightsim-things/electron build && pnpm --filter @flightsim-things/interface build",
-    "dev": "pnpm build && concurrently --kill-others \"pnpm --filter @flightsim-things/interface dev\" \"wait-on http://127.0.0.1:5173 && pnpm --filter @flightsim-things/electron start --dev\"",
+    "dev": "pnpm build && concurrently -P --kill-others \"pnpm --filter @flightsim-things/interface dev\" \"wait-on http://127.0.0.1:5173 && pnpm --filter @flightsim-things/electron start --dev {1}\"",
+    "dev:demo": "pnpm dev -- --demo",
     "start": "pnpm --filter @flightsim-things/electron start",
     "test": "pnpm --filter @flightsim-things/contract build && pnpm --filter @flightsim-things/db build && pnpm --filter @flightsim-things/db test && pnpm --filter @flightsim-things/electron test",
     "test:desktop": "playwright test",

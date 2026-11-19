@@ -21,6 +21,33 @@ React and StyleX changes update through Vite. Restart `pnpm dev` after changing 
 main process, preload, contract, or database package. Stop both processes with Ctrl+C.
 Opening Vite in a browser displays a message to open the desktop app.
 
+### Scan a sample Community folder
+
+The repository includes sample aircraft, liveries, scenery, and airports in
+`fixtures/community/msfs2020` and `fixtures/community/msfs2024`.
+
+1. Run `pnpm dev` and open **Settings**.
+2. Under the matching simulator, enter the full path to its fixture directory in
+   **Community folder**.
+3. Select **Save path**, then **Scan addons**. Open **Home** or **Scenery** to see
+   the imported packages.
+
+Saving the fixture path and scanning replaces that simulator's inventory in the
+current profile. Use `pnpm dev:demo` to try the fixtures in a separate profile.
+Copy a fixture directory if you want to edit its files without changing the checkout.
+
+### Start with a populated demo library
+
+Run `pnpm dev:demo` to scan the same fixtures on first launch. The initial scan
+adds offline map pins, including an airport shared by both simulators. The demo
+profile stores its database, settings, and browser session in a persistent
+`demo` directory inside the normal Electron `userData` directory. Later launches
+preserve your saved Community paths and inventories.
+
+To reset the demo, close the app and delete only the `demo` directory from the
+normal Electron `userData` directory. The next demo launch recreates the sample
+library.
+
 To run the production output, run `pnpm build`, then `pnpm start`.
 
 ## Package ownership
@@ -53,6 +80,7 @@ call `handle.close()` when finished.
 | ------------------- | --------------------------------------------------------------------------- |
 | `pnpm build`        | Builds contract and db declarations, main, preload, and renderer            |
 | `pnpm dev`          | Builds once and runs Vite with the desktop shell                            |
+| `pnpm dev:demo`     | Opens development with a persistent sample library in a separate profile    |
 | `pnpm start`        | Opens the built desktop app                                                 |
 | `pnpm typecheck`    | Builds shared declarations and checks all packages and desktop tests        |
 | `pnpm test`         | Checks SQLite migrations, addon scanning, and persistence                   |
