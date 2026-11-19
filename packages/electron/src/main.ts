@@ -1,3 +1,4 @@
+import {mkdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -21,10 +22,18 @@ import {openDatabase} from '@flightsim-things/db';
 
 import {createAddonLibrary, parseCommunityPath, parseSimulator} from './addons.js';
 import {parseOpenAipKey} from './airport-enrichment.js';
+import {seedDemoLibrary} from './demo.js';
 import {createOpenAipKeyStore} from './openaip-key.js';
 import {validate} from './errors.js';
 
 const development = process.argv.includes('--dev');
+const demo = development && process.argv.includes('--demo') && !app.isPackaged;
+if (demo) {
+  const profilePath = join(app.getPath('userData'), 'demo');
+  mkdirSync(profilePath, {recursive: true});
+  app.setPath('userData', profilePath);
+  app.setPath('sessionData', profilePath);
+}
 const rendererUrl = development
   ? 'http://127.0.0.1:5173/'
   : new URL('./renderer/index.html', import.meta.url).href;
@@ -43,6 +52,9 @@ const application = Effect.scoped(
     const database = yield* openDatabase(
       join(app.getPath('userData'), 'flightsim.sqlite')
     );
+    if (demo) {
+      yield* seedDemoLibrary(database, app.getPath('userData'));
+    }
     const shutdown = yield* Deferred.make<void, unknown>();
     const onQuit = (event: Electron.Event) => {
       event.preventDefault();

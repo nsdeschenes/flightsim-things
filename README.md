@@ -21,6 +21,22 @@ React and StyleX changes update through Vite. Restart `pnpm dev` after changing 
 main process, preload, contract, or database package. Stop both processes with Ctrl+C.
 Opening Vite in a browser displays a message to open the desktop app.
 
+Run `pnpm dev:demo` to open a populated library without a simulator installation.
+Both simulators have sample aircraft, liveries, scenery, and airports. The scenery
+view includes a shared airport and an airport without coordinates. Demo data
+needs no openAIP key.
+
+Demo mode uses a persistent `demo` directory inside the normal Electron `userData`
+directory. Its database, saved settings, and browser session stay in that profile.
+The first launch creates sample Community folders at
+`demo/<simulator>/Community`, scans their package metadata, and saves each path.
+Later launches preserve your changes, including Community paths and package edits.
+Use **Scan addons** after editing the sample package metadata.
+
+To reset the demo, close the app and delete only the `demo` directory from the
+normal Electron `userData` directory. The next demo launch recreates the sample
+library.
+
 To run the production output, run `pnpm build`, then `pnpm start`.
 
 ## Package ownership
@@ -53,6 +69,7 @@ call `handle.close()` when finished.
 | ------------------- | --------------------------------------------------------------------------- |
 | `pnpm build`        | Builds contract and db declarations, main, preload, and renderer            |
 | `pnpm dev`          | Builds once and runs Vite with the desktop shell                            |
+| `pnpm dev:demo`     | Opens development with a persistent sample library in a separate profile    |
 | `pnpm start`        | Opens the built desktop app                                                 |
 | `pnpm typecheck`    | Builds shared declarations and checks all packages and desktop tests        |
 | `pnpm test`         | Checks SQLite migrations, addon scanning, and persistence                   |
