@@ -53,7 +53,7 @@ const application = Effect.scoped(
       join(app.getPath('userData'), 'flightsim.sqlite')
     );
     if (demo) {
-      yield* seedDemoLibrary(database, app.getPath('userData'));
+      yield* seedDemoLibrary(database);
     }
     const shutdown = yield* Deferred.make<void, unknown>();
     const onQuit = (event: Electron.Event) => {

@@ -21,17 +21,28 @@ React and StyleX changes update through Vite. Restart `pnpm dev` after changing 
 main process, preload, contract, or database package. Stop both processes with Ctrl+C.
 Opening Vite in a browser displays a message to open the desktop app.
 
-Run `pnpm dev:demo` to open a populated library without a simulator installation.
-Both simulators have sample aircraft, liveries, scenery, and airports. The scenery
-view includes a shared airport and an airport without coordinates. Demo data
-needs no openAIP key.
+### Scan a sample Community folder
 
-Demo mode uses a persistent `demo` directory inside the normal Electron `userData`
-directory. Its database, saved settings, and browser session stay in that profile.
-The first launch creates sample Community folders at
-`demo/<simulator>/Community`, scans their package metadata, and saves each path.
-Later launches preserve your changes, including Community paths and package edits.
-Use **Scan addons** after editing the sample package metadata.
+The repository includes sample aircraft, liveries, scenery, and airports in
+`fixtures/community/msfs2020` and `fixtures/community/msfs2024`.
+
+1. Run `pnpm dev` and open **Settings**.
+2. Under the matching simulator, enter the full path to its fixture directory in
+   **Community folder**.
+3. Select **Save path**, then **Scan addons**. Open **Home** or **Scenery** to see
+   the imported packages.
+
+Saving the fixture path and scanning replaces that simulator's inventory in the
+current profile. Use `pnpm dev:demo` to try the fixtures in a separate profile.
+Copy a fixture directory if you want to edit its files without changing the checkout.
+
+### Start with a populated demo library
+
+Run `pnpm dev:demo` to scan the same fixtures on first launch. The initial scan
+adds offline map pins, including an airport shared by both simulators. The demo
+profile stores its database, settings, and browser session in a persistent
+`demo` directory inside the normal Electron `userData` directory. Later launches
+preserve your saved Community paths and inventories.
 
 To reset the demo, close the app and delete only the `demo` directory from the
 normal Electron `userData` directory. The next demo launch recreates the sample
